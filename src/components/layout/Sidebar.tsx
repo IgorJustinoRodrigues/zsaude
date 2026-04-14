@@ -29,7 +29,7 @@ export function Sidebar({ module }: Props) {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 h-full flex flex-col transition-all duration-200 z-30 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900',
+        'fixed left-0 top-0 h-full flex flex-col transition-all duration-200 z-20 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900',
         sidebarCollapsed ? 'w-16' : 'w-60'
       )}
     >

@@ -18,7 +18,7 @@ export function AppShell() {
       <div
         className={cn(
           'flex flex-col flex-1 min-w-0 transition-all duration-200',
-          sidebarCollapsed ? 'ml-16' : 'ml-64'
+          sidebarCollapsed ? 'ml-16' : 'ml-60'
         )}
       >
         <TopBar module={currentModule} />
