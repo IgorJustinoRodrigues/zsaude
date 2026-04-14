@@ -3,6 +3,7 @@ import { AppShell } from '../components/layout/AppShell'
 import { LoginPage } from '../pages/auth/LoginPage'
 import { SystemSelectPage } from '../pages/auth/SystemSelectPage'
 import { ModulePlaceholder } from '../pages/ModulePlaceholder'
+import { UsersPage } from '../pages/shared/UsersPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -12,6 +13,7 @@ export const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
+      { path: '/usuarios', element: <UsersPage /> },
       { path: '/:module', element: <ModulePlaceholder /> },
       { path: '/:module/*', element: <ModulePlaceholder /> },
     ],

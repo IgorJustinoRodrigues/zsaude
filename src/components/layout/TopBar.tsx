@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useUIStore } from '../../store/uiStore'
-import { mockOnlineUsers, SYSTEMS } from '../../mock/users'
+import { mockAllUsersPresence, SYSTEMS } from '../../mock/users'
 import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
+
+const SYSTEM_COLORS: Record<string, string> = {
+  CLN: '#0ea5e9', DGN: '#8b5cf6', HSP: '#f59e0b',
+  PLN: '#10b981', FSC: '#f97316', OPS: '#6b7280',
+}
 
 const MODULE_COLORS: Record<SystemId, string> = {
   ga: '#0ea5e9', lab: '#8b5cf6', aih: '#f59e0b',
@@ -21,10 +26,18 @@ export function TopBar({ module }: Props) {
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
   const { darkMode, toggleDarkMode } = useUIStore()
   const navigate = useNavigate()
-  const [notifOpen, setNotifOpen] = useState(false)
-  const [usersOpen, setUsersOpen] = useState(false)
+  const [notifOpen, setNotifOpen]     = useState(false)
+  const [usersOpen, setUsersOpen]     = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  const onlineUsers  = mockAllUsersPresence.filter(u => u.online)
+  const offlineUsers = mockAllUsersPresence.filter(u => !u.online)
+
+  const goToUsers = () => {
+    setUsersOpen(false)
+    navigate('/usuarios')
+  }
 
   const accentColor = module ? MODULE_COLORS[module] : '#0ea5e9'
 
@@ -53,7 +66,7 @@ export function TopBar({ module }: Props) {
         <div className="fixed inset-0 z-40" onClick={() => { setNotifOpen(false); setUsersOpen(false) }} />
       )}
 
-      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-5 gap-3 shrink-0 z-30 relative">
+      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-5 gap-3 shrink-0 relative">
         {module && (
           <div className="absolute bottom-0 left-0 right-0 h-[2px] opacity-50" style={{ backgroundColor: accentColor }} />
         )}
@@ -71,30 +84,73 @@ export function TopBar({ module }: Props) {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
             </span>
             <Users size={14} />
-            {mockOnlineUsers.length} online
+            {onlineUsers.length} online
           </button>
 
           {usersOpen && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Usuários online</p>
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50">
+
+              {/* Header do dropdown */}
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Sessões ativas</p>
+                  <span className="text-[10px] font-bold bg-emerald-500 text-white rounded-full px-1.5 py-0.5 leading-none">{onlineUsers.length}</span>
+                </div>
+                <button
+                  onClick={() => goToUsers()}
+                  className="text-[10px] text-sky-500 hover:text-sky-700 font-medium flex items-center gap-1 transition-colors"
+                >
+                  Ver todos <ArrowRight size={10} />
+                </button>
               </div>
-              <div className="max-h-56 overflow-y-auto">
-                {mockOnlineUsers.map(u => (
-                  <div key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <div className="relative shrink-0">
-                      <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-semibold text-slate-600 dark:text-slate-300">
-                        {initials(u.name)}
+
+              {/* Lista online (scrollável) */}
+              <div className="overflow-y-auto scrollbar-thin divide-y divide-slate-50 dark:divide-slate-800/60" style={{ maxHeight: '192px' }}>
+                {onlineUsers.map(u => {
+                  const color = SYSTEM_COLORS[u.system] ?? '#6b7280'
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => goToUsers()}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left"
+                    >
+                      <div className="relative shrink-0">
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
+                          style={{ backgroundColor: color }}
+                        >
+                          {initials(u.name)}
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900" />
                       </div>
-                      <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
-                      <p className="text-[10px] text-slate-400">{u.role} · {u.system}</p>
-                    </div>
-                  </div>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{u.role} · {u.unit}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: color + '18', color }}>
+                          {u.system}
+                        </span>
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400">desde {u.since}</span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
+
+              {/* Resumo offline */}
+              {offlineUsers.length > 0 && (
+                <button
+                  onClick={() => goToUsers()}
+                  className="w-full flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Clock size={11} />
+                    <span className="text-[11px]">{offlineUsers.length} usuários offline</span>
+                  </div>
+                  <span className="text-[10px] text-sky-500 flex items-center gap-1">Ver histórico <ArrowRight size={9} /></span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -112,7 +168,7 @@ export function TopBar({ module }: Props) {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Notificações</p>
@@ -189,7 +245,7 @@ export function TopBar({ module }: Props) {
           </button>
 
           {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl">
               {/* User header */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
