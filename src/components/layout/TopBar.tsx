@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -24,7 +24,7 @@ interface Props { module: SystemId | null }
 export function TopBar({ module }: Props) {
   const { user, logout } = useAuthStore()
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
-  const { darkMode, toggleDarkMode } = useUIStore()
+  const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen]     = useState(false)
   const [usersOpen, setUsersOpen]     = useState(false)
@@ -66,15 +66,23 @@ export function TopBar({ module }: Props) {
         <div className="fixed inset-0 z-40" onClick={() => { setNotifOpen(false); setUsersOpen(false) }} />
       )}
 
-      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-5 gap-3 shrink-0 relative">
+      <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-4 gap-2 shrink-0 relative">
         {module && (
           <div className="absolute bottom-0 left-0 right-0 h-[2px] opacity-50" style={{ backgroundColor: accentColor }} />
         )}
 
+        {/* Hamburger — só no mobile */}
+        <button
+          onClick={openMobileSidebar}
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+          <Menu size={18} />
+        </button>
+
         <div className="flex-1" />
 
-        {/* Online users */}
-        <div className="relative z-50">
+        {/* Online users — oculto em mobile */}
+        <div className="relative z-50 hidden sm:block">
           <button
             onClick={() => { setUsersOpen(v => !v); setNotifOpen(false) }}
             className="flex items-center gap-2 h-8 px-3 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-xs font-medium"
