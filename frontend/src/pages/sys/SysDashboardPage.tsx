@@ -19,7 +19,7 @@ export function SysDashboardPage() {
     Promise.all([sysApi.listMunicipalities(true), userApi.stats()])
       .then(([m, s]) => { setMuns(m); setUserStats(s) })
       .catch(e => toast.error(
-        'Falha ao carregar dashboard',
+        'Falha ao carregar o painel',
         e instanceof HttpError ? e.message : 'Tente novamente.',
       ))
       .finally(() => setLoading(false))
@@ -43,7 +43,7 @@ export function SysDashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard da plataforma</h1>
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Painel da plataforma</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Visão geral dos municípios, unidades e usuários administrativos.
         </p>

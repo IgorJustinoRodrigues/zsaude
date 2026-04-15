@@ -18,7 +18,7 @@ export function GAHomePage() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-foreground">Gestão de Atendimento</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{formatDate(TODAY)} · Dashboard geral do módulo</p>
+        <p className="text-sm text-muted-foreground mt-0.5">{formatDate(TODAY)} · Painel geral do módulo</p>
       </div>
 
       {/* Stats */}

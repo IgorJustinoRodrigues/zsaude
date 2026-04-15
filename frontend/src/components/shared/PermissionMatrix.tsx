@@ -16,19 +16,7 @@ import { useMemo, useState } from 'react'
 import { Check, X, Minus, ChevronDown, ChevronRight } from 'lucide-react'
 import type { RolePermissionEntry, RolePermissionState } from '../../api/roles'
 import { cn } from '../../lib/utils'
-
-const MODULE_LABELS: Record<string, string> = {
-  sys: 'Sistema',
-  users: 'Usuários',
-  roles: 'Perfis',
-  audit: 'Auditoria',
-  cln: 'Clínica',
-  dgn: 'Diagnóstico',
-  hsp: 'Hospitalar',
-  pln: 'Planos',
-  fsc: 'Fiscal',
-  ops: 'Operações',
-}
+import { actionLabel, moduleLabel, resourceLabel } from '../../lib/rbacLabels'
 
 interface Props {
   entries: RolePermissionEntry[]
@@ -68,7 +56,7 @@ export function PermissionMatrix({ entries, editable = false, onChange, classNam
                   : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
-              {MODULE_LABELS[mod] ?? mod.toUpperCase()}
+              {moduleLabel(mod)}
               <span className="ml-2 text-xs text-muted-foreground font-normal">
                 {active}/{count}
               </span>
@@ -132,7 +120,7 @@ function ResourceGroup({ resource, entries, editable, onChange }: ResourceGroupP
         className="w-full flex items-center gap-2 px-5 py-3 hover:bg-muted/30 transition-colors text-left"
       >
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <span className="text-sm font-semibold capitalize flex-1">{resource}</span>
+        <span className="text-sm font-semibold flex-1">{resourceLabel(resource)}</span>
         {hasOverrides && (
           <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
             customizado
@@ -182,8 +170,7 @@ function PermissionRow({ entry, editable, onChange }: PermissionRowProps) {
       )}
     >
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium capitalize">{entry.action.replace(/_/g, ' ')}</p>
-        <p className="text-xs text-muted-foreground sm:truncate">{entry.description}</p>
+        <p className="text-sm font-medium">{entry.description || actionLabel(entry.action)}</p>
         <p className="text-[11px] text-muted-foreground/70 font-mono mt-0.5 break-all">{entry.code}</p>
       </div>
 

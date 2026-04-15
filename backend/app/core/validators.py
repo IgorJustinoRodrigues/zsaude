@@ -94,3 +94,27 @@ def validate_cep(value: str) -> str:
     if len(cep) != 8:
         raise ValueError("CEP inválido.")
     return cep
+
+
+# ─── Senha (lê regras de app.system_settings) ─────────────────────────────────
+
+_SPECIAL_CHARS = "!@#$%&*?()[]{}<>+=-_.,;:/\\\"'|`~^"
+
+
+def validate_password_strength(value: str) -> str:
+    """Aplica as regras configuráveis em tempo real.
+
+    Lê ``password_min_length`` e ``password_require_special`` do
+    ``SettingsService`` (cache in-memory). Usado via ``@field_validator``
+    em todos os schemas que aceitam senha nova.
+    """
+    from app.modules.system.service import get_bool_sync, get_int_sync
+
+    min_length = get_int_sync("password_min_length", 8)
+    require_special = get_bool_sync("password_require_special", False)
+
+    if len(value) < min_length:
+        raise ValueError(f"A senha deve ter no mínimo {min_length} caracteres.")
+    if require_special and not any(c in _SPECIAL_CHARS for c in value):
+        raise ValueError("A senha deve conter ao menos um caractere especial.")
+    return value

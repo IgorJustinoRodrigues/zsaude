@@ -17,8 +17,8 @@ import { normalize, cn } from '../../lib/utils'
 
 const ACTION_META: Record<LogAction, { label: string; icon: React.ReactNode }> = {
   login:             { label: 'Login',           icon: <LogIn size={12} /> },
-  logout:            { label: 'Logout',          icon: <LogOut size={12} /> },
-  login_failed:      { label: 'Login falhou',    icon: <AlertTriangle size={12} /> },
+  logout:            { label: 'Saída',          icon: <LogOut size={12} /> },
+  login_failed:      { label: 'Falha de entrada',    icon: <AlertTriangle size={12} /> },
   view:              { label: 'Visualização',    icon: <Eye size={12} /> },
   create:            { label: 'Criação',         icon: <FilePlus size={12} /> },
   edit:              { label: 'Edição',          icon: <FileEdit size={12} /> },
@@ -196,7 +196,7 @@ export function OpsAuditReportPage() {
   // ── Export CSV ──────────────────────────────────────────────────────────────
   function exportCsv() {
     const rows = [
-      ['ID', 'Hash', 'Data', 'Hora', 'Usuário', 'Ação', 'Módulo', 'Recurso', 'Recurso ID', 'Descrição', 'Severidade', 'IP', 'User Agent'],
+      ['ID', 'Hash', 'Data', 'Hora', 'Usuário', 'Ação', 'Módulo', 'Recurso', 'Recurso ID', 'Descrição', 'Severidade', 'IP', 'Navegador'],
       ...filtered.map(l => [
         l.id, l.hash,
         fmtDate(l.at), fmtTime(l.at),

@@ -75,14 +75,14 @@ export function SysRoleFormPage() {
                     : 'bg-white border-border text-muted-foreground hover:bg-muted'
                 }`}
               >
-                {s === 'SYSTEM' ? 'SYSTEM (plataforma)' : 'MUNICIPALITY (município)'}
+                {s === 'SYSTEM' ? 'Plataforma (base)' : 'Município (local)'}
               </button>
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             {scope === 'SYSTEM'
-              ? 'Visível em todos os municípios. Normalmente não é preciso criar — SYSTEM base cobre a maioria dos casos.'
-              : 'Vinculado a um município. Pode herdar de SYSTEM ou de outro perfil do município.'}
+              ? 'Visível em todos os municípios. Normalmente não precisa criar — os perfis base da plataforma cobrem a maioria dos casos.'
+              : 'Vinculado a um município. Pode herdar de um perfil da plataforma ou de outro perfil local do mesmo município.'}
           </p>
         </Field>
 

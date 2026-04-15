@@ -154,7 +154,7 @@ export function OpsUsersReportPage() {
   // ── Export CSV ──────────────────────────────────────────────────────────────
   function exportCsv() {
     const rows = [
-      ['Nome', 'Login', 'E-mail', 'CPF', 'Perfil', 'Status', 'Módulos', 'Municípios', 'Unidades', 'Cadastrado em'],
+      ['Nome', 'Nome de acesso', 'E-mail', 'CPF', 'Perfil', 'Status', 'Módulos', 'Municípios', 'Unidades', 'Cadastrado em'],
       ...filtered.map(u => [
         u.name, u.login, u.email, u.cpf, u.primaryRole,
         u.status,
@@ -435,7 +435,7 @@ export function OpsUsersReportPage() {
                   {isExp && (
                     <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 px-5 py-4 space-y-4">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <DetailField label="Login"     value={u.login} />
+                        <DetailField label="Nome de acesso" value={u.login} />
                         <DetailField label="CPF"       value={u.cpf} />
                         <DetailField label="Telefone"  value={u.phone || '—'} />
                         <DetailField label="Cadastro"  value={fmtIso(u.createdAt)} />

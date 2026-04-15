@@ -21,17 +21,24 @@ from app.modules.auth.schemas import (
     TokenPair,
 )
 from app.modules.auth.service import AuthService
+from app.modules.system.service import get_int_sync
 from app.modules.users.schemas import UserRead
 from app.modules.users.service import UserService
 
 log = get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
+
+def _login_rate_limit() -> str:
+    """Lê ``login_rate_limit_per_min`` das settings (fallback: 5/min)."""
+    return f"{get_int_sync('login_rate_limit_per_min', 5)}/minute"
+
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenPair)
-@limiter.limit("5/minute")
+@limiter.limit(_login_rate_limit)
 async def login(
     request: Request,
     payload: LoginRequest,

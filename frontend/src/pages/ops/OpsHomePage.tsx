@@ -137,7 +137,7 @@ export function OpsHomePage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard Operacional</h1>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Painel Operacional</h1>
             {/* Badge ao vivo global */}
             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
               <span className="relative flex h-1.5 w-1.5">

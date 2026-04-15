@@ -40,7 +40,7 @@ export function SysShell() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           <SysNavSection label="Visão geral" />
-          <SysNavItem to="/sys" end icon={<LayoutDashboard size={15} />}>Dashboard</SysNavItem>
+          <SysNavItem to="/sys" end icon={<LayoutDashboard size={15} />}>Painel</SysNavItem>
 
           <SysNavSection label="Cadastros" />
           <SysNavItem to="/sys/municipios" icon={<MapPin size={15} />}>Municípios</SysNavItem>
@@ -61,7 +61,7 @@ export function SysShell() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-white truncate">{user?.name}</p>
-              <p className="text-[10px] text-violet-300 tracking-widest uppercase">Master</p>
+              <p className="text-[10px] text-violet-300 tracking-widest uppercase">Administrador</p>
             </div>
             <button
               onClick={handleLogout}

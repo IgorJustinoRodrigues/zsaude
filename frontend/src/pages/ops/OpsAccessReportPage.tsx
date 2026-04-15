@@ -238,7 +238,7 @@ export function OpsAccessReportPage() {
   // ── Export CSV ──────────────────────────────────────────────────────────────
   function exportCsv() {
     const rows = [
-      ['Data/Hora', 'Usuário', 'Ação', 'Descrição', 'IP', 'User Agent'],
+      ['Data/Hora', 'Usuário', 'Ação', 'Descrição', 'IP', 'Navegador'],
       ...filtered.map(l => [
         fmt(l.at),
         l.userName,
@@ -380,7 +380,7 @@ export function OpsAccessReportPage() {
         />
         <SummaryCard
           icon={<LogOut size={16} />}
-          label="Logouts"
+          label="Saídas"
           value={totals.logouts}
           iconBg="bg-slate-100 dark:bg-slate-800"
           iconColor="text-slate-500"
@@ -445,9 +445,9 @@ export function OpsAccessReportPage() {
                       isFailed && 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400',
                       !isLogin && !isFailed && 'bg-slate-100 dark:bg-slate-800 text-slate-500',
                     )}>
-                      {isLogin  && <><LogIn size={11} /> Login</>}
+                      {isLogin  && <><LogIn size={11} /> Entrada</>}
                       {isFailed && <><AlertTriangle size={11} /> Falha</>}
-                      {!isLogin && !isFailed && <><LogOut size={11} /> Logout</>}
+                      {!isLogin && !isFailed && <><LogOut size={11} /> Saída</>}
                     </div>
 
                     {/* Usuário ou descrição */}
@@ -490,9 +490,9 @@ export function OpsAccessReportPage() {
                         isFailed && 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400',
                         !isLogin && !isFailed && 'bg-slate-100 dark:bg-slate-800 text-slate-500',
                       )}>
-                        {isLogin  && <><LogIn size={10} /> Login</>}
+                        {isLogin  && <><LogIn size={10} /> Entrada</>}
                         {isFailed && <><AlertTriangle size={10} /> Falha</>}
-                        {!isLogin && !isFailed && <><LogOut size={10} /> Logout</>}
+                        {!isLogin && !isFailed && <><LogOut size={10} /> Saída</>}
                       </div>
                       <p className="text-[11px] text-slate-400">{fmt(log.at)}</p>
                     </div>

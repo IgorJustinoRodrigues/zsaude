@@ -50,8 +50,8 @@ const SEV_META: Record<LogSeverity, {
 
 const ACTION_META: Record<LogAction, { label: string; icon: React.ReactNode }> = {
   login:             { label: 'Login',          icon: <LogIn size={12} /> },
-  logout:            { label: 'Logout',         icon: null },
-  login_failed:      { label: 'Login falhou',   icon: <TriangleAlert size={12} /> },
+  logout:            { label: 'Saída',         icon: null },
+  login_failed:      { label: 'Falha de entrada',   icon: <TriangleAlert size={12} /> },
   view:              { label: 'Visualização',   icon: <Eye size={12} /> },
   create:            { label: 'Criação',        icon: null },
   edit:              { label: 'Edição',         icon: <FileEdit size={12} /> },

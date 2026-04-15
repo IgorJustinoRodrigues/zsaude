@@ -8,6 +8,7 @@ import {
   type RoleDetail,
   type RolePermissionState,
 } from '../../api/roles'
+import { scopeLabel } from '../../lib/rbacLabels'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
@@ -122,7 +123,7 @@ export function SysRoleDetailPage() {
     <div className="space-y-5">
       <PageHeader
         title={role.name}
-        subtitle={`${role.code} · ${role.scope}${role.parent ? ` · herda de ${role.parent.name}` : ''}`}
+        subtitle={`${role.code} · ${scopeLabel(role.scope)}${role.parent ? ` · herda de ${role.parent.name}` : ''}`}
         back="/sys/perfis"
         actions={
           editing ? (
@@ -175,7 +176,7 @@ export function SysRoleDetailPage() {
                 'inline-block text-xs px-2 py-0.5 rounded font-medium',
                 role.scope === 'SYSTEM' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700',
               )}>
-                {role.scope}
+                {scopeLabel(role.scope)}
               </span>
             </MetaField>
             <MetaField label="Herda de">{role.parent?.name ?? '—'}</MetaField>

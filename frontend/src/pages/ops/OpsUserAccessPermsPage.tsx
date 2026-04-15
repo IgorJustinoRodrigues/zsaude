@@ -101,7 +101,7 @@ export function OpsUserAccessPermsPage() {
             canEdit && (
               <button onClick={() => setEditing(true)}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors">
-                Editar overrides
+                Editar personalizações
               </button>
             )
           )
@@ -120,8 +120,8 @@ export function OpsUserAccessPermsPage() {
           />
         </div>
         <p className="text-xs text-muted-foreground mt-4">
-          Os overrides abaixo <strong>sobrescrevem</strong> apenas esse acesso — não afetam o perfil, nem outros acessos do mesmo usuário.
-          Use ``herdar`` para voltar ao comportamento do perfil.
+          As personalizações abaixo <strong>sobrescrevem</strong> apenas esse acesso — não afetam o perfil, nem outros acessos do mesmo usuário.
+          Use <strong>Herdar</strong> para voltar ao comportamento do perfil.
         </p>
       </div>
 

@@ -124,7 +124,7 @@ export function RoleDetailPage() {
 
       {role.scope === 'SYSTEM' && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          Perfil SYSTEM — gerenciado pela plataforma. Para personalizar permissões neste município, crie um novo perfil herdando deste.
+          Este é um perfil da plataforma, gerenciado globalmente. Para personalizar permissões neste município, crie um novo perfil herdando deste.
         </div>
       )}
 

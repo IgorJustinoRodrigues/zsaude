@@ -14,6 +14,7 @@ from argon2 import PasswordHasher
 from argon2 import exceptions as argon2_exceptions
 
 from app.core.config import settings
+from app.modules.system.service import get_int_sync
 
 # ─── Senha ────────────────────────────────────────────────────────────────────
 
@@ -72,10 +73,11 @@ def create_access_token(
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
     now = _now_utc()
+    ttl_minutes = get_int_sync("access_token_ttl_minutes", settings.jwt_access_ttl_minutes)
     payload: dict[str, Any] = {
         "sub": subject,
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.jwt_access_ttl_minutes)).timestamp()),
+        "exp": int((now + timedelta(minutes=ttl_minutes)).timestamp()),
         "jti": uuid.uuid4().hex,
         "typ": "access",
         "ver": token_version,

@@ -9,8 +9,21 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.db.session import sessionmaker
+from app.modules.system.service import get_str_sync
 
 router = APIRouter(tags=["health"])
+
+
+@router.get("/public/app-info", include_in_schema=False)
+async def app_info() -> JSONResponse:
+    """Informações públicas do app (sem auth). Usado pelo frontend para
+    exibir o ``appName`` configurado."""
+    return JSONResponse(
+        content={
+            "appName": get_str_sync("app_name", "zSaúde"),
+            "defaultLanguage": get_str_sync("default_language", "pt-BR"),
+        },
+    )
 
 
 @router.get("/health", include_in_schema=False)

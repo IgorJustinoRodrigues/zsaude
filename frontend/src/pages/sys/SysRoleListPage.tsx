@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Shield, Search, Archive, ArchiveRestore, Users } from 'lucide-react'
 import { rolesAdminApi, type RoleScope, type RoleSummary } from '../../api/roles'
+import { scopeLabel } from '../../lib/rbacLabels'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -73,7 +74,7 @@ export function SysRoleListPage() {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Perfis</h1>
           <p className="text-sm text-slate-500 mt-1">
             {items.length} perfil{items.length === 1 ? '' : 's'}
-            {scopeFilter !== 'ALL' && <span className="ml-1">— escopo <strong>{scopeFilter}</strong></span>}
+            {scopeFilter !== 'ALL' && <span className="ml-1">— escopo <strong>{scopeLabel(scopeFilter)}</strong></span>}
           </p>
         </div>
         <button
@@ -101,8 +102,8 @@ export function SysRoleListPage() {
           className="w-full px-3 py-2 border border-border rounded-lg text-sm bg-white"
         >
           <option value="ALL">Todos os escopos</option>
-          <option value="SYSTEM">SYSTEM (plataforma)</option>
-          <option value="MUNICIPALITY">MUNICIPALITY (município)</option>
+          <option value="SYSTEM">Plataforma (perfil base)</option>
+          <option value="MUNICIPALITY">Município (perfil local)</option>
         </select>
         <select
           value={municipalityFilter}
@@ -171,7 +172,7 @@ export function SysRoleListPage() {
                         ? 'bg-blue-50 text-blue-700'
                         : 'bg-emerald-50 text-emerald-700',
                     )}>
-                      {r.scope}
+                      {scopeLabel(r.scope)}
                     </span>
                     <span className="flex items-center gap-1">
                       <Users size={11} /> {munName(r.municipalityId)}

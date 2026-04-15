@@ -371,7 +371,7 @@ export function OpsUserFormPage() {
               placeholder="Nome completo do usuário" className={inputCls(!!errors.name)} />
           </Field>
 
-          <Field label="Login *" error={errors.login}>
+          <Field label="Nome de acesso *" error={errors.login}>
             <input
               value={login}
               onChange={e => { setLogin(e.target.value.toLowerCase()); setLoginTouched(true) }}

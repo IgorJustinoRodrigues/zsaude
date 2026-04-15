@@ -92,7 +92,7 @@ export function PatientDetailPage() {
                 { label: 'Nome da mãe', value: patient.motherName },
                 { label: 'Nome do pai', value: patient.fatherName ?? '—' },
                 { label: 'Nacionalidade', value: patient.nationality },
-                { label: 'Email', value: patient.email ?? '—' },
+                { label: 'E-mail', value: patient.email ?? '—' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex flex-col">
                   <dt className="text-xs text-muted-foreground">{label}</dt>

@@ -24,6 +24,7 @@ from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import TokenPair
 from app.modules.sessions.models import SessionEndReason
 from app.modules.sessions.service import SessionService
+from app.modules.system.service import get_int_sync
 from app.modules.users.models import User, UserStatus
 from app.modules.users.repository import UserRepository
 
@@ -174,7 +175,7 @@ class AuthService:
             user_id=user.id,
             family_id=token.family_id,
             token_hash=new_hash,
-            expires_at=now + timedelta(days=settings.jwt_refresh_ttl_days),
+            expires_at=now + timedelta(days=get_int_sync("refresh_token_ttl_days", settings.jwt_refresh_ttl_days)),
             user_agent=ua,
             ip=ip,
         )
@@ -193,7 +194,7 @@ class AuthService:
         return TokenPair(
             access_token=access,
             refresh_token=new_opaque,
-            expires_in=settings.jwt_access_ttl_minutes * 60,
+            expires_in=get_int_sync("access_token_ttl_minutes", settings.jwt_access_ttl_minutes) * 60,
         )
 
     # ── Logout ──────────────────────────────────────────────────────────
@@ -273,7 +274,7 @@ class AuthService:
             user_id=user.id,
             family_id=family_id,
             token_hash=hash_opaque_token(refresh_plain),
-            expires_at=now + timedelta(days=settings.jwt_refresh_ttl_days),
+            expires_at=now + timedelta(days=get_int_sync("refresh_token_ttl_days", settings.jwt_refresh_ttl_days)),
             user_agent=ua,
             ip=ip,
         )
@@ -288,5 +289,5 @@ class AuthService:
         return TokenPair(
             access_token=access,
             refresh_token=refresh_plain,
-            expires_in=settings.jwt_access_ttl_minutes * 60,
+            expires_in=get_int_sync("access_token_ttl_minutes", settings.jwt_access_ttl_minutes) * 60,
         )

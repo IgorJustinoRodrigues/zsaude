@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import EmailStr, Field, field_validator
 
 from app.core.schema_base import CamelModel
-from app.core.validators import validate_cpf
+from app.core.validators import validate_cpf, validate_password_strength
 
 UserStatusLiteral = Literal["Ativo", "Inativo", "Bloqueado"]
 UserLevelLiteral = Literal["master", "admin", "user"]
@@ -105,7 +105,7 @@ class UserCreate(CamelModel):
     cpf: str = Field(min_length=11, max_length=14)
     phone: str = Field(default="", max_length=20)
     primary_role: str = Field(min_length=2, max_length=100)
-    password: str = Field(min_length=8, max_length=200)
+    password: str = Field(max_length=200)
     status: UserStatusLiteral = "Ativo"
     level: UserLevelLiteral = "user"
     municipalities: list[MunicipalityAccessInput] = Field(default_factory=list)
@@ -119,6 +119,11 @@ class UserCreate(CamelModel):
     @classmethod
     def _login(cls, v: str) -> str:
         return v.strip().lower()
+
+    @field_validator("password")
+    @classmethod
+    def _pwd(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class UserUpdate(CamelModel):
@@ -140,7 +145,14 @@ class UserUpdateMe(CamelModel):
 class AdminResetPasswordRequest(CamelModel):
     # Admin informa nova senha (ex: o próprio admin gerou uma provisória no front).
     # Quando omitida, o backend gera automaticamente.
-    new_password: str | None = Field(default=None, min_length=8, max_length=200)
+    new_password: str | None = Field(default=None, max_length=200)
+
+    @field_validator("new_password")
+    @classmethod
+    def _pwd(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return validate_password_strength(v)
 
 
 class AdminResetPasswordResponse(CamelModel):

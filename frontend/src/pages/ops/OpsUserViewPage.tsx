@@ -362,7 +362,7 @@ export function OpsUserViewPage() {
           </div>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
             <ReadField label="Nome completo" value={user.name} className="sm:col-span-2" />
-            <ReadField label="Login" value={user.login} icon={<Lock size={12} />} />
+            <ReadField label="Nome de acesso" value={user.login} icon={<Lock size={12} />} />
             <ReadField label="CPF" value={user.cpf} />
             <ReadField label="E-mail" value={user.email} icon={<Mail size={12} />} />
             <ReadField label="Telefone" value={user.phone || '—'} icon={<Phone size={12} />} />
@@ -494,7 +494,7 @@ function formatWhen(iso: string): string {
 }
 
 const END_REASON_LABEL: Record<string, string> = {
-  logout:             'Logout',
+  logout:             'Saída',
   expired:            'Expirada',
   revoked_replay:     'Revogada (replay)',
   revoked_by_admin:   'Revogada por admin',
