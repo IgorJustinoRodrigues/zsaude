@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart2, KeySquare, Search, ArrowRight,
-  Users, ScrollText, ShieldAlert, FileBarChart, Activity,
+  Users, ScrollText, ShieldAlert, Activity,
 } from 'lucide-react'
 import { normalize } from '../../lib/utils'
 
