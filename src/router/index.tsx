@@ -34,8 +34,7 @@ import { VISAHomePage } from '../pages/fsc/VISAHomePage'
 import { EstablishmentListPage } from '../pages/fsc/EstablishmentListPage'
 
 // OPS – Operações
-import { ADMHomePage } from '../pages/ops/ADMHomePage'
-import { VehicleListPage } from '../pages/ops/VehicleListPage'
+import { OpsHomePage } from '../pages/ops/OpsHomePage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -75,8 +74,7 @@ export const router = createBrowserRouter([
       { path: '/fsc/estabelecimentos',       element: <EstablishmentListPage /> },
 
       // OPS – Operações
-      { path: '/ops',                        element: <ADMHomePage /> },
-      { path: '/ops/veiculos',               element: <VehicleListPage /> },
+      { path: '/ops', element: <OpsHomePage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },
