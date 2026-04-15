@@ -1,0 +1,56 @@
+# syntax=docker/dockerfile:1.9
+
+# ─── Estágio: builder (uv) ────────────────────────────────────────────────────
+FROM python:3.13-slim AS builder
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+# uv: fast Python package manager
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Instala dependências em layer separada (cache amigável)
+COPY pyproject.toml uv.lock* ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev || \
+    uv sync --no-install-project --no-dev
+
+# Copia código
+COPY app ./app
+COPY migrations ./migrations
+COPY scripts ./scripts
+COPY alembic.ini ./
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev || uv sync --no-dev
+
+# ─── Estágio: runner ──────────────────────────────────────────────────────────
+FROM python:3.13-slim AS runner
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH=/app
+
+# Usuário não-root
+RUN groupadd --system --gid 1001 app && \
+    useradd  --system --uid 1001 --gid app --no-create-home --shell /usr/sbin/nologin app
+
+WORKDIR /app
+
+# Copia venv e código do builder
+COPY --from=builder --chown=app:app /app /app
+
+USER app
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)" || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

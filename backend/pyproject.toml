@@ -1,0 +1,97 @@
+[project]
+name = "zsaude-backend"
+version = "0.1.0"
+description = "API do zSaúde — gestão de saúde municipal"
+requires-python = ">=3.13"
+readme = "README.md"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "email-validator>=2.2.0",
+    "argon2-cffi>=23.1.0",
+    "pyjwt[crypto]>=2.10.0",
+    "cryptography>=44.0.0",
+    "redis>=5.2.0",
+    "slowapi>=0.1.9",
+    "structlog>=24.4.0",
+    "python-multipart>=0.0.19",
+    "httpx>=0.28.0",
+    "uuid-utils>=0.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "testcontainers[postgres,redis]>=4.9.0",
+    "ruff>=0.8.0",
+    "basedpyright>=1.22.0",
+    "pre-commit>=4.0.0",
+    "pip-audit>=2.7.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",   # pycodestyle / pyflakes
+    "I",             # isort
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "SIM",           # simplify
+    "RUF",           # ruff-specific
+    "S",             # flake8-bandit (security)
+    "ASYNC",         # async best practices
+]
+ignore = [
+    "E501",          # handled by formatter
+    "B008",          # allow Depends(...) defaults
+    "S101",          # allow asserts in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["S101", "S105", "S106"]
+"scripts/**/*" = ["S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.basedpyright]
+include = ["app", "tests", "scripts"]
+exclude = ["migrations/versions", "**/__pycache__"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "slow: marca testes lentos",
+    "integration: requer Postgres/Valkey",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+omit = ["app/main.py", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 70

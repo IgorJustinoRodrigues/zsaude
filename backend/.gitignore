@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs / uv
+.venv/
+venv/
+.python-version.user
+
+# Env e segredos
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# Type / lint caches
+.mypy_cache/
+.ruff_cache/
+.pyright_cache/
+.basedpyright_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic local
+alembic/versions/__pycache__/

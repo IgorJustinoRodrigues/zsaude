@@ -1,0 +1,13 @@
+# Overrides de desenvolvimento: hot-reload e volumes locais.
+# docker-compose carrega este arquivo automaticamente em cima do docker-compose.yml
+
+services:
+  app:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+    volumes:
+      - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./scripts:/app/scripts
+      - ./secrets:/app/secrets
+    environment:
+      DEBUG: "true"
