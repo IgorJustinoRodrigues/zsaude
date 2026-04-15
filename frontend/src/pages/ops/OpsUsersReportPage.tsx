@@ -1,14 +1,15 @@
-import { useState, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Search, X, Download, ChevronDown, ChevronUp,
   ChevronsUpDown, Filter, Users, UserCheck, UserX, ShieldOff,
   Calendar, MapPin, Building2,
 } from 'lucide-react'
-import { mockUsers, mockMunicipalities, mockFacilities } from '../../mock/users'
+import { userApi, type UserListItem, type UserDetail, type UserStats } from '../../api/users'
+import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
-import type { UserRecord } from '../../mock/users'
+import type { SystemId } from '../../types'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -27,26 +28,13 @@ const STATUS_META: Record<string, { label: string; dot: string; badge: string }>
   Bloqueado:{ label: 'Bloqueado', dot: 'bg-red-500',     badge: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
 }
 
-const ALL_MODULES = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
+const ALL_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
 
 type SortField = 'name' | 'primaryRole' | 'status' | 'createdAt'
 type SortDir   = 'asc' | 'desc'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function userModules(user: UserRecord): string[] {
-  const mods = new Set<string>()
-  user.municipalities.forEach(m => m.facilities.forEach(f => f.modules.forEach(mod => mods.add(mod))))
-  return ALL_MODULES.filter(m => mods.has(m))
-}
-
-function userMunNames(user: UserRecord): string[] {
-  return user.municipalities.map(m => mockMunicipalities.find(mc => mc.id === m.municipalityId)?.name ?? m.municipalityId)
-}
-
-function fmtDate(iso: string) {
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
+function fmtIso(iso: string) {
+  return new Date(iso).toLocaleDateString('pt-BR')
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -54,17 +42,45 @@ function fmtDate(iso: string) {
 export function OpsUsersReportPage() {
   const navigate = useNavigate()
 
-  const [search,      setSearch]      = useState('')
+  const [search,       setSearch]       = useState('')
   const [filterStatus, setFilterStatus] = useState<string[]>([])
   const [filterModule, setFilterModule] = useState<string[]>([])
-  const [dateFrom,    setDateFrom]    = useState('')
-  const [dateTo,      setDateTo]      = useState('')
-  const [showFilter,  setShowFilter]  = useState(false)
-  const [sortField,   setSortField]   = useState<SortField>('name')
-  const [sortDir,     setSortDir]     = useState<SortDir>('asc')
-  const [expanded,    setExpanded]    = useState<string | null>(null)
-  const [page,        setPage]        = useState(1)
-  const [pageSize,    setPageSize]    = useState(10)
+  const [dateFrom,     setDateFrom]     = useState('')
+  const [dateTo,       setDateTo]       = useState('')
+  const [showFilter,   setShowFilter]   = useState(false)
+  const [sortField,    setSortField]    = useState<SortField>('name')
+  const [sortDir,      setSortDir]      = useState<SortDir>('asc')
+  const [expanded,     setExpanded]     = useState<string | null>(null)
+  const [page,         setPage]         = useState(1)
+  const [pageSize,     setPageSize]     = useState(10)
+
+  const [users,        setUsers]        = useState<UserListItem[]>([])
+  const [stats,        setStats]        = useState<UserStats | null>(null)
+  const [loading,      setLoading]      = useState(true)
+  const [detailCache,  setDetailCache]  = useState<Record<string, UserDetail>>({})
+
+  // Carrega lista + stats iniciais (até 200 usuários, conforme limite do back)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setLoading(true)
+      try {
+        const [list, st] = await Promise.all([
+          userApi.list({ pageSize: 200 }),
+          userApi.stats(),
+        ])
+        if (!alive) return
+        setUsers(list.items)
+        setStats(st)
+      } catch (e) {
+        if (alive) toast.error('Falha ao carregar usuários',
+          e instanceof HttpError ? e.message : '')
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
 
   const toggleStatus = (s: string) =>
     setFilterStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
@@ -80,13 +96,12 @@ export function OpsUsersReportPage() {
 
   const filtered = useMemo(() => {
     const q = normalize(search)
-    let list = mockUsers.filter(u => {
+    const list = users.filter(u => {
       if (q && !normalize(u.name).includes(q) && !normalize(u.email).includes(q) &&
           !normalize(u.cpf).includes(q) && !normalize(u.primaryRole).includes(q)) return false
       if (filterStatus.length && !filterStatus.includes(u.status)) return false
       if (filterModule.length) {
-        const mods = userModules(u)
-        if (!filterModule.every(m => mods.includes(m))) return false
+        if (!filterModule.every(m => u.modules.includes(m as SystemId))) return false
       }
       if (dateFrom || dateTo) {
         const t = new Date(u.createdAt).getTime()
@@ -95,7 +110,6 @@ export function OpsUsersReportPage() {
       }
       return true
     })
-
     list.sort((a, b) => {
       let va: string, vb: string
       if (sortField === 'createdAt') { va = a.createdAt; vb = b.createdAt }
@@ -104,38 +118,50 @@ export function OpsUsersReportPage() {
       else { va = a.name; vb = b.name }
       return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
     })
-
     return list
-  }, [search, filterStatus, filterModule, dateFrom, dateTo, sortField, sortDir])
+  }, [users, search, filterStatus, filterModule, dateFrom, dateTo, sortField, sortDir])
 
-  const totals = useMemo(() => ({
-    total:    mockUsers.length,
-    ativo:    mockUsers.filter(u => u.status === 'Ativo').length,
-    inativo:  mockUsers.filter(u => u.status === 'Inativo').length,
-    bloqueado:mockUsers.filter(u => u.status === 'Bloqueado').length,
-  }), [])
+  const totals = stats ?? { total: 0, ativo: 0, inativo: 0, bloqueado: 0 }
 
   const toggleSort = (f: SortField) => {
     if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortField(f); setSortDir(f === 'createdAt' ? 'desc' : 'asc') }
   }
 
-  // reset page ao mudar filtros
-  useMemo(() => setPage(1), [filtered])  // eslint-disable-line
+  useEffect(() => { setPage(1) }, [filtered.length])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginated  = filtered.slice((page - 1) * pageSize, page * pageSize)
 
+  // Carrega detalhe quando expande uma linha
+  const expand = useCallback(async (userId: string) => {
+    if (expanded === userId) {
+      setExpanded(null)
+      return
+    }
+    setExpanded(userId)
+    if (!detailCache[userId]) {
+      try {
+        const d = await userApi.get(userId)
+        setDetailCache(prev => ({ ...prev, [userId]: d }))
+      } catch (e) {
+        toast.error('Falha ao carregar detalhe',
+          e instanceof HttpError ? e.message : '')
+      }
+    }
+  }, [expanded, detailCache])
+
   // ── Export CSV ──────────────────────────────────────────────────────────────
   function exportCsv() {
     const rows = [
-      ['Nome', 'Login', 'E-mail', 'CPF', 'Perfil', 'Status', 'Módulos', 'Municípios', 'Cadastrado em'],
+      ['Nome', 'Login', 'E-mail', 'CPF', 'Perfil', 'Status', 'Módulos', 'Municípios', 'Unidades', 'Cadastrado em'],
       ...filtered.map(u => [
         u.name, u.login, u.email, u.cpf, u.primaryRole,
         u.status,
-        userModules(u).join(', ').toUpperCase(),
-        userMunNames(u).join(', '),
-        fmtDate(u.createdAt),
+        u.modules.join(', ').toUpperCase(),
+        String(u.municipalityCount),
+        String(u.facilityCount),
+        fmtIso(u.createdAt),
       ]),
     ]
     const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -239,22 +265,14 @@ export function OpsUsersReportPage() {
       {/* Painel de filtros */}
       {showFilter && (
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
-
-          {/* Status */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Status</label>
             <div className="flex flex-wrap gap-1.5">
               {(['Ativo', 'Inativo', 'Bloqueado'] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => toggleStatus(s)}
-                  className={cn(
-                    'px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
-                    filterStatus.includes(s)
-                      ? STATUS_META[s].badge + ' font-semibold'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700',
-                  )}
-                >
+                <button key={s} onClick={() => toggleStatus(s)}
+                  className={cn('px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors',
+                    filterStatus.includes(s) ? STATUS_META[s].badge + ' font-semibold'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700')}>
                   <span className={cn('inline-block w-1.5 h-1.5 rounded-full mr-1.5', STATUS_META[s].dot)} />
                   {s}
                 </button>
@@ -264,21 +282,16 @@ export function OpsUsersReportPage() {
 
           <div className="border-t border-slate-100 dark:border-slate-800" />
 
-          {/* Módulos */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Módulos com acesso</label>
             <div className="flex flex-wrap gap-1.5">
               {ALL_MODULES.map(m => {
                 const meta = MODULE_META[m]
                 return (
-                  <button
-                    key={m}
-                    onClick={() => toggleModule(m)}
-                    className={cn(
-                      'px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors',
-                      filterModule.includes(m) ? meta.bg + ' ' + meta.color : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700',
-                    )}
-                  >
+                  <button key={m} onClick={() => toggleModule(m)}
+                    className={cn('px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors',
+                      filterModule.includes(m) ? meta.bg + ' ' + meta.color
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700')}>
                     {meta.label}
                   </button>
                 )
@@ -288,30 +301,26 @@ export function OpsUsersReportPage() {
 
           <div className="border-t border-slate-100 dark:border-slate-800" />
 
-          {/* Data de cadastro */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <Calendar size={11} /> Data de cadastro
             </label>
             <div className="flex items-center gap-2 flex-wrap">
               <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 transition-colors text-slate-700 dark:text-slate-200"
-              />
+                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 text-slate-700 dark:text-slate-200" />
               <span className="text-xs text-slate-400">até</span>
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 transition-colors text-slate-700 dark:text-slate-200"
-              />
+                className="px-2.5 py-1.5 text-xs bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 text-slate-700 dark:text-slate-200" />
               {(dateFrom || dateTo) && (
-                <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-slate-300 hover:text-slate-500">
-                  <X size={13} />
-                </button>
+                <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-slate-300 hover:text-slate-500"><X size={13} /></button>
               )}
             </div>
           </div>
 
           {hasFilter && (
             <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-3">
-              <button onClick={clearFilters} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline underline-offset-2">
+              <button onClick={clearFilters}
+                className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline underline-offset-2">
                 Limpar filtros
               </button>
             </div>
@@ -319,58 +328,57 @@ export function OpsUsersReportPage() {
         </div>
       )}
 
-      {/* Tabela */}
-      {filtered.length === 0 ? (
+      {/* Lista */}
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <svg className="animate-spin w-5 h-5 text-violet-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl gap-3 text-center">
           <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400"><Search size={24} /></div>
           <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhum usuário encontrado</p>
-          <p className="text-xs text-slate-400">Ajuste os filtros ou a busca.</p>
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
 
-          {/* Cabeçalho da tabela — desktop */}
+          {/* Cabeçalho desktop */}
           <div className="hidden lg:grid lg:grid-cols-[2fr_1fr_1fr_auto_auto_auto] gap-4 px-5 py-3 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
             <SortHeader field="name"        label="Usuário"      current={sortField} dir={sortDir} onSort={toggleSort} />
             <SortHeader field="primaryRole" label="Perfil"       current={sortField} dir={sortDir} onSort={toggleSort} />
             <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Módulos</span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Municípios</span>
+            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Acessos</span>
             <SortHeader field="status"      label="Status"       current={sortField} dir={sortDir} onSort={toggleSort} center />
             <SortHeader field="createdAt"   label="Cadastro"     current={sortField} dir={sortDir} onSort={toggleSort} />
           </div>
 
-          {/* Linhas */}
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {paginated.map(user => {
-              const mods  = userModules(user)
-              const muns  = userMunNames(user)
-              const sttMeta = STATUS_META[user.status]
-              const isExp = expanded === user.id
+            {paginated.map(u => {
+              const sttMeta = STATUS_META[u.status]
+              const isExp = expanded === u.id
+              const detail = detailCache[u.id]
 
               return (
-                <div key={user.id}>
-                  {/* Desktop */}
+                <div key={u.id}>
+                  {/* Linha principal desktop */}
                   <div
                     className="hidden lg:grid lg:grid-cols-[2fr_1fr_1fr_auto_auto_auto] gap-4 items-center px-5 py-3.5 hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors cursor-pointer"
-                    onClick={() => setExpanded(isExp ? null : user.id)}
+                    onClick={() => expand(u.id)}
                   >
-                    {/* Usuário */}
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-[11px] font-bold text-white shrink-0">
-                        {initials(user.name)}
+                        {initials(u.name)}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name}</p>
-                        <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{u.name}</p>
+                        <p className="text-[11px] text-slate-400 truncate">{u.email}</p>
                       </div>
                     </div>
-
-                    {/* Perfil */}
-                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{user.primaryRole}</p>
-
-                    {/* Módulos */}
+                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{u.primaryRole}</p>
                     <div className="flex flex-wrap gap-1">
-                      {mods.map(m => {
+                      {u.modules.map(m => {
                         const meta = MODULE_META[m]
                         return (
                           <span key={m} className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', meta.bg, meta.color)}>
@@ -379,40 +387,29 @@ export function OpsUsersReportPage() {
                         )
                       })}
                     </div>
-
-                    {/* Municípios */}
-                    <div className="flex items-center gap-1 text-xs text-slate-500">
-                      <MapPin size={11} className="shrink-0" />
-                      <span>{muns.length}</span>
+                    <div className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap">
+                      <MapPin size={11} />
+                      {u.municipalityCount} · {u.facilityCount}
                     </div>
-
-                    {/* Status */}
                     <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border', sttMeta.badge)}>
                       <span className={cn('w-1.5 h-1.5 rounded-full', sttMeta.dot)} />
                       {sttMeta.label}
                     </span>
-
-                    {/* Cadastro */}
                     <div className="flex items-center gap-2 text-xs text-slate-500 whitespace-nowrap">
-                      <span>{fmtDate(user.createdAt)}</span>
-                      <button className="text-slate-300 hover:text-slate-500 transition-colors">
-                        {isExp ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                      </button>
+                      <span>{fmtIso(u.createdAt)}</span>
+                      {isExp ? <ChevronUp size={13} className="text-slate-400" /> : <ChevronDown size={13} className="text-slate-400" />}
                     </div>
                   </div>
 
-                  {/* Mobile card */}
-                  <div
-                    className="lg:hidden px-4 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
-                    onClick={() => setExpanded(isExp ? null : user.id)}
-                  >
+                  {/* Card mobile */}
+                  <div className="lg:hidden px-4 py-3.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors" onClick={() => expand(u.id)}>
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-violet-500 flex items-center justify-center text-[11px] font-bold text-white shrink-0">
-                        {initials(user.name)}
+                        {initials(u.name)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name}</p>
-                        <p className="text-xs text-slate-400 truncate">{user.primaryRole}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{u.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{u.primaryRole}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border', sttMeta.badge)}>
@@ -423,7 +420,7 @@ export function OpsUsersReportPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1 mt-2 ml-12">
-                      {mods.map(m => {
+                      {u.modules.map(m => {
                         const meta = MODULE_META[m]
                         return (
                           <span key={m} className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', meta.bg, meta.color)}>
@@ -434,61 +431,68 @@ export function OpsUsersReportPage() {
                     </div>
                   </div>
 
-                  {/* Detalhe expandido */}
+                  {/* Detalhe expandido (usa detailCache) */}
                   {isExp && (
                     <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 px-5 py-4 space-y-4">
-
-                      {/* Dados pessoais */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <DetailField label="Login"     value={user.login} />
-                        <DetailField label="CPF"       value={user.cpf} />
-                        <DetailField label="Telefone"  value={user.phone} />
-                        <DetailField label="Cadastro"  value={fmtDate(user.createdAt)} />
+                        <DetailField label="Login"     value={u.login} />
+                        <DetailField label="CPF"       value={u.cpf} />
+                        <DetailField label="Telefone"  value={u.phone || '—'} />
+                        <DetailField label="Cadastro"  value={fmtIso(u.createdAt)} />
                       </div>
 
                       <div className="border-t border-slate-100 dark:border-slate-800" />
 
-                      {/* Municípios e unidades */}
-                      <div className="space-y-3">
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <MapPin size={11} /> Municípios e unidades
-                        </p>
-                        {user.municipalities.map(mun => {
-                          const munName = mockMunicipalities.find(mc => mc.id === mun.municipalityId)?.name ?? mun.municipalityId
-                          return (
+                      {detail ? (
+                        <div className="space-y-3">
+                          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <MapPin size={11} /> Municípios e unidades
+                          </p>
+                          {detail.municipalities.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic">Sem vínculos.</p>
+                          ) : detail.municipalities.map(mun => (
                             <div key={mun.municipalityId} className="space-y-2">
                               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                                 <MapPin size={11} className="text-violet-400" />
-                                {munName}
+                                {mun.municipalityName}
+                                <span className="text-[10px] text-slate-400">· {mun.municipalityState}</span>
                               </p>
                               <div className="space-y-1.5 ml-4">
-                                {mun.facilities.map(fac => {
-                                  const facName = mockFacilities.find(f => f.id === fac.facilityId)?.shortName ?? fac.facilityId
-                                  return (
-                                    <div key={fac.facilityId} className="flex items-center gap-3 flex-wrap">
-                                      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 min-w-[160px]">
-                                        <Building2 size={11} className="shrink-0" />
-                                        <span className="truncate">{facName}</span>
-                                      </div>
-                                      <span className="text-[10px] text-slate-400 italic">{fac.role}</span>
-                                      <div className="flex gap-1">
-                                        {fac.modules.map(m => {
-                                          const meta = MODULE_META[m]
-                                          return (
-                                            <span key={m} className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', meta.bg, meta.color)}>
-                                              {meta.label}
-                                            </span>
-                                          )
-                                        })}
-                                      </div>
+                                {mun.facilities.length === 0 ? (
+                                  <p className="text-xs text-slate-400 italic">Sem unidades.</p>
+                                ) : mun.facilities.map(fac => (
+                                  <div key={fac.facilityId} className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 min-w-[160px]">
+                                      <Building2 size={11} className="shrink-0" />
+                                      <span className="truncate">{fac.facilityShortName}</span>
                                     </div>
-                                  )
-                                })}
+                                    <span className="text-[10px] text-slate-400 italic">{fac.role}</span>
+                                    <div className="flex gap-1">
+                                      {fac.modules.map(m => {
+                                        const meta = MODULE_META[m as string]
+                                        if (!meta) return null
+                                        return (
+                                          <span key={m} className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', meta.bg, meta.color)}>
+                                            {meta.label}
+                                          </span>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          )
-                        })}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                          </svg>
+                          Carregando acessos...
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -505,58 +509,23 @@ export function OpsUsersReportPage() {
               <div className="flex items-center gap-1.5">
                 <span className="text-slate-400">por página:</span>
                 {[10, 20, 50].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => { setPageSize(s); setPage(1) }}
-                    className={cn(
-                      'px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
-                      pageSize === s ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200',
-                    )}
-                  >
+                  <button key={s} onClick={() => { setPageSize(s); setPage(1) }}
+                    className={cn('px-2 py-0.5 rounded text-[11px] font-medium transition-colors',
+                      pageSize === s ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900'
+                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200')}>
                     {s}
                   </button>
                 ))}
               </div>
             </div>
-
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <ChevronDown size={13} className="rotate-90" />
               </button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-                  .reduce<(number | '...')[]>((acc, p, i, arr) => {
-                    if (i > 0 && typeof arr[i - 1] === 'number' && (p as number) - (arr[i - 1] as number) > 1) acc.push('...')
-                    acc.push(p)
-                    return acc
-                  }, [])
-                  .map((p, i) =>
-                    p === '...' ? (
-                      <span key={`e-${i}`} className="px-1 text-xs text-slate-400">…</span>
-                    ) : (
-                      <button
-                        key={p}
-                        onClick={() => setPage(p as number)}
-                        className={cn(
-                          'w-7 h-7 rounded-lg text-xs font-medium transition-colors',
-                          page === p ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800',
-                        )}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-              </div>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
+              <span className="text-xs text-slate-500 px-2">{page} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <ChevronDown size={13} className="-rotate-90" />
               </button>
             </div>
