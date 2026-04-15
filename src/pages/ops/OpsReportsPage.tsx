@@ -73,19 +73,6 @@ const REPORTS: Report[] = [
     tags: ['erro', 'critico', 'alerta', 'ocorrencia', 'incidente', 'falha'],
   },
   {
-    id: 'producao',
-    title: 'Relatório de Produção',
-    description: 'Atendimentos realizados por profissional, especialidade e período.',
-    longDescription:
-      'Consolida a produção de atendimentos clínicos por profissional e especialidade, com métricas de conclusão, ausências e tempo médio de espera.',
-    icon: <FileBarChart size={22} />,
-    iconBg: 'bg-emerald-50 dark:bg-emerald-950/50',
-    iconColor: 'text-emerald-500',
-    category: 'Clínico',
-    path: '/ops/relatorios/producao',
-    tags: ['producao', 'atendimento', 'profissional', 'especialidade', 'clinico'],
-  },
-  {
     id: 'atividade',
     title: 'Relatório de Atividade',
     description: 'Resumo de uso do sistema por módulo, horário e volume de ações.',
