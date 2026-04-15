@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
-  LogOut, Shield, ChevronRight, KeyRound,
+  LogOut, Shield, ChevronRight, KeyRound, LayoutGrid,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
@@ -56,8 +56,18 @@ export function SysShell() {
           <SysNavItem to="/sys/logs"           icon={<ScrollText size={15} />}>Logs do sistema</SysNavItem>
         </nav>
 
-        {/* Usuário */}
-        <div className="px-3 py-3 border-t border-violet-900/40">
+        {/* Footer */}
+        <div className="px-3 py-3 border-t border-violet-900/40 space-y-1">
+          {/* Ir para os módulos operacionais */}
+          <button
+            onClick={() => navigate('/selecionar-sistema')}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-violet-200 hover:bg-violet-900/40 hover:text-white transition-colors"
+          >
+            <LayoutGrid size={15} />
+            Módulos operacionais
+          </button>
+
+          {/* Usuário */}
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
             <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-[11px] font-bold text-white shrink-0">
               {user ? initials(user.name) : 'M'}

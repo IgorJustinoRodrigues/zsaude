@@ -47,13 +47,15 @@ export function SystemSelectPage() {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
 
-  // Auto-select if only one module available
+  // Auto-select só se o user tem exatamente 1 módulo e NÃO é MASTER.
+  // MASTER sempre vê a tela para poder escolher entre módulos ou
+  // o painel da plataforma.
   useEffect(() => {
-    if (available.length === 1) {
+    if (user?.level !== 'master' && available.length === 1) {
       selectSystem(available[0].id)
       navigate(`/${available[0].id}`, { replace: true })
     }
-  }, [available.length]) // eslint-disable-line
+  }, [available.length, user?.level]) // eslint-disable-line
 
   // Close on outside click
   useEffect(() => {
@@ -202,6 +204,30 @@ export function SystemSelectPage() {
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione o módulo</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Escolha onde deseja trabalhar hoje</p>
         </div>
+
+        {/* Atalho para o painel da plataforma (só MASTER) */}
+        {user?.level === 'master' && (
+          <button
+            onClick={() => navigate('/sys')}
+            className="group w-full max-w-2xl mb-6 bg-gradient-to-r from-violet-950 to-slate-900 hover:from-violet-900 hover:to-slate-800 border border-violet-800/60 rounded-2xl px-5 py-4 text-left transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-4"
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-violet-500/20 text-violet-200 shrink-0 group-hover:scale-110 transition-transform">
+              <Shield size={22} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold tracking-widest text-violet-300 uppercase mb-0.5">
+                Plataforma
+              </p>
+              <p className="text-sm font-semibold text-white">
+                Painel MASTER
+              </p>
+              <p className="text-xs text-violet-300/80 mt-0.5">
+                Municípios, unidades, usuários administrativos, perfis e configurações globais
+              </p>
+            </div>
+            <ChevronRight size={16} className="text-violet-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-2xl">
           {available.map(sys => (
