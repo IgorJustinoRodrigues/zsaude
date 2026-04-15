@@ -283,7 +283,7 @@ export function TopBar({ module }: Props) {
             <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
               {user ? initials(user.name) : 'U'}
             </div>
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 hidden md:block">
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
               {user?.name?.split(' ')[0]}
             </span>
             <ChevronDown size={12} className={cn('text-slate-400 transition-transform', userMenuOpen && 'rotate-180')} />
