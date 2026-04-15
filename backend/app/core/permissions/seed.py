@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,37 +37,48 @@ def _system_role_id(code: str) -> uuid.UUID:
 
 
 async def sync_permissions(session: AsyncSession) -> int:
-    """Upsert do catálogo em ``app.permissions``. Retorna o total escrito.
+    """Upsert do catálogo em ``app.permissions`` + **remove** o que sumiu.
 
-    Não remove linhas: permissões deprecadas ficam no banco até migration
-    manual. Isso evita FK violation em role_permissions antigos.
+    A remoção CASCADE apaga automaticamente:
+    - linhas em ``role_permissions`` com o código deletado;
+    - linhas em ``facility_access_permission_overrides`` com o código.
+
+    Retorna o total que ficou no catálogo.
     """
     perms = all_permissions()
-    if not perms:
-        return 0
+    catalog_codes = {p.code for p in perms}
 
-    stmt = pg_insert(Permission).values(
-        [
-            {
-                "code": p.code,
-                "module": p.module,
-                "resource": p.resource,
-                "action": p.action,
-                "description": p.description,
-            }
-            for p in perms
-        ]
-    )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=[Permission.code],
-        set_={
-            "module": stmt.excluded.module,
-            "resource": stmt.excluded.resource,
-            "action": stmt.excluded.action,
-            "description": stmt.excluded.description,
-        },
-    )
-    await session.execute(stmt)
+    # 1. Remove do DB as que sumiram do catálogo (CASCADE limpa RP/overrides).
+    existing = set((await session.scalars(select(Permission.code))).all())
+    stale = existing - catalog_codes
+    if stale:
+        await session.execute(delete(Permission).where(Permission.code.in_(stale)))
+
+    # 2. Upsert das que existem.
+    if perms:
+        stmt = pg_insert(Permission).values(
+            [
+                {
+                    "code": p.code,
+                    "module": p.module,
+                    "resource": p.resource,
+                    "action": p.action,
+                    "description": p.description,
+                }
+                for p in perms
+            ]
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Permission.code],
+            set_={
+                "module": stmt.excluded.module,
+                "resource": stmt.excluded.resource,
+                "action": stmt.excluded.action,
+                "description": stmt.excluded.description,
+            },
+        )
+        await session.execute(stmt)
+
     return len(perms)
 
 
@@ -79,90 +90,62 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
         "system_admin",
         "Administrador do Sistema",
         "Acesso total à plataforma (MASTER).",
-        # Deixa vazio — resolução MASTER ignora permissions e libera tudo.
-        # Mantemos o role existindo para consistência no FacilityAccess.
+        # MASTER ignora permissions em tempo de resolução (is_root=true).
         [],
     ),
     (
         "municipality_admin",
         "Administrador do Município",
-        "Gerencia usuários, unidades e perfis dentro do município.",
+        "Gerencia perfis e personaliza permissões dentro do município.",
         [
-            "users.user.view", "users.user.create", "users.user.edit",
-            "users.user.archive", "users.user.reset_password",
-            "users.access.view", "users.access.manage",
             "roles.role.view", "roles.role.create", "roles.role.edit",
             "roles.role.archive", "roles.permission.assign",
             "roles.override.manage",
-            "audit.log.view",
-            "ops.session.view",
-            "ops.report.view", "ops.report.export",
         ],
     ),
     (
         "receptionist_base",
         "Recepcionista",
-        "Atendimento na recepção: cadastro de pacientes e agenda.",
-        [
-            "cln.patient.view", "cln.patient.create", "cln.patient.edit",
-            "cln.appointment.view", "cln.appointment.create",
-            "cln.appointment.edit", "cln.appointment.cancel",
-            "cln.queue.view",
-        ],
+        "Perfil base de recepção. Ganha permissões conforme novos módulos "
+        "forem implementados.",
+        [],
     ),
     (
         "nurse_base",
         "Enfermagem",
-        "Triagem, fila e acompanhamento clínico.",
-        [
-            "cln.patient.view",
-            "cln.appointment.view",
-            "cln.queue.view", "cln.queue.manage",
-            "cln.consultation.view",
-        ],
+        "Perfil base de enfermagem. Ganha permissões conforme novos módulos "
+        "forem implementados.",
+        [],
     ),
     (
         "doctor_base",
         "Médico",
-        "Consulta clínica e prescrição.",
+        "Perfil base médico. Hoje cobre solicitação de exames no DGN.",
         [
-            "cln.patient.view", "cln.patient.edit",
-            "cln.appointment.view",
-            "cln.queue.view", "cln.queue.manage",
-            "cln.consultation.view", "cln.consultation.create",
-            "cln.consultation.edit",
-            # Diagnóstico: médico pode solicitar e ver resultado, mas não coletar/liberar.
             "dgn.exam.view", "dgn.exam.request",
         ],
     ),
     (
         "lab_tech_base",
         "Técnico de Laboratório",
-        "Coleta e liberação de exames laboratoriais.",
+        "Perfil base de laboratório. Hoje cobre visualização de exames.",
         [
-            "cln.patient.view",
-            "dgn.exam.view", "dgn.exam.collect", "dgn.exam.release",
+            "dgn.exam.view",
         ],
     ),
     (
         "manager_base",
         "Gestor",
-        "Relatórios operacionais e visão gerencial.",
-        [
-            "ops.report.view", "ops.report.export",
-            "ops.session.view",
-            "users.user.view",
-            "audit.log.view",
-        ],
+        "Perfil base de gestão. Ganha permissões conforme novos módulos "
+        "forem implementados.",
+        [],
     ),
     (
         "visa_agent_base",
         "Fiscal Sanitário",
-        "Inspeções e gestão de estabelecimentos fiscalizados.",
-        [
-            "fsc.establishment.view", "fsc.establishment.manage",
-            "fsc.inspection.view", "fsc.inspection.create",
-        ],
+        "Perfil base VISA. Ganha permissões conforme o módulo FSC for "
+        "implementado.",
+        [],
     ),
 ]
 
