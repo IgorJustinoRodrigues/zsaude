@@ -5,22 +5,23 @@ import { useAuthStore } from '../store/authStore'
 export function ForbiddenPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { context, logout } = useAuthStore()
+  const { context, currentSystem, isAuthenticated, logout } = useAuthStore()
 
   const attempted = (location.state as { attempted?: string } | null)?.attempted
 
-  const handleBack = () => {
-    if (context && context.modules.length > 0) {
-      navigate(`/${context.modules[0]}`, { replace: true })
-    } else {
-      navigate('/selecionar-contexto', { replace: true })
+  // Destino do "voltar":
+  // 1. módulo ativo (se ainda está no contexto) → tela inicial dele
+  // 2. primeiro módulo do contexto → home
+  // 3. sem contexto + logado → selecionar unidade
+  // 4. sem login → /login
+  const backTarget = (() => {
+    if (!isAuthenticated) return '/login'
+    if (context) {
+      if (currentSystem && context.modules.includes(currentSystem)) return `/${currentSystem}`
+      if (context.modules.length > 0) return `/${context.modules[0]}`
     }
-  }
-
-  const handleLogout = async () => {
-    await logout()
-    navigate('/login', { replace: true })
-  }
+    return '/selecionar-contexto'
+  })()
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
@@ -41,19 +42,21 @@ export function ForbiddenPage() {
 
         <div className="flex items-center justify-center gap-2 pt-2">
           <button
-            onClick={handleBack}
+            onClick={() => navigate(backTarget, { replace: true })}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             <ArrowLeft size={14} />
             Voltar
           </button>
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-          >
-            <LogOut size={14} />
-            Sair
-          </button>
+          {isAuthenticated && (
+            <button
+              onClick={async () => { await logout(); navigate('/login', { replace: true }) }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+            >
+              <LogOut size={14} />
+              Sair
+            </button>
+          )}
         </div>
       </div>
     </div>

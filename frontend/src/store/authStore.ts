@@ -57,7 +57,7 @@ export const useAuthStore = create<AuthState>()(
       hydrating: false,
 
       hydrate: async () => {
-        const { accessToken, user, hydrating } = get()
+        const { accessToken, user, hydrating, contextToken } = get()
         if (hydrating) return
         if (!accessToken) {
           set({ hydrated: true })
@@ -73,10 +73,41 @@ export const useAuthStore = create<AuthState>()(
             authApi.me(),
             workContextApi.options(),
           ])
-          set({ user: me, contextOptions: options, hydrated: true })
+          set({ user: me, contextOptions: options })
+
+          // Se havia contexto persistido, revalida no backend. Se o token
+          // expirou, limpa só o contexto e mantém o login ativo.
+          if (contextToken) {
+            try {
+              const current = await workContextApi.current()
+              set({
+                context: {
+                  municipality: {
+                    id: current.municipality.id,
+                    name: current.municipality.name,
+                    state: current.municipality.state,
+                    ibge: current.municipality.ibge,
+                  },
+                  facility: {
+                    id: current.facility.id,
+                    name: current.facility.name,
+                    shortName: current.facility.shortName,
+                    type: current.facility.type,
+                    municipalityId: current.municipality.id,
+                  },
+                  role: current.role,
+                  modules: current.modules,
+                },
+              })
+            } catch {
+              // contexto expirado: limpa, mantém login
+              set({ context: null, contextToken: null, currentSystem: null })
+            }
+          }
+
+          set({ hydrated: true })
         } catch {
-          // Tokens inválidos ou rede fora. Zera sessão; o onRefreshFailure
-          // do cliente HTTP já redireciona pro /login no 401.
+          // Tokens de auth inválidos: zera sessão inteira.
           set({
             user: null,
             accessToken: null,
@@ -203,12 +234,15 @@ export const useAuthStore = create<AuthState>()(
         hydrated: false,
         hydrating: false,
       }),
-      // Só persiste tokens + flag de auth. user/context/options são recarregados.
+      // Persiste tokens + flag de auth + contexto + módulo ativo, para que o
+      // usuário caia direto na sua última unidade/módulo ao reabrir.
+      // user e contextOptions são recarregados do backend na hidratação.
       partialize: (state) => ({
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         contextToken: state.contextToken,
         isAuthenticated: state.isAuthenticated,
+        context: state.context,
         currentSystem: state.currentSystem,
       }),
     },

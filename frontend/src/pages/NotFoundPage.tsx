@@ -4,14 +4,18 @@ import { useAuthStore } from '../store/authStore'
 
 export function NotFoundPage() {
   const navigate = useNavigate()
-  const { isAuthenticated, context } = useAuthStore()
+  const { isAuthenticated, context, currentSystem } = useAuthStore()
 
-  const handleHome = () => {
-    if (!isAuthenticated) return navigate('/login', { replace: true })
-    if (!context) return navigate('/selecionar-contexto', { replace: true })
-    if (context.modules.length > 0) return navigate(`/${context.modules[0]}`, { replace: true })
-    return navigate('/selecionar-sistema', { replace: true })
-  }
+  // Mesma ordem de prioridade de ForbiddenPage: último módulo ativo > primeiro
+  // do contexto > seleção de unidade > login.
+  const homeTarget = (() => {
+    if (!isAuthenticated) return '/login'
+    if (context) {
+      if (currentSystem && context.modules.includes(currentSystem)) return `/${currentSystem}`
+      if (context.modules.length > 0) return `/${context.modules[0]}`
+    }
+    return '/selecionar-contexto'
+  })()
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
@@ -27,7 +31,7 @@ export function NotFoundPage() {
           </p>
         </div>
         <button
-          onClick={handleHome}
+          onClick={() => navigate(homeTarget, { replace: true })}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
         >
           <ArrowLeft size={14} />
