@@ -20,10 +20,10 @@ export const mockPatients: Patient[] = [
 
 export const getPatients = (search?: string): Patient[] => {
   if (!search) return mockPatients
-  const q = search.toLowerCase()
+  const q = search.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   return mockPatients.filter(
     p =>
-      p.name.toLowerCase().includes(q) ||
+      p.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(q) ||
       p.cpf.includes(q) ||
       p.cns.includes(q) ||
       p.prontuario.includes(q)

@@ -35,6 +35,10 @@ export function calcAge(birthDate: string) {
   return age
 }
 
+export function normalize(str: string) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
 export function initials(name: string) {
   return name
     .split(' ')

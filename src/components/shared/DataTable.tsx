@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import { cn, normalize } from '../../lib/utils'
 
 interface Column<T> {
   key: string
@@ -30,7 +30,7 @@ export function DataTable<T>({
 
   const filtered = search && searchKeys
     ? data.filter(row =>
-        searchKeys.some(k => String(row[k]).toLowerCase().includes(search.toLowerCase()))
+        searchKeys.some(k => normalize(String(row[k])).includes(normalize(search)))
       )
     : data
 

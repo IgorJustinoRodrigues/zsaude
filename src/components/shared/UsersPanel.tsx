@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Search, Clock, Wifi, WifiOff } from 'lucide-react'
 import { mockAllUsersPresence } from '../../mock/users'
 import type { UserPresence } from '../../mock/users'
-import { initials, cn } from '../../lib/utils'
+import { initials, normalize, cn } from '../../lib/utils'
 
 const SYSTEM_COLORS: Record<string, string> = {
   CLN: '#0ea5e9',
@@ -47,12 +47,12 @@ export function UsersPanel({ open, onClose, highlightId }: Props) {
       tab === 'all' ? true :
       tab === 'online'  ? u.online :
       !u.online
-    const q = search.toLowerCase()
+    const q = normalize(search)
     const matchesSearch = !q ||
-      u.name.toLowerCase().includes(q) ||
-      u.role.toLowerCase().includes(q) ||
-      u.unit.toLowerCase().includes(q) ||
-      u.system.toLowerCase().includes(q)
+      normalize(u.name).includes(q) ||
+      normalize(u.role).includes(q) ||
+      normalize(u.unit).includes(q) ||
+      normalize(u.system).includes(q)
     return matchesTab && matchesSearch
   })
 

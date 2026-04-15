@@ -6,7 +6,7 @@ import {
   Filter, X,
 } from 'lucide-react'
 import { mockUsers, mockMunicipalities, type UserRecord, type UserStatus } from '../../mock/users'
-import { initials, cn } from '../../lib/utils'
+import { initials, normalize, cn } from '../../lib/utils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,11 +71,11 @@ export function OpsUserListPage() {
   }), [])
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase()
+    const q = normalize(search)
     const base = mockUsers.filter(u => {
       const matchStatus = status === 'Todos' || u.status === status
       const matchModule = moduleFilter === 'Todos' || allModules(u).includes(moduleFilter)
-      const matchSearch = !q || [u.name, u.email, u.cpf, u.primaryRole].some(v => v.toLowerCase().includes(q))
+      const matchSearch = !q || [u.name, u.email, u.cpf, u.primaryRole].some(v => normalize(v).includes(q))
       return matchStatus && matchModule && matchSearch
     })
     return sortUsers(base, sortField, sortDir)

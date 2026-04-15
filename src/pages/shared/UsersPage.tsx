@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Search, Wifi, WifiOff, Clock } from 'lucide-react'
 import { mockAllUsersPresence } from '../../mock/users'
 import type { UserPresence } from '../../mock/users'
-import { initials, cn } from '../../lib/utils'
+import { initials, normalize, cn } from '../../lib/utils'
 
 const SYSTEM_COLORS: Record<string, string> = {
   CLN: '#0ea5e9', DGN: '#8b5cf6', HSP: '#f59e0b',
@@ -29,12 +29,12 @@ export function UsersPage() {
     const matchTab =
       tab === 'online' ? u.online :
       tab === 'offline' ? !u.online : true
-    const q = search.toLowerCase()
+    const q = normalize(search)
     return matchTab && (!q ||
-      u.name.toLowerCase().includes(q) ||
-      u.role.toLowerCase().includes(q) ||
-      u.unit.toLowerCase().includes(q) ||
-      u.system.toLowerCase().includes(q)
+      normalize(u.name).includes(q) ||
+      normalize(u.role).includes(q) ||
+      normalize(u.unit).includes(q) ||
+      normalize(u.system).includes(q)
     )
   })
 
