@@ -15,6 +15,7 @@ from uuid import UUID
 class AuditContext:
     request_id: str = ""
     user_id: UUID | None = None
+    user_name: str = ""
     municipality_id: UUID | None = None
     municipality_ibge: str | None = None
     facility_id: UUID | None = None

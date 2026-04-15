@@ -18,6 +18,7 @@ from app.core.security import (
     needs_rehash,
     verify_password,
 )
+from app.modules.audit.writer import write_audit
 from app.modules.auth.models import PasswordReset, RefreshToken
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import TokenPair
@@ -42,18 +43,78 @@ class AuthService:
         await self.repo.record_login_attempt(identifier, ip, valid)
 
         if not valid or user is None:
+            reason = "Credenciais inválidas."
+            if user is not None and not user.is_active:
+                reason = "Usuário inativo ou bloqueado."
+            await write_audit(
+                self.session,
+                module="AUTH",
+                action="login_failed",
+                severity="warning",
+                resource="Session",
+                description=f"Tentativa de login falhou para {identifier}",
+                details={"identifier": identifier, "reason": reason},
+                user_id=user.id if user else None,
+                user_name=user.name if user else identifier,
+                ip=ip,
+                user_agent=ua,
+            )
+            await self.session.commit()
             raise UnauthorizedError("Credenciais inválidas.")
 
         if user.status == UserStatus.BLOQUEADO:
+            await write_audit(
+                self.session,
+                module="AUTH",
+                action="login_failed",
+                severity="error",
+                resource="Session",
+                description=f"Login bloqueado — {user.name} (conta em estado Bloqueado)",
+                details={"identifier": identifier, "status": user.status.value},
+                user_id=user.id,
+                user_name=user.name,
+                ip=ip,
+                user_agent=ua,
+            )
+            await self.session.commit()
             raise UnauthorizedError("Usuário bloqueado.")
         if user.status == UserStatus.INATIVO:
+            await write_audit(
+                self.session,
+                module="AUTH",
+                action="login_failed",
+                severity="warning",
+                resource="Session",
+                description=f"Login negado — {user.name} (conta Inativa)",
+                details={"identifier": identifier, "status": user.status.value},
+                user_id=user.id,
+                user_name=user.name,
+                ip=ip,
+                user_agent=ua,
+            )
+            await self.session.commit()
             raise UnauthorizedError("Usuário inativo.")
 
         if needs_rehash(user.password_hash):
             user.password_hash = hash_password(password)
             await self.users.update(user)
 
-        return await self._issue_pair(user, ip, ua)
+        pair = await self._issue_pair(user, ip, ua)
+        await write_audit(
+            self.session,
+            module="AUTH",
+            action="login",
+            severity="info",
+            resource="Session",
+            description=f"Login realizado — {user.name}",
+            details={"identifier": identifier, "level": user.level.value if hasattr(user.level, "value") else str(user.level)},
+            user_id=user.id,
+            user_name=user.name,
+            role=user.primary_role,
+            ip=ip,
+            user_agent=ua,
+        )
+        return pair
 
     # ── Refresh ─────────────────────────────────────────────────────────
 
@@ -76,6 +137,23 @@ class AuthService:
                 family_id=str(token.family_id),
             )
             await self.repo.revoke_family(token.family_id)
+            target_user = await self.users.get_by_id(token.user_id)
+            await write_audit(
+                self.session,
+                module="AUTH",
+                action="login_failed",
+                severity="critical",
+                resource="Session",
+                description="Replay de refresh token detectado — família de tokens revogada",
+                details={
+                    "family_id": str(token.family_id),
+                    "user_id": str(token.user_id),
+                },
+                user_id=token.user_id,
+                user_name=target_user.name if target_user else "",
+                ip=ip,
+                user_agent=ua,
+            )
             await self.session.commit()
             raise UnauthorizedError("Refresh reutilizado. Sessão encerrada por segurança.")
 
@@ -118,6 +196,17 @@ class AuthService:
         token = await self.repo.find_refresh(token_hash)
         if token is not None:
             await self.repo.revoke_family(token.family_id)
+            user = await self.users.get_by_id(token.user_id)
+            await write_audit(
+                self.session,
+                module="AUTH",
+                action="logout",
+                severity="info",
+                resource="Session",
+                description=f"Logout — {user.name if user else token.user_id}",
+                user_id=token.user_id,
+                user_name=user.name if user else "",
+            )
 
     # ── Senha: forgot / reset / change ──────────────────────────────────
 

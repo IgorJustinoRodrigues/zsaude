@@ -100,7 +100,7 @@ async def current_user(
     if user.token_version != payload.get("ver", 0):
         raise HTTPException(status_code=401, detail="Token revogado.")
 
-    update_audit_context(user_id=user.id)
+    update_audit_context(user_id=user.id, user_name=user.name)
 
     return CurrentUser(id=user.id, login=user.login, name=user.name, token_version=user.token_version)
 

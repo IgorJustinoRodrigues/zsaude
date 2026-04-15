@@ -26,6 +26,7 @@ from app.core.exceptions import (
 from app.core.logging import configure_logging, get_logger
 from app.db.session import dispose_engine, engine
 from app.middleware.audit_context import AuditContextMiddleware
+from app.middleware.audit_writer import AuditWriterMiddleware
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.modules.auth.router import limiter
@@ -71,6 +72,8 @@ def create_app() -> FastAPI:
         expose_headers=["X-Request-Id"],
     )
     app.add_middleware(SecurityHeadersMiddleware)
+    # AuditWriter precisa ver o AuditContext já populado (ip, ua, user, facility)
+    app.add_middleware(AuditWriterMiddleware)
     app.add_middleware(AuditContextMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
