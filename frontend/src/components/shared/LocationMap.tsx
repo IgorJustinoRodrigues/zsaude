@@ -13,8 +13,8 @@
 //
 // Props controladas pelo componente pai (formulário).
 
-import { useMemo, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Polygon, Polyline, Tooltip, useMapEvents } from 'react-leaflet'
+import { useEffect, useMemo, useRef } from 'react'
+import { MapContainer, TileLayer, Marker, Polygon, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L, { type LatLngExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { cn } from '../../lib/utils'
@@ -86,6 +86,13 @@ interface Props {
   /** Altura do mapa em CSS (default 400px). */
   height?: string
   className?: string
+  /**
+   * Quando muda, o mapa faz fit automático nos bounds de todas as geometrias
+   * (point/polygon principais + extras). Sem essa prop, o fit só ocorre na
+   * montagem. Útil em formulários: manter undefined evita reposicionar
+   * enquanto o usuário desenha.
+   */
+  fitKey?: unknown
 }
 
 const DEFAULT_FALLBACK: [number, number, number] = [-15.78, -47.92, 5]  // Brasil central
@@ -100,6 +107,7 @@ export function LocationMap({
   onPolygonChange,
   height = '400px',
   className,
+  fitKey,
 }: Props) {
   const center: LatLngExpression = useMemo(() => {
     if (point) return point
@@ -108,6 +116,18 @@ export function LocationMap({
   }, [point, polygon, fallbackCenter])
 
   const zoom = point || (polygon && polygon.length > 0) ? 13 : fallbackCenter[2]
+
+  // Agrega todos os pontos/vértices para calcular bounds de fit.
+  const allPoints = useMemo<LatLng[]>(() => {
+    const pts: LatLng[] = []
+    if (point) pts.push(point)
+    if (polygon) pts.push(...polygon)
+    for (const l of extraLayers) {
+      if (l.point) pts.push(l.point)
+      if (l.polygon) pts.push(...l.polygon)
+    }
+    return pts
+  }, [point, polygon, extraLayers])
 
   return (
     <div className={cn('rounded-xl overflow-hidden border border-border', className)} style={{ height }}>
@@ -128,6 +148,8 @@ export function LocationMap({
           onPointChange={onPointChange}
           onPolygonChange={onPolygonChange}
         />
+
+        <AutoFit points={allPoints} fitKey={fitKey} />
 
         {/* Marcador principal — draggable em qualquer modo ≠ polígono */}
         {point && mode !== 'polygon' && (
@@ -193,6 +215,35 @@ export function LocationMap({
       </MapContainer>
     </div>
   )
+}
+
+// ─── AutoFit: ajusta bounds para mostrar todas as geometrias ────────────────
+
+function AutoFit({ points, fitKey }: { points: LatLng[]; fitKey?: unknown }) {
+  const map = useMap()
+  const firstRun = useRef(true)
+
+  useEffect(() => {
+    // Sempre faz fit na primeira montagem quando há pontos.
+    // Depois, só refita se `fitKey` for passado e mudar.
+    if (!firstRun.current && fitKey === undefined) return
+    firstRun.current = false
+
+    if (points.length === 0) return
+    const latlngs = points.map(p => L.latLng(p[0], p[1]))
+    const bounds = L.latLngBounds(latlngs)
+    if (!bounds.isValid()) return
+
+    if (points.length === 1) {
+      // 1 ponto só: centraliza com zoom razoável.
+      map.setView(latlngs[0], 13, { animate: true })
+    } else {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15, animate: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitKey, points.length === 0 ? 'empty' : points.map(p => p.join(',')).join('|')])
+
+  return null
 }
 
 // ─── Handlers de clique/duplo-clique ─────────────────────────────────────────

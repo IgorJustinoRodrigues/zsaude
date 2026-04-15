@@ -118,36 +118,40 @@ export function SysMunicipalityViewPage() {
         <SummaryCard label="Bairros" value={mun.neighborhoods.length} />
       </div>
 
-      {/* Mapa */}
-      {(mun.centerLatitude != null || mun.territory || mun.neighborhoods.some(h => h.latitude != null || h.territory)) && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-          <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
-            <MapPin size={14} className="text-violet-500" />
-            <h2 className="text-sm font-semibold">Território</h2>
-          </div>
-          <LocationMap
-            fallbackCenter={[-15.78, -47.92, 5]}
-            point={
-              mun.centerLatitude != null && mun.centerLongitude != null
-                ? [Number(mun.centerLatitude), Number(mun.centerLongitude)]
-                : null
-            }
-            polygon={mun.territory}
-            extraLayers={mun.neighborhoods.flatMap<MapLayer>(h => {
-              const layer: MapLayer = { label: h.name, color: '#0ea5e9' }
-              if (h.latitude != null && h.longitude != null) {
-                layer.point = [Number(h.latitude), Number(h.longitude)]
-              }
-              if (h.territory) layer.polygon = h.territory
-              return (layer.point || layer.polygon) ? [layer] : []
-            })}
-            mode="idle"
-            onPointChange={() => {}}
-            onPolygonChange={() => {}}
-            height="360px"
-          />
+      {/* Mapa — sempre visível. Fallback ao centro da UF quando não há
+          pontos cadastrados (zoom afastado). */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <MapPin size={14} className="text-violet-500" /> Território
+          </h2>
+          {!mun.centerLatitude && !mun.territory && mun.neighborhoods.every(h => h.latitude == null && !h.territory) && (
+            <span className="text-[11px] text-slate-400">Nenhuma localização cadastrada — clique em Editar para marcar.</span>
+          )}
         </div>
-      )}
+        <LocationMap
+          fallbackCenter={fallbackForUf(mun.state)}
+          point={
+            mun.centerLatitude != null && mun.centerLongitude != null
+              ? [Number(mun.centerLatitude), Number(mun.centerLongitude)]
+              : null
+          }
+          polygon={mun.territory}
+          extraLayers={mun.neighborhoods.flatMap<MapLayer>(h => {
+            const layer: MapLayer = { label: h.name, color: '#0ea5e9' }
+            if (h.latitude != null && h.longitude != null) {
+              layer.point = [Number(h.latitude), Number(h.longitude)]
+            }
+            if (h.territory) layer.polygon = h.territory
+            return (layer.point || layer.polygon) ? [layer] : []
+          })}
+          mode="idle"
+          onPointChange={() => {}}
+          onPolygonChange={() => {}}
+          height="360px"
+          fitKey={mun.id}
+        />
+      </div>
 
       {/* Bairros */}
       {mun.neighborhoods.length > 0 && (
@@ -221,4 +225,22 @@ function SummaryCard({ label, value }: { label: string; value: number | string }
       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{label}</p>
     </div>
   )
+}
+
+// Coordenadas aproximadas do centro de cada UF para posicionar o mapa
+// quando o município ainda não tem ponto cadastrado.
+const UF_CENTER: Record<string, [number, number, number]> = {
+  AC: [-9.02, -70.81, 6], AL: [-9.57, -36.78, 7], AP: [0.90, -52.00, 6],
+  AM: [-3.41, -65.86, 5], BA: [-12.97, -41.27, 5], CE: [-5.20, -39.53, 6],
+  DF: [-15.83, -47.86, 9], ES: [-19.19, -40.34, 7], GO: [-15.82, -49.83, 6],
+  MA: [-5.42, -45.44, 6], MT: [-12.64, -55.42, 5], MS: [-20.51, -54.54, 6],
+  MG: [-18.51, -44.55, 6], PA: [-4.78, -52.66, 5], PB: [-7.12, -36.72, 7],
+  PR: [-24.49, -51.77, 6], PE: [-8.40, -37.55, 7], PI: [-7.72, -42.73, 6],
+  RJ: [-22.25, -42.66, 7], RN: [-5.79, -36.37, 7], RS: [-29.68, -53.80, 6],
+  RO: [-10.83, -63.34, 6], RR: [2.74, -61.66, 6], SC: [-27.24, -50.22, 6],
+  SP: [-22.19, -48.79, 6], SE: [-10.57, -37.39, 7], TO: [-10.18, -48.33, 6],
+}
+
+function fallbackForUf(uf: string): [number, number, number] {
+  return UF_CENTER[uf] ?? [-15.78, -47.92, 5]
 }
