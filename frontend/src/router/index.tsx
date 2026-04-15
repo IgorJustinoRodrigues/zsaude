@@ -1,8 +1,10 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
+import { SysShell } from '../components/layout/SysShell'
 import { RequireAuth } from '../components/auth/RequireAuth'
 import { RequireContext } from '../components/auth/RequireContext'
 import { RequireModule } from '../components/auth/RequireModule'
+import { RequireMaster } from '../components/auth/RequireMaster'
 import { RedirectIfAuthed } from '../components/auth/RedirectIfAuthed'
 
 import { LoginPage } from '../pages/auth/LoginPage'
@@ -54,6 +56,17 @@ import { OpsOccurrencesReportPage } from '../pages/ops/OpsOccurrencesReportPage'
 import { OpsActivityReportPage } from '../pages/ops/OpsActivityReportPage'
 import { OpsSearchesPage } from '../pages/ops/OpsSearchesPage'
 
+// SYS (MASTER)
+import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
+import { SysMunicipalityListPage } from '../pages/sys/SysMunicipalityListPage'
+import { SysMunicipalityFormPage } from '../pages/sys/SysMunicipalityFormPage'
+import { SysMunicipalityViewPage } from '../pages/sys/SysMunicipalityViewPage'
+import { SysFacilityListPage } from '../pages/sys/SysFacilityListPage'
+import { SysFacilityFormPage } from '../pages/sys/SysFacilityFormPage'
+import { SysUserAdminPage } from '../pages/sys/SysUserAdminPage'
+import { SysSettingsPage } from '../pages/sys/SysSettingsPage'
+import { SysAuditPage } from '../pages/sys/SysAuditPage'
+
 // ─── Router ──────────────────────────────────────────────────────────────────
 
 export const router = createBrowserRouter([
@@ -77,6 +90,29 @@ export const router = createBrowserRouter([
     element: <RequireAuth />,
     children: [
       { path: '/selecionar-contexto', element: <ContextSelectPage /> },
+
+      // ── Área MASTER — plataforma, não usa WorkContext ──────────────
+      {
+        element: <RequireMaster />,
+        children: [
+          {
+            element: <SysShell />,
+            children: [
+              { path: '/sys',                       element: <SysDashboardPage /> },
+              { path: '/sys/municipios',            element: <SysMunicipalityListPage /> },
+              { path: '/sys/municipios/novo',       element: <SysMunicipalityFormPage /> },
+              { path: '/sys/municipios/:id',        element: <SysMunicipalityViewPage /> },
+              { path: '/sys/municipios/:id/editar', element: <SysMunicipalityFormPage /> },
+              { path: '/sys/unidades',              element: <SysFacilityListPage /> },
+              { path: '/sys/unidades/novo',         element: <SysFacilityFormPage /> },
+              { path: '/sys/unidades/:id',          element: <SysFacilityFormPage /> },
+              { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
+              { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
+              { path: '/sys/logs',                  element: <SysAuditPage /> },
+            ],
+          },
+        ],
+      },
 
       // Seleção de sistema exige contexto selecionado
       {

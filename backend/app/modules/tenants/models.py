@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import ARRAY, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import ARRAY, Boolean, Enum, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -34,6 +34,7 @@ class Municipality(Base, TimestampedMixin):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     state: Mapped[str] = mapped_column(String(2), nullable=False)
     ibge: Mapped[str] = mapped_column(String(7), unique=True, nullable=False)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
 
     __table_args__ = (UniqueConstraint("name", "state", name="uq_municipality_name_state"),)
 
@@ -55,6 +56,7 @@ class Facility(Base, TimestampedMixin):
         nullable=False,
     )
     cnes: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
 
 
 class MunicipalityAccess(Base, TimestampedMixin):

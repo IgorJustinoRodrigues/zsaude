@@ -63,3 +63,47 @@ class WorkContextCurrent(CamelModel):
     facility: FacilityRead
     role: str
     modules: list[str]
+
+
+# ─── Admin CRUD ──────────────────────────────────────────────────────────────
+
+
+class MunicipalityCreate(CamelModel):
+    name: str = Field(min_length=2, max_length=120)
+    state: str = Field(min_length=2, max_length=2)
+    ibge: str = Field(min_length=6, max_length=7, pattern=r"^\d{6,7}$")
+
+
+class MunicipalityUpdate(CamelModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    state: str | None = Field(default=None, min_length=2, max_length=2)
+
+
+class MunicipalityDetail(CamelModel):
+    id: UUID
+    name: str
+    state: str
+    ibge: str
+    archived: bool
+    schema_name: str
+    facility_count: int
+    user_count: int
+
+
+class FacilityCreate(CamelModel):
+    municipality_id: UUID
+    name: str = Field(min_length=2, max_length=200)
+    short_name: str = Field(min_length=2, max_length=80)
+    type: str = Field(min_length=2, max_length=20)
+    cnes: str | None = Field(default=None, max_length=7)
+
+
+class FacilityUpdate(CamelModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    short_name: str | None = Field(default=None, min_length=2, max_length=80)
+    type: str | None = Field(default=None, min_length=2, max_length=20)
+    cnes: str | None = Field(default=None, max_length=7)
+
+
+class MessageResponse(CamelModel):
+    message: str

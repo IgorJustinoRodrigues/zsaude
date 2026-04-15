@@ -4,7 +4,8 @@ import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
   Eye, EyeOff, RefreshCw, Check, X,
 } from 'lucide-react'
-import { userApi, type UserDetail, type UserStatus } from '../../api/users'
+import { userApi, type UserDetail, type UserStatus, type UserLevel } from '../../api/users'
+import { useAuthStore } from '../../store/authStore'
 import { directoryApi, type MunicipalityDto, type FacilityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { cn } from '../../lib/utils'
@@ -27,6 +28,7 @@ const ROLES = [
 ]
 
 const STATUSES: UserStatus[] = ['Ativo', 'Inativo', 'Bloqueado']
+const LEVELS: UserLevel[] = ['master', 'admin', 'user']
 
 // ── Máscaras ──────────────────────────────────────────────────────────────────
 
@@ -130,6 +132,15 @@ export function OpsUserFormPage() {
 
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [level, setLevelState] = useState<UserLevel>('user')
+
+  const actor = useAuthStore(s => s.user)
+  const isActorMaster = actor?.level === 'master'
+  // Só MASTER pode escolher o nível MASTER; para outros, o select nem lista
+  // essa opção (defesa em profundidade com o backend).
+  const allowedLevels: UserLevel[] = isActorMaster
+    ? LEVELS
+    : LEVELS.filter(l => l !== 'master')
 
   const [accesses, setAccesses] = useState<MunicipalityAccess[]>([emptyMunicipality()])
   const [errors,   setErrors]   = useState<Record<string, string>>({})
@@ -161,6 +172,7 @@ export function OpsUserFormPage() {
           setPhone(detail.phone)
           setRole(detail.primaryRole)
           setStatus(detail.status)
+          setLevelState(detail.level)
           setAccesses(detailToAccesses(detail))
         }
       } catch (e) {
@@ -262,6 +274,11 @@ export function OpsUserFormPage() {
 
     setSaving(true)
     try {
+      // Belt-and-suspenders: se ator não é MASTER, NUNCA envia 'master',
+      // mesmo que o state local esteja corrompido.
+      const safeLevel: UserLevel =
+        isActorMaster && level ? level : 'user'
+
       if (isEdit && id) {
         await userApi.update(id, {
           email,
@@ -269,6 +286,8 @@ export function OpsUserFormPage() {
           phone,
           primaryRole: role,
           status,
+          // só master pode alterar level (e nunca pra master se o ator não for master)
+          level: isActorMaster ? safeLevel : undefined,
           municipalities: buildPayloadAccesses(),
         })
         navigate(`/ops/usuarios/${id}`, { replace: true })
@@ -282,6 +301,7 @@ export function OpsUserFormPage() {
           primaryRole: role,
           password,
           status,
+          level: safeLevel,
           municipalities: buildPayloadAccesses(),
         })
         navigate(`/ops/usuarios/${created.id}`, { replace: true })
@@ -379,6 +399,25 @@ export function OpsUserFormPage() {
               {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
+
+          {isActorMaster && (
+            <Field label="Nível do usuário">
+              <select
+                value={level}
+                onChange={e => setLevelState(e.target.value as UserLevel)}
+                className={inputCls(false)}
+              >
+                {allowedLevels.map(l => (
+                  <option key={l} value={l}>
+                    {l === 'master' ? 'MASTER (plataforma)' : l === 'admin' ? 'ADMIN (município)' : 'USER (operacional)'}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">
+                MASTER só pode ser atribuído por outro MASTER.
+              </p>
+            </Field>
+          )}
         </div>
       </FormSection>
 

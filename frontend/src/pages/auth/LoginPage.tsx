@@ -30,7 +30,16 @@ export function LoginPage() {
       return
     }
 
-    // Auto-seleção: 1 município + 1 unidade
+    // MASTER vai direto pra área da plataforma — sem seleção de contexto.
+    const me = useAuthStore.getState().user
+    if (me?.level === 'master') {
+      navigate('/sys', { replace: true })
+      setLoading(false)
+      return
+    }
+
+    // Demais usuários: auto-seleção de contexto (1 município + 1 unidade) ou
+    // encaminha para as telas de seleção.
     try {
       const modules = await autoSelectContext()
       if (modules) {

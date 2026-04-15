@@ -11,7 +11,7 @@ from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.pagination import Page
 from app.core.security import generate_opaque_token, hash_password
 from app.modules.tenants.models import Facility, Municipality
-from app.modules.users.models import User, UserStatus
+from app.modules.users.models import User, UserLevel, UserStatus
 from app.modules.users.repository import UserRepository
 from app.modules.users.schemas import (
     AdminResetPasswordRequest,
@@ -103,6 +103,7 @@ class UserService:
                 cpf=u.cpf,
                 phone=u.phone,
                 status=u.status.value if hasattr(u.status, "value") else str(u.status),
+                level=u.level.value if hasattr(u.level, "value") else str(u.level),
                 primary_role=u.primary_role,
                 created_at=u.created_at,
                 municipality_count=counts_by_user[u.id][0],
@@ -167,6 +168,7 @@ class UserService:
             cpf=user.cpf,
             phone=user.phone,
             status=user.status.value if hasattr(user.status, "value") else str(user.status),
+            level=user.level.value if hasattr(user.level, "value") else str(user.level),
             primary_role=user.primary_role,
             is_active=user.is_active,
             is_superuser=user.is_superuser,
@@ -187,6 +189,7 @@ class UserService:
             raise ConflictError("CPF já está em uso.")
 
         status_enum = UserStatus(payload.status)
+        level_enum = UserLevel(payload.level)
         user = User(
             login=payload.login,
             email=payload.email,
@@ -196,7 +199,9 @@ class UserService:
             password_hash=hash_password(payload.password),
             status=status_enum,
             is_active=status_enum != UserStatus.BLOQUEADO,
+            is_superuser=(level_enum == UserLevel.MASTER),
             primary_role=payload.primary_role,
+            level=level_enum,
         )
         await self.repo.add(user)
         await self._apply_accesses(user.id, payload.municipalities)
@@ -226,6 +231,14 @@ class UserService:
             user.is_active = new_status != UserStatus.BLOQUEADO
             if new_status != UserStatus.ATIVO:
                 # Invalida tokens em circulação
+                user.token_version += 1
+
+        if payload.level is not None:
+            new_level = UserLevel(payload.level)
+            if user.level != new_level:
+                user.level = new_level
+                user.is_superuser = (new_level == UserLevel.MASTER)
+                # Mudança de nível invalida sessões ativas
                 user.token_version += 1
 
         await self.repo.update(user)

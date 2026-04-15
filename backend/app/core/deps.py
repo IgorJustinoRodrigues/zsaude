@@ -197,3 +197,29 @@ def client_ip(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+# ─── Level guards ────────────────────────────────────────────────────────────
+
+
+async def require_master(db: DB, user: CurrentUserDep) -> CurrentUser:
+    """Só usuários MASTER passam. Usado nos endpoints de plataforma."""
+    from app.modules.users.models import User, UserLevel
+
+    record = await db.scalar(select(User).where(User.id == user.id))
+    if record is None or record.level != UserLevel.MASTER:
+        raise HTTPException(status_code=403, detail="Requer nível MASTER.")
+    return user
+
+
+async def require_admin_or_master(db: DB, user: CurrentUserDep) -> CurrentUser:
+    from app.modules.users.models import User, UserLevel
+
+    record = await db.scalar(select(User).where(User.id == user.id))
+    if record is None or record.level not in (UserLevel.ADMIN, UserLevel.MASTER):
+        raise HTTPException(status_code=403, detail="Requer nível ADMIN ou MASTER.")
+    return user
+
+
+MasterDep = Annotated[CurrentUser, Depends(require_master)]
+AdminOrMasterDep = Annotated[CurrentUser, Depends(require_admin_or_master)]

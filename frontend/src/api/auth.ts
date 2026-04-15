@@ -9,6 +9,8 @@ export interface TokenPair {
   expiresIn: number
 }
 
+export type UserLevel = 'master' | 'admin' | 'user'
+
 export interface MeResponse {
   id: string
   login: string
@@ -17,6 +19,7 @@ export interface MeResponse {
   cpf: string
   phone: string
   status: string
+  level: UserLevel
   primaryRole: string
   birthDate: string | null
   createdAt: string

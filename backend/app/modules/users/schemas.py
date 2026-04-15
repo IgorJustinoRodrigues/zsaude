@@ -13,6 +13,7 @@ from app.core.schema_base import CamelModel
 from app.core.validators import validate_cpf
 
 UserStatusLiteral = Literal["Ativo", "Inativo", "Bloqueado"]
+UserLevelLiteral = Literal["master", "admin", "user"]
 
 
 class UserRead(CamelModel):
@@ -25,6 +26,7 @@ class UserRead(CamelModel):
     cpf: str
     phone: str
     status: str
+    level: UserLevelLiteral
     primary_role: str
     birth_date: date | None = None
     created_at: datetime
@@ -40,6 +42,7 @@ class UserListItem(CamelModel):
     cpf: str
     phone: str
     status: str
+    level: UserLevelLiteral
     primary_role: str
     created_at: datetime
     municipality_count: int
@@ -84,6 +87,7 @@ class UserDetail(CamelModel):
     cpf: str
     phone: str
     status: str
+    level: UserLevelLiteral
     primary_role: str
     is_active: bool
     is_superuser: bool
@@ -102,6 +106,7 @@ class UserCreate(CamelModel):
     primary_role: str = Field(min_length=2, max_length=100)
     password: str = Field(min_length=8, max_length=200)
     status: UserStatusLiteral = "Ativo"
+    level: UserLevelLiteral = "user"
     municipalities: list[MunicipalityAccessInput] = Field(default_factory=list)
 
     @field_validator("cpf")
@@ -121,6 +126,7 @@ class UserUpdate(CamelModel):
     phone: str | None = Field(default=None, max_length=20)
     primary_role: str | None = Field(default=None, min_length=2, max_length=100)
     status: UserStatusLiteral | None = None
+    level: UserLevelLiteral | None = None
     municipalities: list[MunicipalityAccessInput] | None = None
 
 

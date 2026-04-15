@@ -20,6 +20,19 @@ class UserStatus(str, enum.Enum):
     BLOQUEADO = "Bloqueado"
 
 
+class UserLevel(str, enum.Enum):
+    """Nível hierárquico do usuário.
+
+    - MASTER: gerencia toda a plataforma (municípios, unidades, configs, terminologias).
+    - ADMIN: gerencia usuários e configuração dentro dos municípios vinculados.
+    - USER:   fluxo operacional (atende paciente, libera laudo, etc.).
+    """
+
+    MASTER = "master"
+    ADMIN = "admin"
+    USER = "user"
+
+
 class User(Base, TimestampedMixin):
     __tablename__ = "users"
 
@@ -42,6 +55,19 @@ class User(Base, TimestampedMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    level: Mapped[UserLevel] = mapped_column(
+        Enum(
+            UserLevel,
+            name="user_level",
+            native_enum=False,
+            length=10,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        server_default=UserLevel.USER.value,
+        index=True,
+    )
 
     primary_role: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
 

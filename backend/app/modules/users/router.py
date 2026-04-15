@@ -8,8 +8,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.deps import DB, CurrentUserDep
+from app.core.exceptions import ForbiddenError
 from app.core.pagination import Page
-from app.modules.users.models import User, UserStatus
+from app.modules.users.models import User, UserLevel, UserStatus
 from app.modules.users.schemas import (
     AdminResetPasswordRequest,
     AdminResetPasswordResponse,
@@ -47,15 +48,24 @@ async def update_me(payload: UserUpdateMe, db: DB, user: CurrentUserDep) -> User
 
 
 async def require_admin(db: DB, user: CurrentUserDep) -> User:
-    """Guard: só superusuários gerenciam outros usuários (por ora)."""
+    """Guard: ADMIN ou MASTER podem gerenciar usuários."""
     svc = UserService(db)
     record = await svc.get_or_404(user.id)
-    if not record.is_superuser:
+    if record.level not in (UserLevel.ADMIN, UserLevel.MASTER):
         raise HTTPException(status_code=403, detail="Apenas administradores podem gerenciar usuários.")
     return record
 
 
 AdminDep = Annotated[User, Depends(require_admin)]
+
+
+def _check_create_level(actor: User, target_level: UserLevel) -> None:
+    """MASTER pode criar qualquer nível. ADMIN só pode criar USER."""
+    if actor.level == UserLevel.MASTER:
+        return
+    if actor.level == UserLevel.ADMIN and target_level == UserLevel.USER:
+        return
+    raise ForbiddenError("Você não tem permissão para criar usuário desse nível.")
 
 
 @router.get("/stats", response_model=UserStats)
@@ -85,7 +95,8 @@ async def list_users(
 
 
 @router.post("", response_model=UserDetail, status_code=status.HTTP_201_CREATED)
-async def create_user(payload: UserCreate, db: DB, _: AdminDep) -> UserDetail:
+async def create_user(payload: UserCreate, db: DB, actor: AdminDep) -> UserDetail:
+    _check_create_level(actor, UserLevel(payload.level))
     svc = UserService(db)
     created = await svc.create(payload)
     return await svc.detail(created.id)
@@ -97,7 +108,11 @@ async def get_user(user_id: UUID, db: DB, _: AdminDep) -> UserDetail:
 
 
 @router.patch("/{user_id}", response_model=UserDetail)
-async def update_user(user_id: UUID, payload: UserUpdate, db: DB, _: AdminDep) -> UserDetail:
+async def update_user(user_id: UUID, payload: UserUpdate, db: DB, actor: AdminDep) -> UserDetail:
+    # Só MASTER pode alterar `level`; ADMIN nunca promove nem rebaixa.
+    if payload.level is not None:
+        if actor.level != UserLevel.MASTER:
+            raise ForbiddenError("Apenas MASTER pode alterar o nível de um usuário.")
     svc = UserService(db)
     await svc.update(user_id, payload)
     return await svc.detail(user_id)

@@ -4,6 +4,7 @@ import type { SystemId } from '../types'
 import { api } from './client'
 
 export type UserStatus = 'Ativo' | 'Inativo' | 'Bloqueado'
+export type UserLevel = 'master' | 'admin' | 'user'
 
 // ─── Responses ────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export interface UserListItem {
   cpf: string
   phone: string
   status: UserStatus
+  level: UserLevel
   primaryRole: string
   createdAt: string
   municipalityCount: number
@@ -46,6 +48,7 @@ export interface UserDetail {
   cpf: string
   phone: string
   status: UserStatus
+  level: UserLevel
   primaryRole: string
   isActive: boolean
   isSuperuser: boolean
@@ -84,6 +87,7 @@ export interface UserCreateInput {
   primaryRole: string
   password: string
   status?: UserStatus
+  level?: UserLevel
   municipalities?: MunicipalityAccessInput[]
 }
 
@@ -93,6 +97,7 @@ export interface UserUpdateInput {
   phone?: string
   primaryRole?: string
   status?: UserStatus
+  level?: UserLevel
   municipalities?: MunicipalityAccessInput[]
 }
 
