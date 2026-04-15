@@ -44,6 +44,7 @@ export function TopBar({ module }: Props) {
   const available = context?.modules?.length
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
+  const canSwitchModule = available.length > 1
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -358,13 +359,15 @@ export function TopBar({ module }: Props) {
 
               {/* Ações */}
               <div className="p-2 space-y-0.5">
-                <button
-                  onClick={() => { setUserMenuOpen(false); navigate('/selecionar-sistema') }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <LayoutGrid size={14} />
-                  Trocar módulo
-                </button>
+                {canSwitchModule && (
+                  <button
+                    onClick={() => { setUserMenuOpen(false); navigate('/selecionar-sistema') }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <LayoutGrid size={14} />
+                    Trocar módulo
+                  </button>
+                )}
                 <button
                   onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

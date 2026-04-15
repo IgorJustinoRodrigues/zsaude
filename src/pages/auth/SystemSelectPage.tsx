@@ -46,6 +46,14 @@ export function SystemSelectPage() {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
 
+  // Auto-select if only one module available
+  useEffect(() => {
+    if (available.length === 1) {
+      selectSystem(available[0].id)
+      navigate(`/${available[0].id}`, { replace: true })
+    }
+  }, [available.length]) // eslint-disable-line
+
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {

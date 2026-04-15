@@ -55,7 +55,14 @@ export function ContextSelectPage() {
 
   const handleSelect = (municipalityId: string, facilityId: string) => {
     selectContext(municipalityId, facilityId)
-    navigate('/selecionar-sistema')
+    // Descobre os módulos do contexto selecionado para checar se tem só 1
+    const munAccess = user?.municipalities.find(m => m.municipalityId === municipalityId)
+    const facAccess = munAccess?.facilities.find(f => f.facilityId === facilityId)
+    if (facAccess?.modules.length === 1) {
+      navigate(`/${facAccess.modules[0]}`, { replace: true })
+    } else {
+      navigate('/selecionar-sistema')
+    }
   }
 
   return (
