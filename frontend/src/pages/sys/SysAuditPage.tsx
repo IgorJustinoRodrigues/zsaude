@@ -4,6 +4,7 @@ import { auditApi, type AuditLogItem } from '../../api/audit'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { AuditDetails } from '../../components/shared/AuditDetails'
 
 const SEV_STYLE: Record<string, string> = {
   info:     'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400',
@@ -151,11 +152,8 @@ export function SysAuditPage() {
               <DetailRow label="Data"     value={fmt(selected.at)} />
               <DetailRow label="Recurso"  value={selected.resource ? `${selected.resource}${selected.resourceId ? ' · ' + selected.resourceId : ''}` : '—'} />
               <DetailRow label="Request"  value={selected.requestId || '—'} mono />
-              <div>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Detalhes</p>
-                <pre className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 overflow-auto text-[11px] font-mono text-slate-700 dark:text-slate-200">
-{JSON.stringify(selected.details, null, 2)}
-                </pre>
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <AuditDetails details={selected.details} />
               </div>
             </div>
             <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">

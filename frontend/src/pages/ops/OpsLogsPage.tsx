@@ -10,6 +10,7 @@ import { auditApi, type AuditLogItem } from '../../api/audit'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { AuditDetails } from '../../components/shared/AuditDetails'
 
 // ─── Meta ─────────────────────────────────────────────────────────────────────
 
@@ -341,11 +342,7 @@ function LogDetailModal({ log, onClose }: { log: AuditLogItem; onClose: () => vo
 
           {Object.keys(log.details).length > 0 && (
             <Section title="Detalhes">
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-200 overflow-auto">
-{JSON.stringify(log.details, null, 2)}
-                </pre>
-              </div>
+              <AuditDetails details={log.details} />
             </Section>
           )}
         </div>

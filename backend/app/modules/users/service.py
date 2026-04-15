@@ -391,37 +391,67 @@ class UserService:
         *,
         scope: set[UUID] | None = None,
     ) -> dict | None:
-        """Versão de ``_apply_accesses`` que retorna o diff ({added, removed,
-        changed}) comparando o estado antes × depois.
+        """Retorna o diff de vínculos (antes × depois) com **nomes legíveis**.
 
-        Se nada mudou, retorna ``None``. Caso contrário, um dict compacto:
-        ``{"added": [{facilityId, roleId}, ...], "removed": [{facilityId}],
-           "changed": [{facilityId, from: role_id, to: role_id}]}``
+        Inclui ``facilityName``, ``municipalityName`` e ``roleName`` para
+        evitar UUIDs crus nos logs de auditoria.
         """
         # Estado antes.
-        before = {
-            fa.facility_id: fa.role_id
-            for fa, _fac, _mun in await self.repo.list_facility_accesses(user_id)
+        rows_before = await self.repo.list_facility_accesses(user_id)
+        before: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_before}
+        fac_name_map: dict[UUID, str] = {
+            fac.id: (fac.short_name or fac.name)
+            for _, fac, _ in rows_before
         }
+        mun_name_map: dict[UUID, tuple[str, str]] = {
+            mun.id: (mun.name, mun.state)
+            for _, fac, mun in rows_before
+            for _ in [0]  # noqa — tupla
+        }
+        # mapa facility → município (para resolver depois)
+        fac_to_mun: dict[UUID, UUID] = {fac.id: mun.id for _, fac, mun in rows_before}
 
         await self._apply_accesses(user_id, tree, scope=scope)
 
-        # Estado depois.
-        after = {
-            fa.facility_id: fa.role_id
-            for fa, _fac, _mun in await self.repo.list_facility_accesses(user_id)
-        }
+        rows_after = await self.repo.list_facility_accesses(user_id)
+        after: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_after}
+        for _, fac, mun in rows_after:
+            fac_name_map.setdefault(fac.id, fac.short_name or fac.name)
+            mun_name_map.setdefault(mun.id, (mun.name, mun.state))
+            fac_to_mun.setdefault(fac.id, mun.id)
+
+        # Resolve nomes de roles envolvidos.
+        role_ids = {rid for rid in {*before.values(), *after.values()} if rid is not None}
+        role_name_map: dict[UUID, str] = {}
+        if role_ids:
+            from app.modules.permissions.models import Role
+
+            r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids)))
+            role_name_map = {r.id: r.name for r in r_rows.all()}
+
+        def _fac_label(fid: UUID) -> dict[str, str]:
+            mun_id = fac_to_mun.get(fid)
+            mun_name, mun_state = mun_name_map.get(mun_id, ("", "")) if mun_id else ("", "")
+            return {
+                "facilityId":       str(fid),
+                "facilityName":     fac_name_map.get(fid, ""),
+                "municipalityName": f"{mun_name}/{mun_state}" if mun_name else "",
+            }
+
+        def _role_ref(rid: UUID) -> dict[str, str]:
+            return {"roleId": str(rid), "roleName": role_name_map.get(rid, "")}
 
         added = [
-            {"facilityId": str(fid), "roleId": str(rid)}
+            {**_fac_label(fid), **_role_ref(rid)}
             for fid, rid in after.items() if fid not in before
         ]
-        removed = [
-            {"facilityId": str(fid)}
-            for fid in before.keys() if fid not in after
-        ]
+        removed = [_fac_label(fid) for fid in before.keys() if fid not in after]
         changed = [
-            {"facilityId": str(fid), "from": str(before[fid]), "to": str(after[fid])}
+            {
+                **_fac_label(fid),
+                "from": role_name_map.get(before[fid], str(before[fid])),
+                "to":   role_name_map.get(after[fid],  str(after[fid])),
+            }
             for fid in after if fid in before and before[fid] != after[fid]
         ]
         if not (added or removed or changed):

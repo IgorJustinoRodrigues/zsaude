@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { type SystemLog, type LogAction } from '../../mock/logs'
 import { auditApi, toSystemLog } from '../../api/audit'
+import { AuditDetails } from '../../components/shared/AuditDetails'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
@@ -722,9 +723,7 @@ function DetailModal({ log, onClose }: { log: SystemLog; onClose: () => void }) 
             <ModalRow label="User-Agent" value={log.userAgent} mono small />
           </ModalSection>
           <ModalSection title="Detalhes">
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-800 rounded-lg px-4 py-3">
-              {log.details}
-            </p>
+            <AuditDetails details={log.details} />
           </ModalSection>
         </div>
         <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
