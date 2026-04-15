@@ -5,7 +5,8 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,7 +37,36 @@ class Municipality(Base, TimestampedMixin):
     ibge: Mapped[str] = mapped_column(String(7), unique=True, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
 
+    # Demografia e geolocalização (opcionais).
+    population: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    center_latitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    center_longitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    # Polígono do território: lista de [lat, lng]. None = sem desenho.
+    territory: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (UniqueConstraint("name", "state", name="uq_municipality_name_state"),)
+
+
+class Neighborhood(Base, TimestampedMixin):
+    """Bairro de um município. Ambos coords e território são opcionais."""
+
+    __tablename__ = "neighborhoods"
+    __table_args__ = (
+        UniqueConstraint("municipality_id", "name", name="uq_neighborhood_mun_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    municipality_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("municipalities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    population: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    territory: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
 
 class Facility(Base, TimestampedMixin):

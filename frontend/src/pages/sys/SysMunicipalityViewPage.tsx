@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Pencil, MapPin, Building2, Plus, Archive, ArchiveRestore,
+  ArrowLeft, Pencil, MapPin, Building2, Plus, Archive, ArchiveRestore, Users, Home,
 } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail, type FacilityAdmin } from '../../api/sys'
 import { directoryApi } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { LocationMap, type MapLayer } from '../../components/shared/LocationMap'
 
 export function SysMunicipalityViewPage() {
   const navigate = useNavigate()
@@ -110,11 +111,73 @@ export function SysMunicipalityViewPage() {
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard label="Unidades" value={mun.facilityCount} />
         <SummaryCard label="Usuários vinculados" value={mun.userCount} />
-        <SummaryCard label="Status" value={mun.archived ? 'Arquivado' : 'Ativo'} />
+        <SummaryCard label="População" value={mun.population != null ? mun.population.toLocaleString('pt-BR') : '—'} />
+        <SummaryCard label="Bairros" value={mun.neighborhoods.length} />
       </div>
+
+      {/* Mapa */}
+      {(mun.centerLatitude != null || mun.territory || mun.neighborhoods.some(h => h.latitude != null || h.territory)) && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+            <MapPin size={14} className="text-violet-500" />
+            <h2 className="text-sm font-semibold">Território</h2>
+          </div>
+          <LocationMap
+            fallbackCenter={[-15.78, -47.92, 5]}
+            point={
+              mun.centerLatitude != null && mun.centerLongitude != null
+                ? [Number(mun.centerLatitude), Number(mun.centerLongitude)]
+                : null
+            }
+            polygon={mun.territory}
+            extraLayers={mun.neighborhoods.flatMap<MapLayer>(h => {
+              const layer: MapLayer = { label: h.name, color: '#0ea5e9' }
+              if (h.latitude != null && h.longitude != null) {
+                layer.point = [Number(h.latitude), Number(h.longitude)]
+              }
+              if (h.territory) layer.polygon = h.territory
+              return (layer.point || layer.polygon) ? [layer] : []
+            })}
+            mode="idle"
+            onPointChange={() => {}}
+            onPolygonChange={() => {}}
+            height="360px"
+          />
+        </div>
+      )}
+
+      {/* Bairros */}
+      {mun.neighborhoods.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+            <Home size={14} className="text-sky-500" />
+            <h2 className="text-sm font-semibold">Bairros ({mun.neighborhoods.length})</h2>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {mun.neighborhoods.map(h => (
+              <div key={h.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-7 h-7 rounded-lg bg-sky-100 dark:bg-sky-950/40 text-sky-600 flex items-center justify-center shrink-0">
+                  <Home size={12} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{h.name}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {h.population != null && <span className="inline-flex items-center gap-1"><Users size={10} /> {h.population.toLocaleString('pt-BR')} hab</span>}
+                    {h.population != null && (h.latitude != null || h.territory) && ' · '}
+                    {h.latitude != null && '📍 ponto'}
+                    {h.latitude != null && h.territory && ' · '}
+                    {h.territory && '🗺 território'}
+                    {h.population == null && h.latitude == null && !h.territory && '—'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Unidades */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">

@@ -70,15 +70,49 @@ class WorkContextCurrent(CamelModel):
 # ─── Admin CRUD ──────────────────────────────────────────────────────────────
 
 
+class NeighborhoodInput(CamelModel):
+    """Item do array de bairros. ``id`` é opcional: se vier, atualiza; senão, cria."""
+
+    id: UUID | None = None
+    name: str = Field(min_length=2, max_length=120)
+    population: int | None = Field(default=None, ge=0)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    # Polígono: lista de [lat, lng].
+    territory: list[list[float]] | None = None
+
+
+class NeighborhoodOut(CamelModel):
+    id: UUID
+    name: str
+    population: int | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    territory: list[list[float]] | None = None
+
+
 class MunicipalityCreate(CamelModel):
     name: str = Field(min_length=2, max_length=120)
     state: str = Field(min_length=2, max_length=2)
     ibge: str = Field(min_length=6, max_length=7, pattern=r"^\d{6,7}$")
+    population: int | None = Field(default=None, ge=0)
+    center_latitude: float | None = Field(default=None, ge=-90, le=90)
+    center_longitude: float | None = Field(default=None, ge=-180, le=180)
+    territory: list[list[float]] | None = None
+    neighborhoods: list[NeighborhoodInput] = Field(default_factory=list)
 
 
 class MunicipalityUpdate(CamelModel):
+    """PATCH do município. ``ibge`` é imutável após criação — não aparece aqui."""
+
     name: str | None = Field(default=None, min_length=2, max_length=120)
     state: str | None = Field(default=None, min_length=2, max_length=2)
+    population: int | None = Field(default=None, ge=0)
+    center_latitude: float | None = Field(default=None, ge=-90, le=90)
+    center_longitude: float | None = Field(default=None, ge=-180, le=180)
+    territory: list[list[float]] | None = None
+    # Se ``neighborhoods`` vier, substitui toda a lista atual.
+    neighborhoods: list[NeighborhoodInput] | None = None
 
 
 class MunicipalityDetail(CamelModel):
@@ -90,6 +124,11 @@ class MunicipalityDetail(CamelModel):
     schema_name: str
     facility_count: int
     user_count: int
+    population: int | None = None
+    center_latitude: float | None = None
+    center_longitude: float | None = None
+    territory: list[list[float]] | None = None
+    neighborhoods: list[NeighborhoodOut] = Field(default_factory=list)
 
 
 class FacilityCreate(CamelModel):

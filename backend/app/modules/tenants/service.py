@@ -11,7 +11,14 @@ from app.core.config import settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import create_context_token
 from app.db.tenant_schemas import ensure_municipality_schema, schema_for_municipality
-from app.modules.tenants.models import Facility, FacilityAccess, FacilityType, Municipality, MunicipalityAccess
+from app.modules.tenants.models import (
+    Facility,
+    FacilityAccess,
+    FacilityType,
+    Municipality,
+    MunicipalityAccess,
+    Neighborhood,
+)
 from app.modules.tenants.repository import TenantRepository
 from app.modules.tenants.schemas import (
     FacilityCreate,
@@ -23,6 +30,8 @@ from app.modules.tenants.schemas import (
     MunicipalityRead,
     MunicipalityUpdate,
     MunicipalityWithFacilities,
+    NeighborhoodInput,
+    NeighborhoodOut,
     WorkContextCurrent,
     WorkContextIssued,
     WorkContextOptions,
@@ -170,6 +179,11 @@ class TenantService:
                 MunicipalityAccess.municipality_id == mun.id
             )
         ) or 0
+        hoods = list((await self.session.scalars(
+            select(Neighborhood)
+            .where(Neighborhood.municipality_id == mun.id)
+            .order_by(Neighborhood.name)
+        )).all())
         return MunicipalityDetail(
             id=mun.id,
             name=mun.name,
@@ -179,16 +193,44 @@ class TenantService:
             schema_name=schema_for_municipality(mun.ibge),
             facility_count=int(fac_count),
             user_count=int(user_count),
+            population=mun.population,
+            center_latitude=float(mun.center_latitude) if mun.center_latitude is not None else None,
+            center_longitude=float(mun.center_longitude) if mun.center_longitude is not None else None,
+            territory=mun.territory,
+            neighborhoods=[
+                NeighborhoodOut(
+                    id=n.id,
+                    name=n.name,
+                    population=n.population,
+                    latitude=float(n.latitude) if n.latitude is not None else None,
+                    longitude=float(n.longitude) if n.longitude is not None else None,
+                    territory=n.territory,
+                )
+                for n in hoods
+            ],
         )
 
     async def create_municipality(self, payload: MunicipalityCreate) -> MunicipalityDetail:
         if await self.session.scalar(select(Municipality).where(Municipality.ibge == payload.ibge)):
             raise ConflictError("IBGE já cadastrado.")
-        mun = Municipality(name=payload.name, state=payload.state.upper(), ibge=payload.ibge)
+        mun = Municipality(
+            name=payload.name,
+            state=payload.state.upper(),
+            ibge=payload.ibge,
+            population=payload.population,
+            center_latitude=payload.center_latitude,
+            center_longitude=payload.center_longitude,
+            territory=payload.territory,
+        )
         self.session.add(mun)
         await self.session.flush()
         # provisiona schema mun_<ibge> no mesmo commit
         await ensure_municipality_schema(self.session, mun.ibge)
+
+        # bairros iniciais
+        if payload.neighborhoods:
+            await self._replace_neighborhoods(mun.id, payload.neighborhoods)
+
         return await self._municipality_detail(mun)
 
     async def update_municipality(self, municipality_id: UUID, payload: MunicipalityUpdate) -> MunicipalityDetail:
@@ -197,6 +239,8 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
 
         changes: dict[str, dict] = {}
+        fields = payload.model_fields_set
+
         if payload.name is not None and payload.name != mun.name:
             changes["name"] = {"from": mun.name, "to": payload.name}
             mun.name = payload.name
@@ -205,7 +249,25 @@ class TenantService:
             if new_state != mun.state:
                 changes["state"] = {"from": mun.state, "to": new_state}
                 mun.state = new_state
+        if "population" in fields and payload.population != mun.population:
+            changes["population"] = {"from": mun.population, "to": payload.population}
+            mun.population = payload.population
+        if "center_latitude" in fields and payload.center_latitude != (float(mun.center_latitude) if mun.center_latitude is not None else None):
+            changes["centerLatitude"] = {"from": float(mun.center_latitude) if mun.center_latitude is not None else None, "to": payload.center_latitude}
+            mun.center_latitude = payload.center_latitude
+        if "center_longitude" in fields and payload.center_longitude != (float(mun.center_longitude) if mun.center_longitude is not None else None):
+            changes["centerLongitude"] = {"from": float(mun.center_longitude) if mun.center_longitude is not None else None, "to": payload.center_longitude}
+            mun.center_longitude = payload.center_longitude
+        if "territory" in fields and payload.territory != mun.territory:
+            changes["territory"] = {"from": "desenhado" if mun.territory else None, "to": "desenhado" if payload.territory else None}
+            mun.territory = payload.territory
+
         await self.session.flush()
+
+        # Bairros: se vier no payload, substitui tudo.
+        if payload.neighborhoods is not None:
+            await self._replace_neighborhoods(mun.id, payload.neighborhoods)
+            changes["neighborhoods"] = {"from": None, "to": f"{len(payload.neighborhoods)} item(ns)"}
 
         if changes:
             from app.modules.audit.writer import write_audit
@@ -220,6 +282,31 @@ class TenantService:
                 details={"municipalityId": str(mun.id), "changes": changes},
             )
         return await self._municipality_detail(mun)
+
+    async def _replace_neighborhoods(
+        self, municipality_id: UUID, payload_hoods: list[NeighborhoodInput]
+    ) -> None:
+        """Replace-all: remove todos os bairros do município e re-insere."""
+        from sqlalchemy import delete as sql_delete
+
+        await self.session.execute(
+            sql_delete(Neighborhood).where(Neighborhood.municipality_id == municipality_id)
+        )
+        seen_names: set[str] = set()
+        for h in payload_hoods:
+            name = h.name.strip()
+            if not name or name.lower() in seen_names:
+                continue
+            seen_names.add(name.lower())
+            self.session.add(Neighborhood(
+                municipality_id=municipality_id,
+                name=name,
+                population=h.population,
+                latitude=h.latitude,
+                longitude=h.longitude,
+                territory=h.territory,
+            ))
+        await self.session.flush()
 
     async def archive_municipality(self, municipality_id: UUID) -> MunicipalityDetail:
         mun = await self.repo.get_municipality(municipality_id)

@@ -5,6 +5,24 @@ import type { PageResponse } from './users'
 
 // ─── Municípios ───────────────────────────────────────────────────────────────
 
+export interface NeighborhoodInput {
+  id?: string
+  name: string
+  population?: number | null
+  latitude?: number | null
+  longitude?: number | null
+  territory?: [number, number][] | null
+}
+
+export interface NeighborhoodOut {
+  id: string
+  name: string
+  population: number | null
+  latitude: number | null
+  longitude: number | null
+  territory: [number, number][] | null
+}
+
 export interface MunicipalityAdminDetail {
   id: string
   name: string
@@ -14,17 +32,32 @@ export interface MunicipalityAdminDetail {
   schemaName: string
   facilityCount: number
   userCount: number
+  population: number | null
+  centerLatitude: number | null
+  centerLongitude: number | null
+  territory: [number, number][] | null
+  neighborhoods: NeighborhoodOut[]
 }
 
 export interface MunicipalityCreateInput {
   name: string
   state: string
   ibge: string
+  population?: number | null
+  centerLatitude?: number | null
+  centerLongitude?: number | null
+  territory?: [number, number][] | null
+  neighborhoods?: NeighborhoodInput[]
 }
 
 export interface MunicipalityUpdateInput {
   name?: string
   state?: string
+  population?: number | null
+  centerLatitude?: number | null
+  centerLongitude?: number | null
+  territory?: [number, number][] | null
+  neighborhoods?: NeighborhoodInput[]
 }
 
 // ─── Unidades ────────────────────────────────────────────────────────────────

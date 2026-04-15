@@ -16,5 +16,11 @@ from app.modules.permissions.models import (  # noqa: F401
 )
 from app.modules.sessions.models import UserSession  # noqa: F401
 from app.modules.system.models import SystemSetting  # noqa: F401
-from app.modules.tenants.models import Facility, FacilityAccess, Municipality, MunicipalityAccess  # noqa: F401
+from app.modules.tenants.models import (  # noqa: F401
+    Facility,
+    FacilityAccess,
+    Municipality,
+    MunicipalityAccess,
+    Neighborhood,
+)
 from app.modules.users.models import User  # noqa: F401
