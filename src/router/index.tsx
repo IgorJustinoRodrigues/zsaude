@@ -41,6 +41,7 @@ import { OpsUserFormPage } from '../pages/ops/OpsUserFormPage'
 import { OpsLogsPage } from '../pages/ops/OpsLogsPage'
 import { OpsReportsPage } from '../pages/ops/OpsReportsPage'
 import { OpsAccessReportPage } from '../pages/ops/OpsAccessReportPage'
+import { OpsUsersReportPage } from '../pages/ops/OpsUsersReportPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -88,6 +89,7 @@ export const router = createBrowserRouter([
       { path: '/ops/logs',                   element: <OpsLogsPage /> },
       { path: '/ops/relatorios',             element: <OpsReportsPage /> },
       { path: '/ops/relatorios/acessos',     element: <OpsAccessReportPage /> },
+      { path: '/ops/relatorios/usuarios',    element: <OpsUsersReportPage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },
