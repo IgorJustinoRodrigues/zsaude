@@ -23,6 +23,23 @@ P("roles.role.archive", "Arquivar perfil")
 P("roles.permission.assign", "Ajustar permissões de perfil")
 P("roles.override.manage", "Personalizar permissões por acesso de usuário")
 
+# ── Usuários ────────────────────────────────────────────────────────────────
+P("users.user.view", "Visualizar usuários")
+P("users.user.create", "Criar usuário")
+P("users.user.edit", "Editar usuário")
+P("users.user.archive", "Arquivar usuário")
+P("users.user.reset_password", "Redefinir senha de outro usuário")
+P("users.access.view", "Visualizar acessos de usuário")
+P("users.access.manage", "Conceder/remover acesso a município ou unidade")
+
+# ── Auditoria ───────────────────────────────────────────────────────────────
+P("audit.log.view", "Consultar logs de auditoria")
+
+# ── Operações (relatórios, presença, frota) ─────────────────────────────────
+P("ops.session.view", "Visualizar sessões e presença de usuários")
+P("ops.report.view", "Visualizar relatórios operacionais")
+P("ops.report.export", "Exportar relatórios")
+
 # ── DGN (Diagnóstico) ───────────────────────────────────────────────────────
 P("dgn.exam.view", "Visualizar solicitações de exame")
 P("dgn.exam.request", "Solicitar exame")

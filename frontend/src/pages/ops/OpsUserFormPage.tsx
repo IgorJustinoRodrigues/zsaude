@@ -562,9 +562,7 @@ export function OpsUserFormPage() {
                               className={inputCls(!!errors[`role-${mi}-${fi}`])}>
                               <option value="">Selecione...</option>
                               {rolesForMunicipality(mun.municipalityId).map(r => (
-                                <option key={r.id} value={r.id}>
-                                  [{r.scope === 'SYSTEM' ? 'base' : 'local'}] {r.name}
-                                </option>
+                                <option key={r.id} value={r.id}>{r.name}</option>
                               ))}
                             </select>
                           </Field>
@@ -580,8 +578,7 @@ export function OpsUserFormPage() {
 
                         <p className="text-[11px] text-muted-foreground mt-2">
                           Módulos e permissões são derivados do perfil selecionado.
-                          Personalize permissões específicas em
-                          <strong> /ops/usuarios/{id ?? ':id'}/acessos/{fac.facilityId || ':accessId'}/permissoes</strong>.
+                          Você poderá ajustar permissões específicas deste acesso depois.
                         </p>
                       </div>
                     ))}

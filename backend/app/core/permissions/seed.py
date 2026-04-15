@@ -96,11 +96,16 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
     (
         "municipality_admin",
         "Administrador do Município",
-        "Gerencia perfis e personaliza permissões dentro do município.",
+        "Gestão completa do município: usuários, perfis, relatórios e auditoria.",
         [
             "roles.role.view", "roles.role.create", "roles.role.edit",
             "roles.role.archive", "roles.permission.assign",
             "roles.override.manage",
+            "users.user.view", "users.user.create", "users.user.edit",
+            "users.user.archive", "users.user.reset_password",
+            "users.access.view", "users.access.manage",
+            "audit.log.view",
+            "ops.session.view", "ops.report.view", "ops.report.export",
         ],
     ),
     (
@@ -136,9 +141,15 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
     (
         "manager_base",
         "Gestor",
-        "Perfil base de gestão. Ganha permissões conforme novos módulos "
-        "forem implementados.",
-        [],
+        "Relatórios, auditoria e visão gerencial dos usuários.",
+        [
+            "users.user.view",
+            "users.access.view",
+            "audit.log.view",
+            "ops.session.view",
+            "ops.report.view",
+            "ops.report.export",
+        ],
     ),
     (
         "visa_agent_base",
