@@ -79,6 +79,7 @@ export const router = createBrowserRouter([
       { path: '/ops',                  element: <OpsHomePage /> },
       { path: '/ops/usuarios',          element: <OpsUserListPage /> },
       { path: '/ops/usuarios/novo',     element: <OpsUserFormPage /> },
+      { path: '/ops/usuarios/:id',      element: <OpsUserFormPage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },

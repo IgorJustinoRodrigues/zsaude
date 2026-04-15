@@ -29,12 +29,27 @@ export const mockFacilities: Facility[] = [
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-export const mockUsers: User[] = [
+export type UserStatus = 'Ativo' | 'Inativo' | 'Bloqueado'
+
+export interface UserRecord extends User {
+  cpf: string
+  phone: string
+  status: UserStatus
+  createdAt: string
+  primaryRole: string
+}
+
+export const mockUsers: UserRecord[] = [
   {
     id: 'usr1',
     name: 'Igor Santos',
     login: 'igor.santos',
     email: 'igor@zsaude.gov.br',
+    cpf: '021.345.678-90',
+    phone: '(62) 99999-1234',
+    status: 'Ativo',
+    createdAt: '2023-01-10',
+    primaryRole: 'Administrador do Sistema',
     municipalities: [
       {
         municipalityId: 'mun1',
@@ -64,6 +79,11 @@ export const mockUsers: User[] = [
     name: 'Carla Mendonça',
     login: 'carla.mendonca',
     email: 'carla@zsaude.gov.br',
+    cpf: '134.567.890-12',
+    phone: '(62) 98888-5678',
+    status: 'Ativo',
+    createdAt: '2023-03-15',
+    primaryRole: 'Recepcionista',
     municipalities: [
       {
         municipalityId: 'mun1',
@@ -78,6 +98,11 @@ export const mockUsers: User[] = [
     name: 'Diego Figueiredo',
     login: 'diego.figueiredo',
     email: 'diego@zsaude.gov.br',
+    cpf: '245.678.901-23',
+    phone: '(62) 97777-9012',
+    status: 'Ativo',
+    createdAt: '2023-02-20',
+    primaryRole: 'Técnico de Laboratório',
     municipalities: [
       {
         municipalityId: 'mun1',
@@ -92,6 +117,11 @@ export const mockUsers: User[] = [
     name: 'Renata Cabral',
     login: 'renata.cabral',
     email: 'renata@zsaude.gov.br',
+    cpf: '356.789.012-34',
+    phone: '(62) 96666-3456',
+    status: 'Ativo',
+    createdAt: '2023-04-05',
+    primaryRole: 'Fiscal Sanitário',
     municipalities: [
       {
         municipalityId: 'mun1',
@@ -106,11 +136,156 @@ export const mockUsers: User[] = [
     name: 'Thales Marques',
     login: 'thales.marques',
     email: 'thales@zsaude.gov.br',
+    cpf: '467.890.123-45',
+    phone: '(62) 95555-7890',
+    status: 'Inativo',
+    createdAt: '2023-01-28',
+    primaryRole: 'Gestor de Frota',
     municipalities: [
       {
         municipalityId: 'mun1',
         facilities: [
           { facilityId: 'fac6', role: 'Gestor de Frota', modules: ['ops'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr6',
+    name: 'Simone Araújo',
+    login: 'simone.araujo',
+    email: 'simone@zsaude.gov.br',
+    cpf: '578.901.234-56',
+    phone: '(62) 94444-1234',
+    status: 'Ativo',
+    createdAt: '2023-05-12',
+    primaryRole: 'Enfermeira',
+    municipalities: [
+      {
+        municipalityId: 'mun1',
+        facilities: [
+          { facilityId: 'fac3', role: 'Enfermeira', modules: ['cln', 'hsp'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr7',
+    name: 'Rafael Campos',
+    login: 'rafael.campos',
+    email: 'rafael@zsaude.gov.br',
+    cpf: '689.012.345-67',
+    phone: '(62) 93333-5678',
+    status: 'Ativo',
+    createdAt: '2022-11-08',
+    primaryRole: 'Médico',
+    municipalities: [
+      {
+        municipalityId: 'mun3',
+        facilities: [
+          { facilityId: 'fac11', role: 'Médico', modules: ['cln', 'hsp'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr8',
+    name: 'Fernanda Lima',
+    login: 'fernanda.lima',
+    email: 'fernanda@zsaude.gov.br',
+    cpf: '790.123.456-78',
+    phone: '(62) 92222-9012',
+    status: 'Bloqueado',
+    createdAt: '2023-06-01',
+    primaryRole: 'Médica',
+    municipalities: [
+      {
+        municipalityId: 'mun2',
+        facilities: [
+          { facilityId: 'fac9', role: 'Médica', modules: ['cln'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr9',
+    name: 'Paulo Henrique',
+    login: 'paulo.henrique',
+    email: 'paulo@zsaude.gov.br',
+    cpf: '801.234.567-89',
+    phone: '(62) 91111-3456',
+    status: 'Ativo',
+    createdAt: '2023-07-19',
+    primaryRole: 'Farmacêutico',
+    municipalities: [
+      {
+        municipalityId: 'mun1',
+        facilities: [
+          { facilityId: 'fac2', role: 'Farmacêutico', modules: ['cln', 'ops'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr10',
+    name: 'Beatriz Nunes',
+    login: 'beatriz.nunes',
+    email: 'beatriz@zsaude.gov.br',
+    cpf: '912.345.678-90',
+    phone: '(62) 90000-7890',
+    status: 'Ativo',
+    createdAt: '2023-08-03',
+    primaryRole: 'Assistente Social',
+    municipalities: [
+      {
+        municipalityId: 'mun2',
+        facilities: [
+          { facilityId: 'fac8', role: 'Assistente Social', modules: ['cln', 'pln'] },
+        ],
+      },
+      {
+        municipalityId: 'mun3',
+        facilities: [
+          { facilityId: 'fac10', role: 'Assistente Social', modules: ['cln'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr11',
+    name: 'Marcos Vinicius',
+    login: 'marcos.vinicius',
+    email: 'marcos@zsaude.gov.br',
+    cpf: '023.456.789-01',
+    phone: '(62) 98765-4321',
+    status: 'Inativo',
+    createdAt: '2022-09-14',
+    primaryRole: 'Técnico de Enfermagem',
+    municipalities: [
+      {
+        municipalityId: 'mun2',
+        facilities: [
+          { facilityId: 'fac9', role: 'Técnico de Enfermagem', modules: ['hsp'] },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'usr12',
+    name: 'Juliana Torres',
+    login: 'juliana.torres',
+    email: 'juliana@zsaude.gov.br',
+    cpf: '134.567.890-23',
+    phone: '(62) 99876-5432',
+    status: 'Ativo',
+    createdAt: '2023-09-22',
+    primaryRole: 'Recepcionista',
+    municipalities: [
+      {
+        municipalityId: 'mun1',
+        facilities: [
+          { facilityId: 'fac2', role: 'Recepcionista', modules: ['cln'] },
+          { facilityId: 'fac3', role: 'Recepcionista', modules: ['cln'] },
         ],
       },
     ],
