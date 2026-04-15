@@ -26,13 +26,13 @@ export function ADMHomePage() {
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Frota</h2>
-          <a href="/adm/veiculos" className="text-xs text-primary hover:underline">Ver todos</a>
+          <a href="/ops/veiculos" className="text-xs text-primary hover:underline">Ver todos</a>
         </div>
         <div className="divide-y divide-border">
           {mockVehicles.map(v => (
             <div
               key={v.id}
-              onClick={() => navigate('/adm/veiculos')}
+              onClick={() => navigate('/ops/veiculos')}
               className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-muted/30 transition-colors"
             >
               <Car size={18} className="text-muted-foreground shrink-0" />

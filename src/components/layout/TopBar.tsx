@@ -15,8 +15,8 @@ const SYSTEM_COLORS: Record<string, string> = {
 }
 
 const MODULE_COLORS: Record<SystemId, string> = {
-  ga: '#0ea5e9', lab: '#8b5cf6', aih: '#f59e0b',
-  conv: '#10b981', visa: '#f97316', adm: '#6b7280',
+  cln: '#0ea5e9', dgn: '#8b5cf6', hsp: '#f59e0b',
+  pln: '#10b981', fsc: '#f97316', ops: '#6b7280',
 }
 
 interface Props { module: SystemId | null }

@@ -29,10 +29,10 @@ export function PatientDetailPage() {
       <PageHeader
         title={patient.name}
         subtitle={`Prontuário ${patient.prontuario}`}
-        back="/ga/pacientes"
+        back="/cln/pacientes"
         actions={
           <button
-            onClick={() => navigate(`/ga/pacientes/${id}/editar`)}
+            onClick={() => navigate(`/cln/pacientes/${id}/editar`)}
             className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted transition-colors"
           >
             <Edit size={15} /> Editar

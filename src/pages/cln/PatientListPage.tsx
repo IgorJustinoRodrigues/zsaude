@@ -41,7 +41,7 @@ export function PatientListPage() {
         subtitle={`${mockPatients.length} pacientes cadastrados`}
         actions={
           <button
-            onClick={() => navigate('/ga/pacientes/novo')}
+            onClick={() => navigate('/cln/pacientes/novo')}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             <UserPlus size={16} /> Novo Paciente
@@ -54,7 +54,7 @@ export function PatientListPage() {
         searchable
         searchKeys={['name', 'cpf', 'cns', 'prontuario']}
         searchPlaceholder="Buscar por nome, CPF, CNS ou prontuário..."
-        onRowClick={p => navigate(`/ga/pacientes/${p.id}`)}
+        onRowClick={p => navigate(`/cln/pacientes/${p.id}`)}
         keyExtractor={p => p.id}
       />
     </div>

@@ -27,13 +27,13 @@ export function VISAHomePage() {
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Estabelecimentos</h2>
-          <a href="/visa/estabelecimentos" className="text-xs text-primary hover:underline">Ver todos</a>
+          <a href="/fsc/estabelecimentos" className="text-xs text-primary hover:underline">Ver todos</a>
         </div>
         <div className="divide-y divide-border">
           {mockEstablishments.map(est => (
             <div
               key={est.id}
-              onClick={() => navigate('/visa/estabelecimentos')}
+              onClick={() => navigate('/fsc/estabelecimentos')}
               className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-muted/30 transition-colors"
             >
               <div className="flex-1 min-w-0">

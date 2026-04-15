@@ -33,6 +33,10 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => set({ user: null, currentSystem: null, isAuthenticated: false }),
     }),
-    { name: 'zsaude-auth' }
+    {
+      name: 'zsaude-auth',
+      version: 2,
+      migrate: () => ({ user: null, currentSystem: null, isAuthenticated: false }),
+    }
   )
 )

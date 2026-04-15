@@ -1,4 +1,4 @@
-import { Outlet, useParams, Navigate } from 'react-router-dom'
+import { Outlet, useLocation, Navigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { useUIStore } from '../../store/uiStore'
@@ -6,15 +6,16 @@ import { useAuthStore } from '../../store/authStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
-const VALID_MODULES: SystemId[] = ['ga', 'lab', 'aih', 'conv', 'visa', 'adm']
+const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
 
 export function AppShell() {
   const { isAuthenticated } = useAuthStore()
   const { sidebarCollapsed } = useUIStore()
-  const { module } = useParams<{ module: string }>()
+  const { pathname } = useLocation()
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  const currentModule = VALID_MODULES.includes(module as SystemId) ? (module as SystemId) : null
+  const segment = pathname.split('/')[1] as SystemId
+  const currentModule = VALID_MODULES.includes(segment) ? segment : null
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">

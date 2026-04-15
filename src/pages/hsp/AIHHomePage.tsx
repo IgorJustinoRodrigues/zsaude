@@ -19,7 +19,7 @@ export function AIHHomePage() {
           <p className="text-sm text-muted-foreground mt-0.5">Gestão de internações hospitalares</p>
         </div>
         <button
-          onClick={() => navigate('/aih/internacoes/novo')}
+          onClick={() => navigate('/hsp/internacoes/novo')}
           className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors"
         >
           <Plus size={16} /> Nova AIH

@@ -34,7 +34,7 @@ export function AppointmentListPage() {
         subtitle={`${mockAppointments.length} agendamentos`}
         actions={
           <button
-            onClick={() => navigate('/ga/agendamentos/novo')}
+            onClick={() => navigate('/cln/agendamentos/novo')}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             <CalendarPlus size={16} /> Novo Agendamento
@@ -47,7 +47,7 @@ export function AppointmentListPage() {
         searchable
         searchKeys={['patientName', 'specialty', 'professionalName']}
         searchPlaceholder="Buscar por paciente, especialidade..."
-        onRowClick={a => navigate(`/ga/pacientes/${a.patientId}`)}
+        onRowClick={a => navigate(`/cln/pacientes/${a.patientId}`)}
         keyExtractor={a => a.id}
       />
     </div>

@@ -1,7 +1,8 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
+  LayoutDashboard,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -10,12 +11,12 @@ import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
 const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React.ReactNode; color: string }> = {
-  ga:   { label: 'Clínica',     abbrev: 'CLN', icon: <Stethoscope size={18} />,    color: '#0ea5e9' },
-  lab:  { label: 'Diagnóstico', abbrev: 'DGN', icon: <FlaskConical size={18} />,   color: '#8b5cf6' },
-  aih:  { label: 'Hospitalar',  abbrev: 'HSP', icon: <BedDouble size={18} />,      color: '#f59e0b' },
-  conv: { label: 'Planos',      abbrev: 'PLN', icon: <ShieldCheck size={18} />,    color: '#10b981' },
-  visa: { label: 'Fiscal',      abbrev: 'FSC', icon: <ClipboardCheck size={18} />, color: '#f97316' },
-  adm:  { label: 'Operações',   abbrev: 'OPS', icon: <Truck size={18} />,          color: '#6b7280' },
+  cln: { label: 'Clínica',     abbrev: 'CLN', icon: <Stethoscope size={18} />,    color: '#0ea5e9' },
+  dgn: { label: 'Diagnóstico', abbrev: 'DGN', icon: <FlaskConical size={18} />,   color: '#8b5cf6' },
+  hsp: { label: 'Hospitalar',  abbrev: 'HSP', icon: <BedDouble size={18} />,      color: '#f59e0b' },
+  pln: { label: 'Planos',      abbrev: 'PLN', icon: <ShieldCheck size={18} />,    color: '#10b981' },
+  fsc: { label: 'Fiscal',      abbrev: 'FSC', icon: <ClipboardCheck size={18} />, color: '#f97316' },
+  ops: { label: 'Operações',   abbrev: 'OPS', icon: <Truck size={18} />,          color: '#6b7280' },
 }
 
 interface Props { module: SystemId | null }
@@ -24,6 +25,7 @@ export function Sidebar({ module }: Props) {
   const { sidebarCollapsed, sidebarMobileOpen, toggleSidebar, closeMobileSidebar } = useUIStore()
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const meta = module ? MODULE_META[module] : null
 
   // No mobile: expanded se aberto; no tablet: sempre collapsed; no desktop: segue sidebarCollapsed
@@ -42,7 +44,7 @@ export function Sidebar({ module }: Props) {
 
       <aside
         className={cn(
-          'fixed left-0 top-0 h-full flex flex-col transition-all duration-200 z-30 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900',
+          'fixed left-0 top-0 h-full flex flex-col transition-all duration-200 z-30 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden',
           // Mobile: desliza para fora quando fechado, w-64 quando aberto
           isExpanded ? 'translate-x-0 w-64' : '-translate-x-full w-64',
           // Tablet (md): sempre visível, sempre icon-only
@@ -109,7 +111,17 @@ export function Sidebar({ module }: Props) {
         )}
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-2 overflow-y-auto" />
+        <nav className="flex-1 px-2 py-2 overflow-y-auto space-y-0.5">
+          {module && meta && (
+            <NavItem
+              icon={<LayoutDashboard size={16} />}
+              label="Início"
+              active={location.pathname === `/${module}`}
+              color={meta.color}
+              onClick={() => { navigate(`/${module}`); closeMobileSidebar() }}
+            />
+          )}
+        </nav>
 
         {/* Footer */}
         <div className="border-t border-slate-100 dark:border-slate-800 p-2 space-y-0.5 shrink-0">
@@ -160,5 +172,35 @@ export function Sidebar({ module }: Props) {
         </div>
       </aside>
     </>
+  )
+}
+
+interface NavItemProps {
+  icon: React.ReactNode
+  label: string
+  active: boolean
+  color: string
+  onClick: () => void
+}
+
+function NavItem({ icon, label, active, color, onClick }: NavItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={cn(
+        'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors',
+        // mobile aberto: row normal; tablet: centralizado; desktop: row normal
+        'justify-start md:justify-center lg:justify-start',
+        active
+          ? 'text-white'
+          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
+      )}
+      style={active ? { backgroundColor: color } : undefined}
+    >
+      <span className="shrink-0">{icon}</span>
+      {/* label visível no mobile aberto e desktop expandido; some no tablet/desktop collapsed */}
+      <span className="truncate md:hidden lg:inline">{label}</span>
+    </button>
   )
 }

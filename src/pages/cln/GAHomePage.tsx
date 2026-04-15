@@ -59,7 +59,7 @@ export function GAHomePage() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-border overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold">Agendamentos de Hoje</h2>
-            <a href="/ga/agendamentos" className="text-xs text-primary hover:underline">Ver todos</a>
+            <a href="/cln/agendamentos" className="text-xs text-primary hover:underline">Ver todos</a>
           </div>
           <div className="divide-y divide-border">
             {todayAppts.slice(0, 8).map(a => (
@@ -79,7 +79,7 @@ export function GAHomePage() {
         <div className="bg-white rounded-xl border border-border overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold">Fila Atual</h2>
-            <a href="/ga/fila" className="text-xs text-primary hover:underline">Painel</a>
+            <a href="/cln/fila" className="text-xs text-primary hover:underline">Painel</a>
           </div>
           <div className="p-5 space-y-4">
             <div className="flex items-center justify-between text-sm">
@@ -117,7 +117,7 @@ export function GAHomePage() {
 
           <div className="px-5 pb-5">
             <a
-              href="/ga/fila"
+              href="/cln/fila"
               className="block w-full text-center py-2 rounded-lg bg-sky-50 text-sky-600 text-sm font-medium hover:bg-sky-100 transition-colors"
             >
               Abrir Painel da Fila

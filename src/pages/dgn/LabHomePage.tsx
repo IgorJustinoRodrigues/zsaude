@@ -27,7 +27,7 @@ export function LabHomePage() {
       <div className="bg-white rounded-xl border border-border overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-sm font-semibold">Pedidos Recentes</h2>
-          <a href="/lab/pedidos" className="text-xs text-primary hover:underline">Ver todos</a>
+          <a href="/dgn/pedidos" className="text-xs text-primary hover:underline">Ver todos</a>
         </div>
         <div className="divide-y divide-border">
           {mockExamRequests.map(e => (

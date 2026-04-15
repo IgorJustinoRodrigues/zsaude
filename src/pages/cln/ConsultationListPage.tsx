@@ -21,7 +21,7 @@ export function ConsultationListPage() {
         {attended.map(a => (
           <div
             key={a.id}
-            onClick={() => navigate(`/ga/pacientes/${a.patientId}`)}
+            onClick={() => navigate(`/cln/pacientes/${a.patientId}`)}
             className="bg-white rounded-xl border border-border p-5 flex items-center gap-4 cursor-pointer hover:bg-muted/30 transition-colors"
           >
             <FileText size={20} className="text-muted-foreground shrink-0" />

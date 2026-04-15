@@ -13,21 +13,21 @@ import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
 const ICONS: Record<SystemId, React.ReactNode> = {
-  ga:   <Stethoscope size={22} />,
-  lab:  <FlaskConical size={22} />,
-  aih:  <BedDouble size={22} />,
-  conv: <ShieldCheck size={22} />,
-  visa: <ClipboardCheck size={22} />,
-  adm:  <Truck size={22} />,
+  cln: <Stethoscope size={22} />,
+  dgn: <FlaskConical size={22} />,
+  hsp: <BedDouble size={22} />,
+  pln: <ShieldCheck size={22} />,
+  fsc: <ClipboardCheck size={22} />,
+  ops: <Truck size={22} />,
 }
 
 const ICON_SM: Record<SystemId, React.ReactNode> = {
-  ga:   <Stethoscope size={12} />,
-  lab:  <FlaskConical size={12} />,
-  aih:  <BedDouble size={12} />,
-  conv: <ShieldCheck size={12} />,
-  visa: <ClipboardCheck size={12} />,
-  adm:  <Truck size={12} />,
+  cln: <Stethoscope size={12} />,
+  dgn: <FlaskConical size={12} />,
+  hsp: <BedDouble size={12} />,
+  pln: <ShieldCheck size={12} />,
+  fsc: <ClipboardCheck size={12} />,
+  ops: <Truck size={12} />,
 }
 
 export function SystemSelectPage() {

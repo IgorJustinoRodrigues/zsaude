@@ -5,12 +5,12 @@ import {
 import type { SystemId } from '../types'
 
 const MODULE_INFO: Record<SystemId, { label: string; abbrev: string; description: string; icon: React.ReactNode; color: string }> = {
-  ga:   { label: 'Clínica',     abbrev: 'CLN', description: 'Atendimento ambulatorial, pacientes, prontuário eletrônico, fila de atendimento, APAC, produção e estoque.', icon: <Stethoscope size={32} />, color: '#0ea5e9' },
-  lab:  { label: 'Diagnóstico', abbrev: 'DGN', description: 'Pedidos de exame, coleta, análise e liberação de laudos laboratoriais.',                                      icon: <FlaskConical size={32} />, color: '#8b5cf6' },
-  aih:  { label: 'Hospitalar',  abbrev: 'HSP', description: 'Autorização e gestão de internações hospitalares, leitos e documentação.',                                     icon: <BedDouble size={32} />,    color: '#f59e0b' },
-  conv: { label: 'Planos',      abbrev: 'PLN', description: 'Convênios, coberturas, planos de saúde, IPASGO e procedimentos cobertos.',                                     icon: <ShieldCheck size={32} />,  color: '#10b981' },
-  visa: { label: 'Fiscal',      abbrev: 'FSC', description: 'Vigilância sanitária, alvarás, inspeções e controle de estabelecimentos.',                                     icon: <ClipboardCheck size={32} />, color: '#f97316' },
-  adm:  { label: 'Operações',   abbrev: 'OPS', description: 'Frota, motoristas, transporte de pacientes e logística de saúde.',                                             icon: <Truck size={32} />,        color: '#6b7280' },
+  cln: { label: 'Clínica',     abbrev: 'CLN', description: 'Atendimento ambulatorial, pacientes, prontuário eletrônico, fila de atendimento, APAC, produção e estoque.', icon: <Stethoscope size={32} />,   color: '#0ea5e9' },
+  dgn: { label: 'Diagnóstico', abbrev: 'DGN', description: 'Pedidos de exame, coleta, análise e liberação de laudos laboratoriais.',                                      icon: <FlaskConical size={32} />,  color: '#8b5cf6' },
+  hsp: { label: 'Hospitalar',  abbrev: 'HSP', description: 'Autorização e gestão de internações hospitalares, leitos e documentação.',                                     icon: <BedDouble size={32} />,     color: '#f59e0b' },
+  pln: { label: 'Planos',      abbrev: 'PLN', description: 'Convênios, coberturas, planos de saúde, IPASGO e procedimentos cobertos.',                                     icon: <ShieldCheck size={32} />,   color: '#10b981' },
+  fsc: { label: 'Fiscal',      abbrev: 'FSC', description: 'Vigilância sanitária, alvarás, inspeções e controle de estabelecimentos.',                                     icon: <ClipboardCheck size={32} />, color: '#f97316' },
+  ops: { label: 'Operações',   abbrev: 'OPS', description: 'Frota, motoristas, transporte de pacientes e logística de saúde.',                                             icon: <Truck size={32} />,         color: '#6b7280' },
 }
 
 export function ModulePlaceholder() {
