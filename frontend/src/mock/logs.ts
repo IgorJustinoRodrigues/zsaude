@@ -194,15 +194,6 @@ export const mockSystemLogs: SystemLog[] = [
     at: ago(1440 + 60),
   },
   {
-    id: 'sl018', hash: hash(),
-    userId: 'usr7', userName: 'Rafael Campos',
-    action: 'create', severity: 'info', module: 'HSP', resource: 'Internação', resourceId: 'aih-00881',
-    description: 'Abriu AIH para internação — Carlos Eduardo Mota',
-    details: 'Autorização de Internação Hospitalar emitida. Paciente: Carlos Eduardo Mota (AIH: 3500112345678). CID: I20.0 – Angina instável. Procedimento: Internação em Cardiologia. Leito: 204-B. Médico solicitante: Dr. Rafael Campos (CRM-GO 18.234).',
-    ip: '187.110.44.22', userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0) Safari/604',
-    at: ago(1440 + 90),
-  },
-  {
     id: 'sl019', hash: hash(),
     userId: 'usr2', userName: 'Carla Mendonça',
     action: 'edit', severity: 'info', module: 'CLN', resource: 'Paciente', resourceId: 'pac-0041',

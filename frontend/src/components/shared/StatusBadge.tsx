@@ -1,7 +1,7 @@
 import { cn } from '../../lib/utils'
-import type { AppointmentStatus, QueueStatus, ExamStatus, TriageRisk, LicenseStatus, VehicleStatus, AdmissionStatus } from '../../types'
+import type { AppointmentStatus, QueueStatus, ExamStatus, TriageRisk, LicenseStatus, VehicleStatus } from '../../types'
 
-type AnyStatus = AppointmentStatus | QueueStatus | ExamStatus | TriageRisk | LicenseStatus | VehicleStatus | AdmissionStatus | string
+type AnyStatus = AppointmentStatus | QueueStatus | ExamStatus | TriageRisk | LicenseStatus | VehicleStatus | string
 
 const STATUS_STYLES: Record<string, string> = {
   // Appointment
@@ -34,13 +34,6 @@ const STATUS_STYLES: Record<string, string> = {
   'Em Uso': 'bg-blue-100 text-blue-700',
   'Manutenção': 'bg-amber-100 text-amber-700',
   'Inativo': 'bg-gray-100 text-gray-500',
-  // Admission
-  'Solicitada': 'bg-blue-100 text-blue-700',
-  'Autorizada': 'bg-cyan-100 text-cyan-700',
-  'Internado': 'bg-violet-100 text-violet-700',
-  'Alta': 'bg-emerald-100 text-emerald-700',
-  'Óbito': 'bg-gray-700 text-white',
-  'Transferido': 'bg-orange-100 text-orange-700',
   // Establishment
   'Regular': 'bg-emerald-100 text-emerald-700',
   'Irregular': 'bg-red-100 text-red-700',

@@ -33,7 +33,7 @@ import { ExamRequestListPage } from '../pages/dgn/ExamRequestListPage'
 import { LabReportPage } from '../pages/dgn/LabReportPage'
 
 // HSP – Hospitalar
-import { AIHHomePage } from '../pages/hsp/AIHHomePage'
+// (telas serão adicionadas aqui)
 
 // PLN – Planos
 import { ConvHomePage } from '../pages/pln/ConvHomePage'
@@ -152,12 +152,10 @@ export const router = createBrowserRouter([
                 ],
               },
 
-              // HSP
+              // HSP — Hospitalar (telas ainda não criadas)
               {
                 element: <RequireModule moduleId="hsp" />,
-                children: [
-                  { path: '/hsp', element: <AIHHomePage /> },
-                ],
+                children: [],
               },
 
               // PLN

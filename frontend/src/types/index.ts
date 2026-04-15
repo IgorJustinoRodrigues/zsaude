@@ -291,26 +291,6 @@ export interface Insurance {
   beneficiariesCount: number
 }
 
-// ─── Hospital Admission (AIH) ─────────────────────────────────────────────────
-
-export type AdmissionStatus = 'Solicitada' | 'Autorizada' | 'Internado' | 'Alta' | 'Óbito' | 'Transferido'
-
-export interface Admission {
-  id: string
-  aihNumber: string
-  patientId: string
-  patientName: string
-  professionalId: string
-  unitId: string
-  admissionDate: string
-  dischargeDate?: string
-  diagnosis: string
-  cidCode: string
-  procedure: string
-  status: AdmissionStatus
-  bed?: string
-  ward?: string
-}
 
 // ─── VISA - Establishments ────────────────────────────────────────────────────
 
