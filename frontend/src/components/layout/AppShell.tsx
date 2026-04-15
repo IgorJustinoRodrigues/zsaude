@@ -1,19 +1,17 @@
-import { Outlet, useLocation, Navigate } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
 import { useUIStore } from '../../store/uiStore'
-import { useAuthStore } from '../../store/authStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
 
 export function AppShell() {
-  const { isAuthenticated } = useAuthStore()
+  // Os guards de rota (RequireAuth, RequireContext, RequireModule) já garantem
+  // que usuário/contexto/módulo existem. O shell apenas renderiza o layout.
   const { sidebarCollapsed } = useUIStore()
   const { pathname } = useLocation()
-
-  if (!isAuthenticated) return <Navigate to="/login" replace />
   const segment = pathname.split('/')[1] as SystemId
   const currentModule = VALID_MODULES.includes(segment) ? segment : null
 
@@ -23,11 +21,8 @@ export function AppShell() {
       <div
         className={cn(
           'flex flex-col flex-1 min-w-0 transition-all duration-200',
-          // mobile: sem margem (sidebar é overlay)
           'ml-0',
-          // tablet (md): sidebar sempre icon-only (w-16)
           'md:ml-16',
-          // desktop (lg): segue preferência do usuário
           sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60',
         )}
       >

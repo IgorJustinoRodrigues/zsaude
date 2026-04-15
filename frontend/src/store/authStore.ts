@@ -23,7 +23,13 @@ interface AuthState {
   contextOptions: WorkContextOptions | null
   loadingOptions: boolean
 
+  // Status de hidratação (tokens persistidos, user/options em memória)
+  hydrated: boolean
+  hydrating: boolean
+
   // Actions
+  /** Recarrega user + contextOptions a partir dos tokens persistidos. */
+  hydrate: () => Promise<void>
   login: (login: string, password: string) => Promise<boolean>
   fetchContextOptions: () => Promise<WorkContextOptions | null>
   /** Seleciona contexto via backend. Retorna os módulos disponíveis. */
@@ -47,6 +53,45 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       contextOptions: null,
       loadingOptions: false,
+      hydrated: false,
+      hydrating: false,
+
+      hydrate: async () => {
+        const { accessToken, user, hydrating } = get()
+        if (hydrating) return
+        if (!accessToken) {
+          set({ hydrated: true })
+          return
+        }
+        if (user) {
+          set({ hydrated: true })
+          return
+        }
+        set({ hydrating: true })
+        try {
+          const [me, options] = await Promise.all([
+            authApi.me(),
+            workContextApi.options(),
+          ])
+          set({ user: me, contextOptions: options, hydrated: true })
+        } catch {
+          // Tokens inválidos ou rede fora. Zera sessão; o onRefreshFailure
+          // do cliente HTTP já redireciona pro /login no 401.
+          set({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            contextToken: null,
+            context: null,
+            currentSystem: null,
+            isAuthenticated: false,
+            contextOptions: null,
+            hydrated: true,
+          })
+        } finally {
+          set({ hydrating: false })
+        }
+      },
 
       login: async (login, password) => {
         const pair = await authApi.login(login, password)
@@ -58,6 +103,7 @@ export const useAuthStore = create<AuthState>()(
           contextToken: null,
           currentSystem: null,
           contextOptions: null,
+          hydrated: true,
         })
         // Carrega perfil + options em paralelo
         const [me, options] = await Promise.all([
@@ -154,6 +200,8 @@ export const useAuthStore = create<AuthState>()(
         isAuthenticated: false,
         contextOptions: null,
         loadingOptions: false,
+        hydrated: false,
+        hydrating: false,
       }),
       // Só persiste tokens + flag de auth. user/context/options são recarregados.
       partialize: (state) => ({

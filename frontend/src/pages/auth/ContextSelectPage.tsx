@@ -28,13 +28,11 @@ export function ContextSelectPage() {
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return }
-    // Carrega options do backend caso ainda não estejam em memória
+    // Caso a hidratação do guard não tenha carregado options por algum motivo
     if (!contextOptions) {
       fetchContextOptions().catch(() => navigate('/login'))
     }
   }, []) // eslint-disable-line
-
-  if (!user) return null
 
   const accessible = contextOptions?.municipalities ?? []
   const totalFacilities = accessible.reduce((s, m) => s + m.facilities.length, 0)
