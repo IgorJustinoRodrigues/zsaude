@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
-  LayoutDashboard, MapPin,
+  LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -19,6 +20,28 @@ const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React
   ops: { label: 'Operações',   abbrev: 'OPS', icon: <Truck size={18} />,          color: '#6b7280' },
 }
 
+type SubItem   = { label: string; path: string; icon: React.ReactNode }
+type NavGroup  = { kind: 'group';   icon: React.ReactNode; label: string; collapsedPath: string; children: SubItem[] }
+type NavItem   = { kind: 'item';    icon: React.ReactNode; label: string; path: string }
+type NavSection = { kind: 'section'; label: string }
+type NavEntry  = NavItem | NavGroup | NavSection
+
+const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
+  ops: [
+    { kind: 'section', label: 'Cadastros' },
+    {
+      kind: 'group',
+      icon: <Users size={16} />,
+      label: 'Usuários',
+      collapsedPath: '/ops/usuarios',
+      children: [
+        { label: 'Listar',    path: '/ops/usuarios',      icon: <List size={13} /> },
+        { label: 'Cadastrar', path: '/ops/usuarios/novo', icon: <UserPlus size={13} /> },
+      ],
+    },
+  ],
+}
+
 interface Props { module: SystemId | null }
 
 export function Sidebar({ module }: Props) {
@@ -30,6 +53,23 @@ export function Sidebar({ module }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const meta = module ? MODULE_META[module] : null
+
+  // Grupos expandidos: inicializa aberto se algum filho estiver ativo
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    if (module) {
+      MODULE_NAV[module]?.forEach(entry => {
+        if (entry.kind === 'group') {
+          const anyActive = entry.children.some(c => location.pathname === c.path)
+          if (anyActive) init[entry.label] = true
+        }
+      })
+    }
+    return init
+  })
+
+  const toggleGroup = (label: string) =>
+    setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }))
 
   // No mobile: expanded se aberto; no tablet: sempre collapsed; no desktop: segue sidebarCollapsed
   const isExpanded = sidebarMobileOpen  // mobile override
@@ -116,13 +156,105 @@ export function Sidebar({ module }: Props) {
         {/* Nav */}
         <nav className="flex-1 px-2 py-2 overflow-y-auto space-y-0.5">
           {module && meta && (
-            <NavItem
-              icon={<LayoutDashboard size={16} />}
-              label="Início"
-              active={location.pathname === `/${module}`}
-              color={meta.color}
-              onClick={() => { navigate(`/${module}`); closeMobileSidebar() }}
-            />
+            <>
+              <NavItem
+                icon={<LayoutDashboard size={16} />}
+                label="Início"
+                active={location.pathname === `/${module}`}
+                color={meta.color}
+                collapsed={desktopCollapsed}
+                onClick={() => { navigate(`/${module}`); closeMobileSidebar() }}
+              />
+
+              {MODULE_NAV[module]?.map((entry, i) => {
+                if (entry.kind === 'section') {
+                  return (
+                    <div key={`sec-${i}`}>
+                      {/* Divisor visível no collapsed */}
+                      <div className={cn('mx-2 my-2 border-t border-slate-100 dark:border-slate-800', !desktopCollapsed && 'lg:hidden')} />
+                      {/* Label visível no expandido */}
+                      <p className={cn(
+                        'pt-3 pb-1 px-2.5 text-[10px] font-bold tracking-widest uppercase text-slate-400 dark:text-slate-600',
+                        'md:hidden',
+                        !desktopCollapsed && 'lg:block',
+                      )}>
+                        {entry.label}
+                      </p>
+                    </div>
+                  )
+                }
+
+                if (entry.kind === 'group') {
+                  const anyChildActive = entry.children.some(c => location.pathname === c.path)
+                  const isOpen = openGroups[entry.label] ?? false
+                  return (
+                    <div key={entry.label}>
+                      {/* Quando collapsed: botão vai direto para collapsedPath */}
+                      <button
+                        onClick={() => {
+                          if (desktopCollapsed) { navigate(entry.collapsedPath); closeMobileSidebar() }
+                          else toggleGroup(entry.label)
+                        }}
+                        title={entry.label}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors',
+                          desktopCollapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
+                          anyChildActive && desktopCollapsed
+                            ? 'text-white'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
+                        )}
+                        style={anyChildActive && desktopCollapsed ? { backgroundColor: meta.color } : undefined}
+                      >
+                        <span className="shrink-0">{entry.icon}</span>
+                        {!desktopCollapsed && <>
+                          <span className="truncate md:hidden lg:inline">{entry.label}</span>
+                          <ChevronDown
+                            size={13}
+                            className={cn(
+                              'shrink-0 transition-transform text-slate-400 ml-auto md:hidden lg:block',
+                              isOpen && 'rotate-180',
+                            )}
+                          />
+                        </>}
+                      </button>
+
+                      {/* Sub-itens — visíveis apenas no expandido e quando aberto */}
+                      {isOpen && (
+                        <div className={cn('ml-3 pl-3 border-l border-slate-100 dark:border-slate-800 mt-0.5 space-y-0.5', 'md:hidden lg:block')}>
+                          {entry.children.map(child => (
+                            <button
+                              key={child.path}
+                              onClick={() => { navigate(child.path); closeMobileSidebar() }}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors',
+                                location.pathname === child.path
+                                  ? 'font-semibold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800'
+                                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
+                              )}
+                            >
+                              <span className="shrink-0">{child.icon}</span>
+                              {child.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
+
+                return (
+                  <NavItem
+                    key={entry.path}
+                    icon={entry.icon}
+                    label={entry.label}
+                    active={location.pathname === entry.path}
+                    color={meta.color}
+                    collapsed={desktopCollapsed}
+                    onClick={() => { navigate(entry.path); closeMobileSidebar() }}
+                  />
+                )
+              })}
+            </>
           )}
         </nav>
 
@@ -171,13 +303,12 @@ export function Sidebar({ module }: Props) {
               onClick={() => { navigate('/selecionar-sistema'); closeMobileSidebar() }}
               className={cn(
                 'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
-                'md:justify-center',
-                !desktopCollapsed && 'lg:justify-start',
+                desktopCollapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
               )}
               title="Trocar módulo"
             >
               <LayoutGrid size={15} />
-              <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar módulo</span>
+              {!desktopCollapsed && <span className="md:hidden lg:inline">Trocar módulo</span>}
             </button>
           )}
 
@@ -186,13 +317,12 @@ export function Sidebar({ module }: Props) {
               onClick={() => { navigate('/selecionar-contexto'); closeMobileSidebar() }}
               className={cn(
                 'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
-                'md:justify-center',
-                !desktopCollapsed && 'lg:justify-start',
+                desktopCollapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
               )}
               title="Trocar unidade"
             >
               <MapPin size={15} />
-              <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar unidade</span>
+              {!desktopCollapsed && <span className="md:hidden lg:inline">Trocar unidade</span>}
             </button>
           )}
 
@@ -200,13 +330,12 @@ export function Sidebar({ module }: Props) {
             onClick={() => { logout(); closeMobileSidebar() }}
             className={cn(
               'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors',
-              'md:justify-center',
-              !desktopCollapsed && 'lg:justify-start',
+              desktopCollapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
             )}
             title="Sair"
           >
             <LogOut size={15} />
-            <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Sair</span>
+            {!desktopCollapsed && <span className="md:hidden lg:inline">Sair</span>}
           </button>
         </div>
       </aside>
@@ -219,18 +348,19 @@ interface NavItemProps {
   label: string
   active: boolean
   color: string
+  collapsed: boolean
   onClick: () => void
 }
 
-function NavItem({ icon, label, active, color, onClick }: NavItemProps) {
+function NavItem({ icon, label, active, color, collapsed, onClick }: NavItemProps) {
   return (
     <button
       onClick={onClick}
       title={label}
       className={cn(
         'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors',
-        // mobile aberto: row normal; tablet: centralizado; desktop: row normal
-        'justify-start md:justify-center lg:justify-start',
+        // tablet (md) sempre centralizado; desktop segue collapsed
+        collapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
         active
           ? 'text-white'
           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800',
@@ -238,8 +368,8 @@ function NavItem({ icon, label, active, color, onClick }: NavItemProps) {
       style={active ? { backgroundColor: color } : undefined}
     >
       <span className="shrink-0">{icon}</span>
-      {/* label visível no mobile aberto e desktop expandido; some no tablet/desktop collapsed */}
-      <span className="truncate md:hidden lg:inline">{label}</span>
+      {/* label: nunca no tablet (md:hidden); no desktop, só se não collapsed */}
+      {!collapsed && <span className="truncate md:hidden lg:inline">{label}</span>}
     </button>
   )
 }

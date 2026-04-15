@@ -35,6 +35,8 @@ import { EstablishmentListPage } from '../pages/fsc/EstablishmentListPage'
 
 // OPS – Operações
 import { OpsHomePage } from '../pages/ops/OpsHomePage'
+import { OpsUserListPage } from '../pages/ops/OpsUserListPage'
+import { OpsUserFormPage } from '../pages/ops/OpsUserFormPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -74,7 +76,9 @@ export const router = createBrowserRouter([
       { path: '/fsc/estabelecimentos',       element: <EstablishmentListPage /> },
 
       // OPS – Operações
-      { path: '/ops', element: <OpsHomePage /> },
+      { path: '/ops',                  element: <OpsHomePage /> },
+      { path: '/ops/usuarios',          element: <OpsUserListPage /> },
+      { path: '/ops/usuarios/novo',     element: <OpsUserFormPage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },
