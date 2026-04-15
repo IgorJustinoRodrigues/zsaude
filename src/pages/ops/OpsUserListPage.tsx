@@ -211,7 +211,11 @@ export function OpsUserListPage() {
           {/* Mobile: cards */}
           <div className="lg:hidden space-y-2">
             {filtered.map(u => (
-              <MobileCard key={u.id} user={u} onEdit={() => navigate(`/ops/usuarios/${u.id}`)} />
+              <MobileCard
+                key={u.id} user={u}
+                onView={() => navigate(`/ops/usuarios/${u.id}`)}
+                onEdit={() => navigate(`/ops/usuarios/${u.id}/editar`)}
+              />
             ))}
           </div>
 
@@ -233,7 +237,11 @@ export function OpsUserListPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filtered.map(u => (
-                  <TableRow key={u.id} user={u} onEdit={() => navigate(`/ops/usuarios/${u.id}`)} />
+                  <TableRow
+                    key={u.id} user={u}
+                    onView={() => navigate(`/ops/usuarios/${u.id}`)}
+                    onEdit={() => navigate(`/ops/usuarios/${u.id}/editar`)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -296,7 +304,7 @@ function Th({
 
 // ─── Table row ────────────────────────────────────────────────────────────────
 
-function TableRow({ user, onEdit }: { user: UserRecord; onEdit: () => void }) {
+function TableRow({ user, onView, onEdit }: { user: UserRecord; onView: () => void; onEdit: () => void }) {
   const mods = allModules(user)
   const muns = municipalityNames(user)
 
@@ -355,7 +363,7 @@ function TableRow({ user, onEdit }: { user: UserRecord; onEdit: () => void }) {
       {/* Ações */}
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
-          <ActionBtn icon={<Eye size={14} />} title="Ver detalhes" onClick={onEdit} />
+          <ActionBtn icon={<Eye size={14} />} title="Ver detalhes" onClick={onView} />
           <ActionBtn icon={<Pencil size={14} />} title="Editar" onClick={onEdit} />
         </div>
       </td>
@@ -365,7 +373,7 @@ function TableRow({ user, onEdit }: { user: UserRecord; onEdit: () => void }) {
 
 // ─── Mobile card ──────────────────────────────────────────────────────────────
 
-function MobileCard({ user, onEdit }: { user: UserRecord; onEdit: () => void }) {
+function MobileCard({ user, onView, onEdit }: { user: UserRecord; onView: () => void; onEdit: () => void }) {
   const mods = allModules(user)
   const muns = municipalityNames(user)
   return (
@@ -398,7 +406,7 @@ function MobileCard({ user, onEdit }: { user: UserRecord; onEdit: () => void }) 
             ))}
           </div>
           <div className="flex gap-1">
-            <ActionBtn icon={<Eye size={14} />} title="Ver" onClick={onEdit} />
+            <ActionBtn icon={<Eye size={14} />} title="Ver" onClick={onView} />
             <ActionBtn icon={<Pencil size={14} />} title="Editar" onClick={onEdit} />
           </div>
         </div>

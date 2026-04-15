@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useMemo } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
   Camera, User, Eye, EyeOff, RefreshCw, Check, X,
 } from 'lucide-react'
-import { mockMunicipalities, mockFacilities } from '../../mock/users'
+import { mockUsers, mockMunicipalities, mockFacilities } from '../../mock/users'
 import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
@@ -107,15 +107,18 @@ const emptyMunicipality = (): MunicipalityAccess  => ({ municipalityId: '', expa
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function OpsUserFormPage() {
-  const navigate  = useNavigate()
+  const navigate   = useNavigate()
+  const { id }     = useParams<{ id: string }>()
+  const isEdit     = !!id
+  const existing   = useMemo(() => mockUsers.find(u => u.id === id), [id])
 
   // Dados pessoais
-  const [photo,        setPhoto]        = useState<string | null>(null)
+  const [photo,        setPhoto]        = useState<string | null>(existing?.avatar ?? null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [name,         setName]         = useState('')
-  const [cpf,          setCpf]          = useState('')
-  const [email,        setEmail]        = useState('')
-  const [whatsapp,     setWhatsapp]     = useState('')
+  const [name,         setName]         = useState(existing?.name ?? '')
+  const [cpf,          setCpf]          = useState(existing?.cpf ?? '')
+  const [email,        setEmail]        = useState(existing?.email ?? '')
+  const [whatsapp,     setWhatsapp]     = useState(existing?.phone ?? '')
 
   // Endereço
   const [cep,          setCep]          = useState('')
@@ -130,8 +133,21 @@ export function OpsUserFormPage() {
   const [password,     setPassword]     = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
-  // Acessos
-  const [accesses, setAccesses] = useState<MunicipalityAccess[]>([emptyMunicipality()])
+  // Acessos — converte o formato do mock para o formato interno do form
+  const initialAccesses = useMemo<MunicipalityAccess[]>(() => {
+    if (!existing) return [emptyMunicipality()]
+    return existing.municipalities.map(m => ({
+      municipalityId: m.municipalityId,
+      expanded: true,
+      facilities: m.facilities.map(f => ({
+        facilityId: f.facilityId,
+        role: f.role,
+        modules: f.modules,
+      })),
+    }))
+  }, [existing])
+
+  const [accesses, setAccesses] = useState<MunicipalityAccess[]>(initialAccesses)
   const [errors,   setErrors]   = useState<Record<string, string>>({})
 
   const pwdRules = checkPassword(password)
@@ -171,8 +187,12 @@ export function OpsUserFormPage() {
     if (!name.trim())    e.name     = 'Campo obrigatório'
     if (!cpf.trim())     e.cpf      = 'Campo obrigatório'
     if (!email.trim())   e.email    = 'Campo obrigatório'
-    if (!password)       e.password = 'Campo obrigatório'
-    else if (!pwdValid)  e.password = 'A senha não atende aos requisitos'
+    if (!isEdit) {
+      if (!password)      e.password = 'Campo obrigatório'
+      else if (!pwdValid) e.password = 'A senha não atende aos requisitos'
+    } else if (password && !pwdValid) {
+      e.password = 'A senha não atende aos requisitos'
+    }
     accesses.forEach((m, mi) => {
       if (!m.municipalityId) e[`mun-${mi}`] = 'Selecione o município'
       m.facilities.forEach((f, fi) => {
@@ -188,7 +208,7 @@ export function OpsUserFormPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!validate()) return
-    navigate('/ops/usuarios')
+    navigate(isEdit ? `/ops/usuarios/${id}` : '/ops/usuarios')
   }
 
   return (
@@ -202,8 +222,12 @@ export function OpsUserFormPage() {
           <ArrowLeft size={18} />
         </button>
         <div>
-          <h1 className="text-lg font-bold text-slate-900 dark:text-white">Cadastro de usuário</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Preencha os dados e configure os acessos</p>
+          <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+            {isEdit ? `Editar usuário` : 'Cadastro de usuário'}
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {isEdit ? (existing?.name ?? '') : 'Preencha os dados e configure os acessos'}
+          </p>
         </div>
       </div>
 
@@ -299,12 +323,15 @@ export function OpsUserFormPage() {
       {/* ── Seção 3: Senha de acesso ───────────────────────────────────────── */}
       <FormSection
         title="Senha de acesso"
-        subtitle="O usuário poderá alterar a senha no primeiro acesso. O login é feito por CPF ou e-mail."
+        subtitle={isEdit
+          ? 'Deixe em branco para manter a senha atual. O login é feito por CPF ou e-mail.'
+          : 'O usuário poderá alterar a senha no primeiro acesso. O login é feito por CPF ou e-mail.'
+        }
       >
         <div className="space-y-4">
 
           {/* Campo de senha */}
-          <Field label="Senha provisória *" error={errors.password}>
+          <Field label={isEdit ? 'Nova senha' : 'Senha provisória *'} error={errors.password}>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
@@ -496,13 +523,13 @@ export function OpsUserFormPage() {
 
       {/* Ações */}
       <div className="flex items-center justify-end gap-3 pt-6 pb-6 border-t border-slate-100 dark:border-slate-800 mt-2">
-        <button type="button" onClick={() => navigate('/ops/usuarios')}
+        <button type="button" onClick={() => navigate(isEdit ? `/ops/usuarios/${id}` : '/ops/usuarios')}
           className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           Cancelar
         </button>
         <button type="submit"
           className="px-5 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-semibold hover:bg-slate-700 dark:hover:bg-white transition-colors">
-          Cadastrar usuário
+          {isEdit ? 'Salvar alterações' : 'Cadastrar usuário'}
         </button>
       </div>
 

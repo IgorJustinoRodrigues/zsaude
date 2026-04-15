@@ -340,3 +340,72 @@ export const mockAllUsersPresence: UserPresence[] = [
 ]
 
 export const mockOnlineUsers = mockAllUsersPresence.filter(u => u.online)
+
+// ─── Activity logs ────────────────────────────────────────────────────────────
+
+export type LogAction =
+  | 'login' | 'logout'
+  | 'view' | 'create' | 'edit' | 'delete'
+  | 'export' | 'print' | 'permission_change' | 'password_reset'
+
+export interface ActivityLog {
+  id: string
+  userId: string
+  action: LogAction
+  module: string
+  description: string
+  ip: string
+  at: Date
+}
+
+const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+
+export const mockActivityLogs: ActivityLog[] = [
+  // usr1 – Igor Santos
+  { id: 'log1',  userId: 'usr1', action: 'login',            module: 'OPS', description: 'Login realizado',                                       ip: '189.40.12.88',  at: ago(15)   },
+  { id: 'log2',  userId: 'usr1', action: 'view',             module: 'OPS', description: 'Acessou lista de usuários',                             ip: '189.40.12.88',  at: ago(14)   },
+  { id: 'log3',  userId: 'usr1', action: 'create',           module: 'OPS', description: 'Cadastrou usuário Juliana Torres',                      ip: '189.40.12.88',  at: ago(12)   },
+  { id: 'log4',  userId: 'usr1', action: 'permission_change',module: 'OPS', description: 'Alterou permissões de Thales Marques (OPS → inativo)',  ip: '189.40.12.88',  at: ago(10)   },
+  { id: 'log5',  userId: 'usr1', action: 'view',             module: 'CLN', description: 'Acessou lista de pacientes',                            ip: '189.40.12.88',  at: ago(9)    },
+  { id: 'log6',  userId: 'usr1', action: 'view',             module: 'CLN', description: 'Visualizou prontuário de Ana Beatriz Costa',            ip: '189.40.12.88',  at: ago(8)    },
+  { id: 'log7',  userId: 'usr1', action: 'export',           module: 'CLN', description: 'Exportou relatório de produção (Abril/2026)',            ip: '189.40.12.88',  at: ago(6)    },
+  { id: 'log8',  userId: 'usr1', action: 'view',             module: 'DGN', description: 'Acessou painel de exames laboratoriais',                ip: '189.40.12.88',  at: ago(4)    },
+  { id: 'log9',  userId: 'usr1', action: 'edit',             module: 'OPS', description: 'Editou dados de Paulo Henrique',                        ip: '189.40.12.88',  at: ago(2)    },
+  { id: 'log10', userId: 'usr1', action: 'view',             module: 'OPS', description: 'Visualizou perfil de Beatriz Nunes',                    ip: '189.40.12.88',  at: ago(1)    },
+
+  // logs de dias anteriores (usr1)
+  { id: 'log11', userId: 'usr1', action: 'login',            module: 'OPS', description: 'Login realizado',                                       ip: '189.40.12.88',  at: ago(1440 + 30)  },
+  { id: 'log12', userId: 'usr1', action: 'create',           module: 'CLN', description: 'Agendou consulta para paciente Roberto Alves',          ip: '189.40.12.88',  at: ago(1440 + 60)  },
+  { id: 'log13', userId: 'usr1', action: 'print',            module: 'CLN', description: 'Imprimiu guia de encaminhamento',                       ip: '189.40.12.88',  at: ago(1440 + 90)  },
+  { id: 'log14', userId: 'usr1', action: 'edit',             module: 'CLN', description: 'Atualizou cadastro de paciente Maria Souza',            ip: '189.40.12.88',  at: ago(1440 + 120) },
+  { id: 'log15', userId: 'usr1', action: 'logout',           module: 'OPS', description: 'Sessão encerrada',                                      ip: '189.40.12.88',  at: ago(1440 + 480) },
+  { id: 'log16', userId: 'usr1', action: 'login',            module: 'OPS', description: 'Login realizado',                                       ip: '177.22.104.5',  at: ago(2880 + 20)  },
+  { id: 'log17', userId: 'usr1', action: 'password_reset',   module: 'OPS', description: 'Redefiniu senha de Fernanda Lima',                      ip: '177.22.104.5',  at: ago(2880 + 45)  },
+  { id: 'log18', userId: 'usr1', action: 'delete',           module: 'OPS', description: 'Removeu acesso de unidade de Marcos Vinicius',          ip: '177.22.104.5',  at: ago(2880 + 90)  },
+  { id: 'log19', userId: 'usr1', action: 'export',           module: 'FSC', description: 'Exportou relatório de inspeções VISA (Março/2026)',      ip: '177.22.104.5',  at: ago(2880 + 150) },
+  { id: 'log20', userId: 'usr1', action: 'logout',           module: 'OPS', description: 'Sessão encerrada',                                      ip: '177.22.104.5',  at: ago(2880 + 480) },
+
+  // usr2 – Carla Mendonça
+  { id: 'log21', userId: 'usr2', action: 'login',            module: 'CLN', description: 'Login realizado',                                       ip: '201.73.45.12',  at: ago(480)  },
+  { id: 'log22', userId: 'usr2', action: 'view',             module: 'CLN', description: 'Acessou fila de atendimento',                           ip: '201.73.45.12',  at: ago(475)  },
+  { id: 'log23', userId: 'usr2', action: 'create',           module: 'CLN', description: 'Registrou chegada do paciente João Pedro Lima',         ip: '201.73.45.12',  at: ago(470)  },
+  { id: 'log24', userId: 'usr2', action: 'edit',             module: 'CLN', description: 'Atualizou status de agendamento para Confirmado',       ip: '201.73.45.12',  at: ago(460)  },
+  { id: 'log25', userId: 'usr2', action: 'print',            module: 'CLN', description: 'Imprimiu comprovante de agendamento',                   ip: '201.73.45.12',  at: ago(455)  },
+  { id: 'log26', userId: 'usr2', action: 'view',             module: 'CLN', description: 'Consultou histórico de paciente Ana Cláudia',           ip: '201.73.45.12',  at: ago(440)  },
+  { id: 'log27', userId: 'usr2', action: 'create',           module: 'CLN', description: 'Criou novo agendamento para Marcos Pereira',            ip: '201.73.45.12',  at: ago(420)  },
+  { id: 'log28', userId: 'usr2', action: 'logout',           module: 'CLN', description: 'Sessão encerrada',                                      ip: '201.73.45.12',  at: ago(30)   },
+  { id: 'log29', userId: 'usr2', action: 'login',            module: 'CLN', description: 'Login realizado',                                       ip: '201.73.45.12',  at: ago(1920) },
+  { id: 'log30', userId: 'usr2', action: 'view',             module: 'CLN', description: 'Acessou lista de pacientes',                            ip: '201.73.45.12',  at: ago(1900) },
+  { id: 'log31', userId: 'usr2', action: 'create',           module: 'CLN', description: 'Cadastrou novo paciente Carla Ribeiro',                 ip: '201.73.45.12',  at: ago(1880) },
+  { id: 'log32', userId: 'usr2', action: 'edit',             module: 'CLN', description: 'Corrigiu telefone de paciente Fernanda Costa',          ip: '201.73.45.12',  at: ago(1860) },
+  { id: 'log33', userId: 'usr2', action: 'print',            module: 'CLN', description: 'Imprimiu ficha de atendimento',                         ip: '201.73.45.12',  at: ago(1840) },
+  { id: 'log34', userId: 'usr2', action: 'view',             module: 'CLN', description: 'Consultou prontuário de Luiz Henrique',                 ip: '201.73.45.12',  at: ago(1820) },
+  { id: 'log35', userId: 'usr2', action: 'logout',           module: 'CLN', description: 'Sessão encerrada',                                      ip: '201.73.45.12',  at: ago(1500) },
+
+  // usr3 – Diego Figueiredo
+  { id: 'log36', userId: 'usr3', action: 'login',            module: 'DGN', description: 'Login realizado',                                       ip: '187.65.33.201', at: ago(240)  },
+  { id: 'log37', userId: 'usr3', action: 'view',             module: 'DGN', description: 'Acessou solicitações de exames pendentes',              ip: '187.65.33.201', at: ago(235)  },
+  { id: 'log38', userId: 'usr3', action: 'edit',             module: 'DGN', description: 'Atualizou status de exame para Coletado',              ip: '187.65.33.201', at: ago(220)  },
+  { id: 'log39', userId: 'usr3', action: 'create',           module: 'DGN', description: 'Registrou resultado de hemograma completo',             ip: '187.65.33.201', at: ago(200)  },
+  { id: 'log40', userId: 'usr3', action: 'print',            module: 'DGN', description: 'Imprimiu laudo laboratorial',                           ip: '187.65.33.201', at: ago(185)  },
+]
