@@ -63,7 +63,10 @@ P("cln.consultation.create", "Registrar consulta")
 P("cln.consultation.edit", "Editar consulta")
 
 # ── DGN (Diagnóstico) ────────────────────────────────────────────────────────
-# (módulo em reconstrução — permissões serão adicionadas conforme as telas forem criadas)
+P("dgn.exam.view",    "Visualizar solicitações de exame")
+P("dgn.exam.request", "Solicitar exame")
+P("dgn.exam.collect", "Registrar coleta de exame")
+P("dgn.exam.release", "Liberar resultado de exame")
 
 # ── HSP (Hospitalar) ─────────────────────────────────────────────────────────
 # (módulo em reconstrução — permissões serão adicionadas conforme as telas forem criadas)

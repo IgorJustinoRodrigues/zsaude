@@ -97,3 +97,13 @@ async def archive(id: UUID, user: MasterDep, db: DB): ...
 ## Auditoria como controle
 
 Tudo que afeta autenticação, permissão ou dados sensíveis passa por `write_audit(...)`. Um ataque de credencial quebrada deixa rastro em `action="login_fail"`. Veja [audit-and-sessions](./audit-and-sessions.md).
+
+## Autorização granular (RBAC)
+
+Os três níveis (MASTER/ADMIN/USER) cobrem **quem pode acessar**. A granularidade fina (**o que exatamente cada um pode fazer**) é feita via RBAC com perfis, herança e overrides. Detalhes em [rbac.md](./rbac.md).
+
+Resumo prático:
+
+- Cada endpoint usa `ctx: WorkContext = requires(permission="modulo.recurso.acao")`.
+- Permissões novas declaradas em `app/core/permissions/catalog.py` sincronizam automaticamente.
+- `ctx.permissions` traz o conjunto resolvido pro request — para checagens finas dentro do service.

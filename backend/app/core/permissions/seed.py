@@ -131,6 +131,17 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
             "cln.queue.view", "cln.queue.manage",
             "cln.consultation.view", "cln.consultation.create",
             "cln.consultation.edit",
+            # Diagnóstico: médico pode solicitar e ver resultado, mas não coletar/liberar.
+            "dgn.exam.view", "dgn.exam.request",
+        ],
+    ),
+    (
+        "lab_tech_base",
+        "Técnico de Laboratório",
+        "Coleta e liberação de exames laboratoriais.",
+        [
+            "cln.patient.view",
+            "dgn.exam.view", "dgn.exam.collect", "dgn.exam.release",
         ],
     ),
     (

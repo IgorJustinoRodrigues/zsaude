@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
+from app.modules.dgn.router import router as dgn_router
 from app.modules.permissions.admin_router import (
     access_router as roles_admin_access_router,
     router as roles_admin_router,
@@ -32,3 +33,4 @@ api_v1.include_router(roles_admin_router)
 api_v1.include_router(roles_admin_access_router)
 api_v1.include_router(system_router)
 api_v1.include_router(audit_router)
+api_v1.include_router(dgn_router)

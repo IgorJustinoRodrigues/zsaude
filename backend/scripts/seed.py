@@ -187,7 +187,7 @@ _ROLE_STRING_TO_CODE: dict[str, str] = {
     "Analista": "manager_base",
     "Gestor Regional": "manager_base",
     "Recepcionista": "receptionist_base",
-    "Técnico de Laboratório": "receptionist_base",  # sem DGN base ainda
+    "Técnico de Laboratório": "lab_tech_base",
     "Fiscal Sanitário": "visa_agent_base",
     "Gestor de Frota": "manager_base",
     "Enfermeira": "nurse_base",

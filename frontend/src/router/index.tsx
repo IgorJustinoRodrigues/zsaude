@@ -28,7 +28,7 @@ import { QueuePage } from '../pages/cln/QueuePage'
 import { ProductionPage } from '../pages/cln/ProductionPage'
 
 // DGN – Diagnóstico
-// (telas serão adicionadas aqui)
+import { DgnHomePage } from '../pages/dgn/DgnHomePage'
 
 // HSP – Hospitalar
 // (telas serão adicionadas aqui)
@@ -155,10 +155,12 @@ export const router = createBrowserRouter([
                 ],
               },
 
-              // DGN — Diagnóstico (telas ainda não criadas)
+              // DGN — Diagnóstico
               {
                 element: <RequireModule moduleId="dgn" />,
-                children: [],
+                children: [
+                  { path: '/dgn', element: <DgnHomePage /> },
+                ],
               },
 
               // HSP — Hospitalar (telas ainda não criadas)

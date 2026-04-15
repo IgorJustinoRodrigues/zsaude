@@ -86,7 +86,7 @@ router = APIRouter(prefix="/patients", tags=["patients"])
 @router.get("", response_model=list[PatientOut])
 async def list_active(
     db: DB,
-    ctx: CurrentContextDep = requires(module="cln"),
+    ctx: WorkContext = requires(permission="cln.patient.view"),
 ) -> list[PatientOut]:
     return await PatientService(db).list_active()
 ```
@@ -94,8 +94,28 @@ async def list_active(
 Dependências em jogo:
 
 - `DB` — sessão async por request (commit automático).
-- `CurrentContextDep` — exige header `X-Work-Context` válido; seta audit e search_path do município.
-- `requires(module="cln")` — impede acesso se o contexto não tem o módulo CLN.
+- `requires(permission=...)` — exige `X-Work-Context` válido **e** que o usuário tenha a permissão resolvida. O `ctx: WorkContext` traz tudo resolvido (user, município, unidade, `permissions`). Detalhes em [rbac.md](./rbac.md).
+
+**Variantes do guard:**
+
+```python
+# Qualquer permissão específica:
+ctx: WorkContext = requires(permission="cln.patient.edit")
+
+# Qualquer uma de um conjunto:
+ctx: WorkContext = requires(any_of=["cln.patient.view", "cln.patient.edit"])
+
+# Qualquer permissão no módulo (para listagens genéricas):
+ctx: WorkContext = requires(module="cln")
+```
+
+Para declarar a permissão nova primeiro, adicione em `app/core/permissions/catalog.py`:
+
+```python
+P("cln.patient.view", "Visualizar pacientes")
+```
+
+O `sync_permissions()` do startup popula `app.permissions` automaticamente.
 
 Para endpoints MASTER (sem contexto de município), use `MasterDep`:
 

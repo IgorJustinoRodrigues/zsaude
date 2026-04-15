@@ -16,6 +16,7 @@ Python 3.13 · FastAPI · SQLAlchemy async · PostgreSQL 17 · Alembic
 - [**Migrations (app + tenant)**](./backend/migrations.md) — criar, aplicar, resetar.
 - [**Criar tabelas** (app / tenant)](./backend/creating-tables.md) — passo a passo completo.
 - [Criar um novo endpoint](./backend/creating-endpoints.md) — fluxo recomendado.
+- [**RBAC (perfis e permissões)**](./backend/rbac.md) — catálogo, roles, overrides, resolução.
 - [Auditoria e sessões](./backend/audit-and-sessions.md) — como os logs e a presença funcionam.
 - [Segurança](./backend/security.md) — níveis MASTER/ADMIN/USER, escopo, JWT.
 
@@ -26,6 +27,7 @@ React 19 · Vite · TypeScript · Tailwind · Zustand
 - [Estrutura do frontend](./frontend/structure.md) — pastas, stores, roteamento.
 - [Cliente HTTP e módulos de API](./frontend/api-clients.md) — como chamar o backend.
 - [Páginas, rotas e guards](./frontend/pages-and-guards.md) — como adicionar e proteger.
+- [**RBAC no frontend**](./frontend/rbac.md) — `can()`, matriz de permissões, overrides.
 - [Toasts](./frontend/toasts.md) — feedback visual de ações.
 
 ## Operação
