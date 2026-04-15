@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
-  LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown,
+  LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -39,6 +39,8 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
         { label: 'Cadastrar', path: '/ops/usuarios/novo', icon: <UserPlus size={13} /> },
       ],
     },
+    { kind: 'section', label: 'Auditoria' },
+    { kind: 'item', icon: <ScrollText size={16} />, label: 'Logs do sistema', path: '/ops/logs' },
   ],
 }
 

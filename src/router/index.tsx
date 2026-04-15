@@ -38,6 +38,7 @@ import { OpsHomePage } from '../pages/ops/OpsHomePage'
 import { OpsUserListPage } from '../pages/ops/OpsUserListPage'
 import { OpsUserViewPage } from '../pages/ops/OpsUserViewPage'
 import { OpsUserFormPage } from '../pages/ops/OpsUserFormPage'
+import { OpsLogsPage } from '../pages/ops/OpsLogsPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
       { path: '/ops/usuarios/novo',          element: <OpsUserFormPage /> },
       { path: '/ops/usuarios/:id',           element: <OpsUserViewPage /> },
       { path: '/ops/usuarios/:id/editar',    element: <OpsUserFormPage /> },
+      { path: '/ops/logs',                   element: <OpsLogsPage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },
