@@ -65,10 +65,18 @@ export const workContextApi = {
 
 // ─── Directory: municípios e unidades (read-only) ─────────────────────────────
 
+type Scope = 'all' | 'actor'
+
 export const directoryApi = {
-  listMunicipalities: () => api.get<MunicipalityDto[]>('/api/v1/municipalities'),
-  listFacilities: (municipalityId?: string) =>
-    api.get<FacilityDto[]>(
-      `/api/v1/facilities${municipalityId ? `?municipalityId=${municipalityId}` : ''}`,
+  listMunicipalities: (scope?: Scope) =>
+    api.get<MunicipalityDto[]>(
+      `/api/v1/municipalities${scope ? `?scope=${scope}` : ''}`,
     ),
+  listFacilities: (municipalityId?: string, scope?: Scope) => {
+    const params = new URLSearchParams()
+    if (municipalityId) params.set('municipalityId', municipalityId)
+    if (scope) params.set('scope', scope)
+    const qs = params.toString()
+    return api.get<FacilityDto[]>(`/api/v1/facilities${qs ? `?${qs}` : ''}`)
+  },
 }

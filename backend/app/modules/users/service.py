@@ -50,6 +50,60 @@ class UserService:
             raise NotFoundError("Usuário não encontrado.")
         return user
 
+    # ─── Scope (ADMIN só vê/edita dentro dos seus municípios) ───────────────
+
+    async def actor_scope(self, actor: User) -> set[UUID] | None:
+        """Retorna os IDs de município do ator.
+
+        MASTER não tem escopo (retorna None → "vê tudo").
+        ADMIN/USER retornam os municípios vinculados via MunicipalityAccess.
+        """
+        if actor.level == UserLevel.MASTER:
+            return None
+        from app.modules.tenants.models import MunicipalityAccess
+        rows = await self.session.scalars(
+            select(MunicipalityAccess.municipality_id).where(
+                MunicipalityAccess.user_id == actor.id
+            )
+        )
+        return set(rows.all())
+
+    async def ensure_target_in_scope(self, actor: User, target_id: UUID) -> None:
+        """Lança ForbiddenError se o alvo não está no escopo do ator.
+
+        MASTER passa direto. Ator editando a si mesmo passa direto.
+        """
+        if actor.level == UserLevel.MASTER:
+            return
+        if actor.id == target_id:
+            return
+        scope = await self.actor_scope(actor)
+        if not scope:
+            raise ForbiddenError("Você não administra nenhum município.")
+        from app.modules.tenants.models import MunicipalityAccess
+        hit = await self.session.scalar(
+            select(MunicipalityAccess.user_id)
+            .where(
+                MunicipalityAccess.user_id == target_id,
+                MunicipalityAccess.municipality_id.in_(scope),
+            )
+            .limit(1)
+        )
+        if hit is None:
+            raise ForbiddenError("Usuário fora do seu escopo de administração.")
+
+    def _ensure_payload_in_scope(
+        self, scope: set[UUID] | None, payload_muns: list
+    ) -> None:
+        """Payload de create/update não pode referenciar município fora do escopo."""
+        if scope is None:
+            return  # MASTER
+        for m in payload_muns:
+            if m.municipality_id not in scope:
+                raise ForbiddenError(
+                    "Você não pode atribuir acesso a município fora do seu escopo."
+                )
+
     async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> User:
         user = await self.get_or_404(user_id)
         if payload.name is not None:
@@ -67,12 +121,15 @@ class UserService:
 
     # ─── Admin: listagem ─────────────────────────────────────────────────────
 
-    async def list(self, params: UserListParams) -> Page[UserListItem]:
+    async def list(
+        self, params: UserListParams, *, scope: set[UUID] | None = None,
+    ) -> Page[UserListItem]:
         status_enum: UserStatus | None = UserStatus(params.status) if params.status else None
         rows, total = await self.repo.list(
             search=params.search,
             status=status_enum,
             module=params.module,
+            scope=scope,
             page=params.page,
             page_size=params.page_size,
         )
@@ -180,7 +237,9 @@ class UserService:
 
     # ─── Admin: criar ────────────────────────────────────────────────────────
 
-    async def create(self, payload: UserCreate) -> User:
+    async def create(self, payload: UserCreate, *, scope: set[UUID] | None = None) -> User:
+        self._ensure_payload_in_scope(scope, payload.municipalities)
+
         if await self.repo.get_by_login(payload.login):
             raise ConflictError("Login já está em uso.")
         if await self.repo.get_by_email(payload.email):
@@ -209,7 +268,11 @@ class UserService:
 
     # ─── Admin: atualizar ────────────────────────────────────────────────────
 
-    async def update(self, user_id: UUID, payload: UserUpdate) -> User:
+    async def update(
+        self, user_id: UUID, payload: UserUpdate, *, scope: set[UUID] | None = None,
+    ) -> User:
+        if payload.municipalities is not None:
+            self._ensure_payload_in_scope(scope, payload.municipalities)
         user = await self.get_or_404(user_id)
 
         if payload.email is not None and payload.email != user.email:
@@ -302,14 +365,26 @@ class UserService:
 
     # ─── Admin: estatísticas ────────────────────────────────────────────────
 
-    async def stats(self) -> dict[str, int]:
+    async def stats(self, *, scope: set[UUID] | None = None) -> dict[str, int]:
         from sqlalchemy import case, func
+
+        from app.modules.tenants.models import MunicipalityAccess
+
         stmt = select(
             func.count().label("total"),
             func.sum(case((User.status == UserStatus.ATIVO, 1), else_=0)).label("ativo"),
             func.sum(case((User.status == UserStatus.INATIVO, 1), else_=0)).label("inativo"),
             func.sum(case((User.status == UserStatus.BLOQUEADO, 1), else_=0)).label("bloqueado"),
-        )
+        ).select_from(User)
+
+        if scope is not None:
+            sub = (
+                select(MunicipalityAccess.user_id)
+                .where(MunicipalityAccess.municipality_id.in_(scope))
+                .distinct()
+            )
+            stmt = stmt.where(User.id.in_(sub))
+
         row = (await self.session.execute(stmt)).one()
         return {
             "total":     int(row.total or 0),

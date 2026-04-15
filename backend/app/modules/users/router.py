@@ -69,15 +69,17 @@ def _check_create_level(actor: User, target_level: UserLevel) -> None:
 
 
 @router.get("/stats", response_model=UserStats)
-async def stats(db: DB, _: AdminDep) -> UserStats:
-    data = await UserService(db).stats()
+async def stats(db: DB, actor: AdminDep) -> UserStats:
+    svc = UserService(db)
+    scope = await svc.actor_scope(actor)
+    data = await svc.stats(scope=scope)
     return UserStats(**data)
 
 
 @router.get("", response_model=Page[UserListItem])
 async def list_users(
     db: DB,
-    _: AdminDep,
+    actor: AdminDep,
     search: Annotated[str | None, Query()] = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
     module: Annotated[str | None, Query()] = None,
@@ -91,20 +93,25 @@ async def list_users(
         page=page,
         page_size=page_size,
     )
-    return await UserService(db).list(params)
+    svc = UserService(db)
+    scope = await svc.actor_scope(actor)
+    return await svc.list(params, scope=scope)
 
 
 @router.post("", response_model=UserDetail, status_code=status.HTTP_201_CREATED)
 async def create_user(payload: UserCreate, db: DB, actor: AdminDep) -> UserDetail:
     _check_create_level(actor, UserLevel(payload.level))
     svc = UserService(db)
-    created = await svc.create(payload)
+    scope = await svc.actor_scope(actor)
+    created = await svc.create(payload, scope=scope)
     return await svc.detail(created.id)
 
 
 @router.get("/{user_id}", response_model=UserDetail)
-async def get_user(user_id: UUID, db: DB, _: AdminDep) -> UserDetail:
-    return await UserService(db).detail(user_id)
+async def get_user(user_id: UUID, db: DB, actor: AdminDep) -> UserDetail:
+    svc = UserService(db)
+    await svc.ensure_target_in_scope(actor, user_id)
+    return await svc.detail(user_id)
 
 
 @router.patch("/{user_id}", response_model=UserDetail)
@@ -114,7 +121,9 @@ async def update_user(user_id: UUID, payload: UserUpdate, db: DB, actor: AdminDe
         if actor.level != UserLevel.MASTER:
             raise ForbiddenError("Apenas MASTER pode alterar o nível de um usuário.")
     svc = UserService(db)
-    await svc.update(user_id, payload)
+    await svc.ensure_target_in_scope(actor, user_id)
+    scope = await svc.actor_scope(actor)
+    await svc.update(user_id, payload, scope=scope)
     return await svc.detail(user_id)
 
 
@@ -123,24 +132,32 @@ async def admin_reset_password(
     user_id: UUID,
     payload: AdminResetPasswordRequest,
     db: DB,
-    _: AdminDep,
+    actor: AdminDep,
 ) -> AdminResetPasswordResponse:
-    return await UserService(db).admin_reset_password(user_id, payload)
+    svc = UserService(db)
+    await svc.ensure_target_in_scope(actor, user_id)
+    return await svc.admin_reset_password(user_id, payload)
 
 
 @router.post("/{user_id}/activate", response_model=MessageResponse)
-async def activate(user_id: UUID, db: DB, _: AdminDep) -> MessageResponse:
-    await UserService(db).set_status(user_id, UserStatus.ATIVO)
+async def activate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
+    svc = UserService(db)
+    await svc.ensure_target_in_scope(actor, user_id)
+    await svc.set_status(user_id, UserStatus.ATIVO)
     return MessageResponse(message="Usuário ativado.")
 
 
 @router.post("/{user_id}/deactivate", response_model=MessageResponse)
-async def deactivate(user_id: UUID, db: DB, _: AdminDep) -> MessageResponse:
-    await UserService(db).set_status(user_id, UserStatus.INATIVO)
+async def deactivate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
+    svc = UserService(db)
+    await svc.ensure_target_in_scope(actor, user_id)
+    await svc.set_status(user_id, UserStatus.INATIVO)
     return MessageResponse(message="Usuário inativado.")
 
 
 @router.post("/{user_id}/block", response_model=MessageResponse)
-async def block(user_id: UUID, db: DB, _: AdminDep) -> MessageResponse:
-    await UserService(db).set_status(user_id, UserStatus.BLOQUEADO)
+async def block(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
+    svc = UserService(db)
+    await svc.ensure_target_in_scope(actor, user_id)
+    await svc.set_status(user_id, UserStatus.BLOQUEADO)
     return MessageResponse(message="Usuário bloqueado.")

@@ -153,9 +153,11 @@ export function OpsUserFormPage() {
     let cancelled = false
     async function load() {
       try {
+        // MASTER vê tudo; ADMIN vê só seus municípios/unidades
+        const scope = actor?.level === 'master' ? 'all' : 'actor'
         const [muns, facs] = await Promise.all([
-          directoryApi.listMunicipalities(),
-          directoryApi.listFacilities(),
+          directoryApi.listMunicipalities(scope),
+          directoryApi.listFacilities(undefined, scope),
         ])
         if (cancelled) return
         setMunicipalities(muns)

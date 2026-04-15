@@ -47,6 +47,7 @@ class UserRepository:
         search: str | None = None,
         status: UserStatus | None = None,
         module: str | None = None,
+        scope: set[UUID] | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[User], int]:
@@ -73,6 +74,15 @@ class UserRepository:
                 .distinct()
             )
             stmt = stmt.where(User.id.in_(sub))
+        if scope is not None:
+            # Escopo do ator (ADMIN): usuário só aparece se tiver MunicipalityAccess
+            # em algum município do escopo.
+            sub_scope = (
+                select(MunicipalityAccess.user_id)
+                .where(MunicipalityAccess.municipality_id.in_(scope))
+                .distinct()
+            )
+            stmt = stmt.where(User.id.in_(sub_scope))
 
         # total
         count_stmt = select(func.count()).select_from(stmt.subquery())
