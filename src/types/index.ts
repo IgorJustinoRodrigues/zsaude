@@ -12,14 +12,48 @@ export interface SystemAccess {
   icon: string
 }
 
+// ─── Multi-tenant access control ─────────────────────────────────────────────
+
+export interface Municipality {
+  id: string
+  name: string
+  state: string
+  ibge?: string
+}
+
+export interface Facility {
+  id: string
+  name: string
+  shortName: string
+  type: string
+  municipalityId: string
+}
+
+export interface FacilityAccess {
+  facilityId: string
+  role: string
+  modules: SystemId[]
+}
+
+export interface MunicipalityAccess {
+  municipalityId: string
+  facilities: FacilityAccess[]
+}
+
+/** The currently active municipality + facility + role + modules */
+export interface WorkContext {
+  municipality: Municipality
+  facility: Facility
+  role: string
+  modules: SystemId[]
+}
+
 export interface User {
   id: string
   name: string
   login: string
   email: string
-  role: string
-  unit: string
-  systems: SystemId[]
+  municipalities: MunicipalityAccess[]
   avatar?: string
 }
 

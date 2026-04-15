@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
-  LayoutDashboard,
+  LayoutDashboard, MapPin,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -23,7 +23,7 @@ interface Props { module: SystemId | null }
 
 export function Sidebar({ module }: Props) {
   const { sidebarCollapsed, sidebarMobileOpen, toggleSidebar, closeMobileSidebar } = useUIStore()
-  const { user, logout } = useAuthStore()
+  const { user, context, logout } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const meta = module ? MODULE_META[module] : null
@@ -128,7 +128,7 @@ export function Sidebar({ module }: Props) {
           {/* User info — visível no mobile aberto e desktop expandido */}
           {user && (
             <div className={cn(
-              'flex items-center gap-2.5 px-2 py-2 mb-1',
+              'flex items-center gap-2.5 px-2 py-2',
               'md:hidden',
               !desktopCollapsed && 'lg:flex',
             )}>
@@ -139,7 +139,26 @@ export function Sidebar({ module }: Props) {
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
                   {user.name.split(' ')[0]} {user.name.split(' ').slice(-1)[0]}
                 </p>
-                <p className="text-[10px] text-slate-400 truncate">{user.role}</p>
+                <p className="text-[10px] text-slate-400 truncate">{context?.role ?? user.email}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Contexto ativo (município + unidade) */}
+          {context && (
+            <div className={cn(
+              'flex items-start gap-2 px-2 py-1.5 mb-0.5 rounded-lg',
+              'md:hidden',
+              !desktopCollapsed && 'lg:flex',
+            )}>
+              <MapPin size={12} className="text-slate-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate">
+                  {context.facility.shortName}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {context.municipality.name} · {context.municipality.state}
+                </p>
               </div>
             </div>
           )}
@@ -155,6 +174,19 @@ export function Sidebar({ module }: Props) {
           >
             <LayoutGrid size={15} />
             <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar módulo</span>
+          </button>
+
+          <button
+            onClick={() => { navigate('/selecionar-contexto'); closeMobileSidebar() }}
+            className={cn(
+              'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
+              'md:justify-center',
+              !desktopCollapsed && 'lg:justify-start',
+            )}
+            title="Trocar unidade"
+          >
+            <MapPin size={15} />
+            <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar unidade</span>
           </button>
 
           <button

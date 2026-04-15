@@ -5,6 +5,7 @@ import { SystemSelectPage } from '../pages/auth/SystemSelectPage'
 import { ModulePlaceholder } from '../pages/ModulePlaceholder'
 
 // Shared
+import { ContextSelectPage } from '../pages/auth/ContextSelectPage'
 import { UsersPage } from '../pages/shared/UsersPage'
 import { NotificationsPage } from '../pages/shared/NotificationsPage'
 
@@ -39,6 +40,7 @@ import { VehicleListPage } from '../pages/ops/VehicleListPage'
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
   { path: '/login', element: <LoginPage /> },
+  { path: '/selecionar-contexto', element: <ContextSelectPage /> },
   { path: '/selecionar-sistema', element: <SystemSelectPage /> },
 
   {

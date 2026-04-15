@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu, AlertCircle, AlertTriangle, CheckCircle, Info } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -22,7 +22,7 @@ const MODULE_COLORS: Record<SystemId, string> = {
 interface Props { module: SystemId | null }
 
 export function TopBar({ module }: Props) {
-  const { user, logout } = useAuthStore()
+  const { user, context, logout } = useAuthStore()
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
   const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
   const navigate = useNavigate()
@@ -41,8 +41,8 @@ export function TopBar({ module }: Props) {
 
   const accentColor = module ? MODULE_COLORS[module] : '#0ea5e9'
 
-  const available = user?.systems?.length
-    ? SYSTEMS.filter(s => user.systems.includes(s.id))
+  const available = context?.modules?.length
+    ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
 
   useEffect(() => {
@@ -304,24 +304,33 @@ export function TopBar({ module }: Props) {
                 </div>
               </div>
 
-              {/* Account details */}
-              <div className="p-3 space-y-1 border-b border-slate-100 dark:border-slate-800">
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 mb-2">Dados da conta</p>
-                <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
-                  <User size={13} className="text-slate-400 shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-slate-400">Perfil</p>
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{user?.role}</p>
+              {/* Contexto ativo */}
+              {context && (
+                <div className="p-3 space-y-1 border-b border-slate-100 dark:border-slate-800">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 mb-2">Contexto ativo</p>
+                  <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+                    <User size={13} className="text-slate-400 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-slate-400">Perfil</p>
+                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.role}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+                    <Building2 size={13} className="text-slate-400 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-slate-400">Unidade</p>
+                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.facility.shortName}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+                    <MapPin size={13} className="text-slate-400 shrink-0" />
+                    <div>
+                      <p className="text-[10px] text-slate-400">Município</p>
+                      <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.municipality.name} · {context.municipality.state}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
-                  <Building2 size={13} className="text-slate-400 shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-slate-400">Unidade</p>
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{user?.unit}</p>
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Access */}
               <div className="p-3 border-b border-slate-100 dark:border-slate-800">
@@ -347,8 +356,22 @@ export function TopBar({ module }: Props) {
                 </div>
               </div>
 
-              {/* Logout */}
-              <div className="p-2">
+              {/* Ações */}
+              <div className="p-2 space-y-0.5">
+                <button
+                  onClick={() => { setUserMenuOpen(false); navigate('/selecionar-sistema') }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <LayoutGrid size={14} />
+                  Trocar módulo
+                </button>
+                <button
+                  onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <MapPin size={14} />
+                  Trocar unidade
+                </button>
                 <button
                   onClick={logout}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"

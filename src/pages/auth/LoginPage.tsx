@@ -16,7 +16,7 @@ export function LoginPage() {
     setLoading(true)
     await new Promise(r => setTimeout(r, 600))
     const ok = login(form.login, form.password)
-    if (ok) navigate('/selecionar-sistema')
+    if (ok) navigate('/selecionar-contexto')
     else { setError('Usuário ou senha inválidos.'); setLoading(false) }
   }
 
