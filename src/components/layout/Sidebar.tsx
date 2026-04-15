@@ -25,6 +25,8 @@ export function Sidebar({ module }: Props) {
   const { sidebarCollapsed, sidebarMobileOpen, toggleSidebar, closeMobileSidebar } = useUIStore()
   const { user, context, logout } = useAuthStore()
   const canSwitchModule = (context?.modules?.length ?? 0) > 1
+  const totalFacilities = user?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
+  const canSwitchUnit = totalFacilities > 1
   const navigate = useNavigate()
   const location = useLocation()
   const meta = module ? MODULE_META[module] : null
@@ -179,18 +181,20 @@ export function Sidebar({ module }: Props) {
             </button>
           )}
 
-          <button
-            onClick={() => { navigate('/selecionar-contexto'); closeMobileSidebar() }}
-            className={cn(
-              'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
-              'md:justify-center',
-              !desktopCollapsed && 'lg:justify-start',
-            )}
-            title="Trocar unidade"
-          >
-            <MapPin size={15} />
-            <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar unidade</span>
-          </button>
+          {canSwitchUnit && (
+            <button
+              onClick={() => { navigate('/selecionar-contexto'); closeMobileSidebar() }}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
+                'md:justify-center',
+                !desktopCollapsed && 'lg:justify-start',
+              )}
+              title="Trocar unidade"
+            >
+              <MapPin size={15} />
+              <span className={cn('md:hidden', !desktopCollapsed && 'lg:inline')}>Trocar unidade</span>
+            </button>
+          )}
 
           <button
             onClick={() => { logout(); closeMobileSidebar() }}

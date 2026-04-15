@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Eye, EyeOff } from 'lucide-react'
 
 export function LoginPage() {
-  const { login } = useAuthStore()
+  const { login, autoSelectContext, selectSystem } = useAuthStore()
   const navigate = useNavigate()
   const [form, setForm] = useState({ login: 'igor.santos', password: '123456' })
   const [showPass, setShowPass] = useState(false)
@@ -16,8 +16,22 @@ export function LoginPage() {
     setLoading(true)
     await new Promise(r => setTimeout(r, 600))
     const ok = login(form.login, form.password)
-    if (ok) navigate('/selecionar-contexto')
-    else { setError('Usuário ou senha inválidos.'); setLoading(false) }
+    if (!ok) { setError('Usuário ou senha inválidos.'); setLoading(false); return }
+
+    // Tenta auto-selecionar contexto (só 1 município + 1 unidade)
+    const autoCtx = autoSelectContext()
+    if (autoCtx) {
+      const { context } = useAuthStore.getState()
+      // Tenta auto-selecionar módulo (só 1 módulo disponível)
+      if (context?.modules.length === 1) {
+        selectSystem(context.modules[0])
+        navigate(`/${context.modules[0]}`, { replace: true })
+      } else {
+        navigate('/selecionar-sistema', { replace: true })
+      }
+    } else {
+      navigate('/selecionar-contexto', { replace: true })
+    }
   }
 
   return (

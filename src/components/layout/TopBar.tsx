@@ -45,6 +45,8 @@ export function TopBar({ module }: Props) {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
   const canSwitchModule = available.length > 1
+  const totalFacilities = user?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
+  const canSwitchUnit = totalFacilities > 1
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -368,13 +370,15 @@ export function TopBar({ module }: Props) {
                     Trocar módulo
                   </button>
                 )}
-                <button
-                  onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <MapPin size={14} />
-                  Trocar unidade
-                </button>
+                {canSwitchUnit && (
+                  <button
+                    onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <MapPin size={14} />
+                    Trocar unidade
+                  </button>
+                )}
                 <button
                   onClick={logout}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
