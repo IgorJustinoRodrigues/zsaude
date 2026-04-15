@@ -20,9 +20,14 @@ NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
 }
 
+# Schema padrão de tabelas compartilhadas (identidade, diretório, auditoria,
+# terminologias). Tabelas locais ao município ficam em schemas mun_<ibge>
+# com metadata própria (ver app.db.tenant_schemas).
+APP_SCHEMA = "app"
+
 
 class Base(DeclarativeBase):
-    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    metadata = MetaData(naming_convention=NAMING_CONVENTION, schema=APP_SCHEMA)
 
 
 # ── Mixins comuns ───────────────────────────────────────────────────────────

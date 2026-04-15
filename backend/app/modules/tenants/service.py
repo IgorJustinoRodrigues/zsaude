@@ -72,6 +72,7 @@ class TenantService:
         token = create_context_token(
             user_id=str(user_id),
             municipality_id=str(mun.id),
+            municipality_ibge=mun.ibge,
             facility_id=str(facility.id),
             role=access.role,
             modules=modules,

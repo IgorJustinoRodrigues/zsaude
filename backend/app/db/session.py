@@ -73,20 +73,30 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 def _register_rls_listener(engine: AsyncEngine) -> None:
-    """Aplica SET LOCAL com o contexto de auditoria atual em cada BEGIN.
+    """Aplica SET LOCAL com o contexto em cada BEGIN.
 
-    As políticas RLS no banco consultam `current_setting('app.current_*')`,
-    então cada transação começa configurando essas chaves antes de qualquer
-    SELECT/UPDATE tenant-scoped.
+    Duas coisas aqui:
+    1. `search_path` é ajustado para priorizar o schema do município
+       ativo (`mun_<ibge>`), depois `app` (compartilhado) e `public`
+       (fallback). Permite que tabelas locais ao município fiquem em
+       schemas dedicados sem precisar qualificar em cada query.
+    2. Variáveis `app.current_*` ficam setadas para eventuais políticas
+       RLS e para queries que dependem de saber quem é o usuário.
     """
+
+    from app.db.tenant_schemas import search_path_for
 
     sync_engine = engine.sync_engine
 
     @event.listens_for(sync_engine, "begin")
     def _on_begin(conn):  # type: ignore[no-untyped-def]
         ctx = get_audit_context()
-        # set_config(name, value, is_local=true) é a forma parametrizada de
-        # SET LOCAL no Postgres. Seguro contra SQL injection.
+
+        # search_path — ordena schemas por especificidade
+        path = search_path_for(ctx.municipality_ibge)
+        conn.exec_driver_sql(f"SET LOCAL search_path = {path}")
+
+        # set_config é a forma parametrizada de SET LOCAL no Postgres.
         def _set(key: str, value: str) -> None:
             conn.exec_driver_sql(
                 "SELECT set_config($1, $2, true)", (key, value)
@@ -94,6 +104,7 @@ def _register_rls_listener(engine: AsyncEngine) -> None:
 
         _set("app.current_user_id", str(ctx.user_id) if ctx.user_id else "")
         _set("app.current_municipality_id", str(ctx.municipality_id) if ctx.municipality_id else "")
+        _set("app.current_municipality_ibge", ctx.municipality_ibge or "")
         _set("app.current_facility_id", str(ctx.facility_id) if ctx.facility_id else "")
         _set("app.current_role", ctx.role or "")
         _set("app.request_id", ctx.request_id or "")

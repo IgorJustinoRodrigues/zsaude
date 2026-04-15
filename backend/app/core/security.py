@@ -87,6 +87,7 @@ def create_access_token(
 def create_context_token(
     user_id: str,
     municipality_id: str,
+    municipality_ibge: str,
     facility_id: str,
     role: str,
     modules: list[str],
@@ -99,6 +100,7 @@ def create_context_token(
         "jti": uuid.uuid4().hex,
         "typ": "context",
         "mun": municipality_id,
+        "ibge": municipality_ibge,
         "fac": facility_id,
         "role": role,
         "mods": modules,

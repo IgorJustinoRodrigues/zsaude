@@ -112,19 +112,24 @@ CurrentUserDep = Annotated[CurrentUser, Depends(current_user)]
 
 
 class WorkContext:
-    __slots__ = ("user_id", "municipality_id", "facility_id", "role", "modules")
+    __slots__ = (
+        "user_id", "municipality_id", "municipality_ibge",
+        "facility_id", "role", "modules",
+    )
 
     def __init__(
         self,
         *,
         user_id: UUID,
         municipality_id: UUID,
+        municipality_ibge: str,
         facility_id: UUID,
         role: str,
         modules: list[str],
     ) -> None:
         self.user_id = user_id
         self.municipality_id = municipality_id
+        self.municipality_ibge = municipality_ibge
         self.facility_id = facility_id
         self.role = role
         self.modules = modules
@@ -151,6 +156,7 @@ async def current_context(
     ctx = WorkContext(
         user_id=UUID(payload["sub"]),
         municipality_id=UUID(payload["mun"]),
+        municipality_ibge=str(payload.get("ibge", "")),
         facility_id=UUID(payload["fac"]),
         role=payload["role"],
         modules=list(payload.get("mods", [])),
@@ -158,6 +164,7 @@ async def current_context(
 
     update_audit_context(
         municipality_id=ctx.municipality_id,
+        municipality_ibge=ctx.municipality_ibge or None,
         facility_id=ctx.facility_id,
         role=ctx.role,
     )

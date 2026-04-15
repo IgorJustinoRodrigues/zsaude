@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.db.session import dispose_engine, sessionmaker
+from app.db.tenant_schemas import ensure_municipality_schema
 from app.modules.tenants.models import (
     Facility,
     FacilityAccess,
@@ -194,6 +195,13 @@ async def upsert_fac_access(session) -> None:
             )
 
 
+async def provision_schemas(session) -> None:
+    """Garante um schema `mun_<ibge>` para cada município seed."""
+    for m in MUNICIPALITIES:
+        schema = await ensure_municipality_schema(session, m["ibge"])
+        print(f"  · schema {schema} ok")
+
+
 async def main() -> None:
     async with sessionmaker()() as session:
         await upsert_municipalities(session)
@@ -204,6 +212,8 @@ async def main() -> None:
         await session.flush()
         await upsert_mun_access(session)
         await upsert_fac_access(session)
+        print("Provisionando schemas de municípios:")
+        await provision_schemas(session)
         await session.commit()
         print(f"Seed OK · senha padrão para todos: {DEFAULT_PASSWORD}")
     await dispose_engine()
