@@ -7,7 +7,10 @@ services:
     volumes:
       - ./app:/app/app
       - ./migrations:/app/migrations
+      - ./migrations_tenant:/app/migrations_tenant
       - ./scripts:/app/scripts
       - ./secrets:/app/secrets
+      - ./alembic.ini:/app/alembic.ini
+      - ./alembic_tenant.ini:/app/alembic_tenant.ini
     environment:
       DEBUG: "true"

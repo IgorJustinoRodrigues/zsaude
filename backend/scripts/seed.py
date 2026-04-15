@@ -196,10 +196,11 @@ async def upsert_fac_access(session) -> None:
 
 
 async def provision_schemas(session) -> None:
-    """Garante um schema `mun_<ibge>` para cada município seed."""
+    """Garante um schema `mun_<ibge>` (com tabelas per-tenant) para cada
+    município seed."""
     for m in MUNICIPALITIES:
         schema = await ensure_municipality_schema(session, m["ibge"])
-        print(f"  · schema {schema} ok")
+        print(f"  · {m['name']:<25} → {schema} (migrations aplicadas)")
 
 
 async def main() -> None:
