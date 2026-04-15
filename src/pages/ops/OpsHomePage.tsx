@@ -1,4 +1,5 @@
-import { Users, CalendarCheck, Stethoscope, ListOrdered, TrendingUp, Clock, MapPin } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Users, CalendarCheck, Stethoscope, ListOrdered, TrendingUp, Clock, MapPin, RefreshCw } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -8,20 +9,15 @@ import { mockPatients } from '../../mock/patients'
 import { mockAppointments } from '../../mock/appointments'
 import { mockQueue, getQueueStats } from '../../mock/queue'
 
-const NOW          = new Date()
-const CURRENT_HOUR = NOW.getHours()
-const TODAY        = NOW.toISOString().slice(0, 10)
-const YESTERDAY    = new Date(NOW.getTime() - 86_400_000).toISOString().slice(0, 10)
-
 // Gera distribuição pelas últimas 24h (janela deslizante a partir da hora atual)
-function buildHourlyData(appts: typeof mockAppointments) {
+function buildHourlyData(appts: typeof mockAppointments, today: string, yesterday: string, currentHour: number) {
   return Array.from({ length: 24 }, (_, i) => {
     // i=0 é a hora mais antiga (currentHour+1 de ontem), i=23 é a hora atual
-    const h = (CURRENT_HOUR + 1 + i) % 24
-    const isToday = i >= (23 - CURRENT_HOUR)   // horas que pertencem a hoje
-    const date    = isToday ? TODAY : YESTERDAY
+    const h = (currentHour + 1 + i) % 24
+    const isToday = i >= (23 - currentHour)   // horas que pertencem a hoje
+    const date    = isToday ? today : yesterday
     const label   = `${String(h).padStart(2, '0')}h`
-    const isCurrent = h === CURRENT_HOUR && isToday
+    const isCurrent = h === currentHour && isToday
 
     const slot = appts.filter(a => {
       const apptH = parseInt(a.time.split(':')[0])
@@ -86,6 +82,33 @@ function CustomTooltip({ active, payload, label }: any) {
 export function OpsHomePage() {
   const { context } = useAuthStore()
 
+  const [_tick,       setTick]        = useState(0)
+  const [lastUpdated, setLastUpdated] = useState(new Date())
+  const [spinning,    setSpinning]    = useState(false)
+
+  // Relógio: atualiza a cada segundo
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Auto-refresh de dados: a cada 30 segundos
+  useEffect(() => {
+    const id = setInterval(() => setLastUpdated(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const handleRefresh = useCallback(() => {
+    setSpinning(true)
+    setLastUpdated(new Date())
+    setTimeout(() => setSpinning(false), 600)
+  }, [])
+
+  const now = new Date()
+  const TODAY     = now.toISOString().slice(0, 10)
+  const YESTERDAY = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10)
+  const CURRENT_HOUR = now.getHours()
+
   const last24hAppts  = mockAppointments.filter(a => a.date === TODAY || a.date === YESTERDAY)
   const todayAppts    = mockAppointments.filter(a => a.date === TODAY)
   const concluded     = todayAppts.filter(a => a.status === 'Atendido').length
@@ -94,14 +117,18 @@ export function OpsHomePage() {
   const priorities    = inQueue.filter(q => q.priority).length
   const totalPatients = mockPatients.filter(p => p.active).length
   const qStats        = getQueueStats()
-  const hourlyData    = buildHourlyData(last24hAppts)
+  const hourlyData    = buildHourlyData(last24hAppts, TODAY, YESTERDAY, CURRENT_HOUR)
   const specialtyData = buildSpecialtyData(last24hAppts)
 
   const concludedPct = todayAppts.length > 0 ? Math.round((concluded / todayAppts.length) * 100) : 0
   const queuePct     = qStats.total > 0 ? Math.round((qStats.attended / qStats.total) * 100) : 0
 
-  const now  = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  const date = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  // Tempo desde o último update
+  const secsSince = Math.floor((new Date().getTime() - lastUpdated.getTime()) / 1000)
+  const sinceLabel = secsSince < 5 ? 'agora mesmo' : `há ${secsSince}s`
 
   return (
     <div className="space-y-6">
@@ -109,7 +136,17 @@ export function OpsHomePage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard Operacional</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard Operacional</h1>
+            {/* Badge ao vivo global */}
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+              </span>
+              <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600 dark:text-emerald-400">Ao vivo</span>
+            </span>
+          </div>
           <div className="flex items-center gap-1.5 mt-1">
             <MapPin size={12} className="text-slate-400" />
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -117,11 +154,24 @@ export function OpsHomePage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-slate-500">
-          <Clock size={13} />
-          <span className="capitalize">{date}</span>
-          <span className="text-slate-300 dark:text-slate-600">·</span>
-          <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">{now}</span>
+        <div className="flex items-center gap-3">
+          {/* Última atualização + botão refresh */}
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+            <RefreshCw
+              size={11}
+              className={`cursor-pointer hover:text-slate-600 dark:hover:text-slate-300 transition-transform ${spinning ? 'animate-spin' : ''}`}
+              onClick={handleRefresh}
+            />
+            <span>Atualizado {sinceLabel}</span>
+          </div>
+          <span className="text-slate-200 dark:text-slate-700">|</span>
+          {/* Relógio em tempo real */}
+          <div className="flex items-center gap-2 text-sm text-slate-400 dark:text-slate-500">
+            <Clock size={13} />
+            <span className="capitalize hidden sm:inline">{dateStr}</span>
+            <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+            <span className="font-mono font-semibold text-slate-600 dark:text-slate-300 tabular-nums">{timeStr}</span>
+          </div>
         </div>
       </div>
 
