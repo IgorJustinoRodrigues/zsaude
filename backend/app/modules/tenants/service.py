@@ -36,18 +36,41 @@ class TenantService:
         self.repo = TenantRepository(session)
 
     async def options_for(self, user_id: UUID) -> WorkContextOptions:
+        from app.modules.permissions.models import Role
+        from app.modules.permissions.service import PermissionService
+
+        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+        perm_svc = PermissionService(self.session)
+
         muns = await self.repo.list_municipalities_for_user(user_id)
         out: list[MunicipalityWithFacilities] = []
+
+        # Cache roles por id (options costuma ter vários acessos ao mesmo role).
+        role_cache: dict[UUID, Role] = {}
+
+        async def role_name(role_id: UUID) -> str:
+            if role_id not in role_cache:
+                r = await self.session.get(Role, role_id)
+                if r is not None:
+                    role_cache[role_id] = r
+            r = role_cache.get(role_id)
+            return r.name if r else ""
+
         for mun in muns:
             rows = await self.repo.list_facilities_for_user(user_id, mun.id)
-            facilities = [
-                FacilityWithAccess(
-                    facility=FacilityRead.model_validate(fac),
-                    role=access.role,
-                    modules=list(access.modules),
+            facilities: list[FacilityWithAccess] = []
+            for fac, access in rows:
+                resolved = await perm_svc.resolve(user_id, access.id)
+                mods = sorted(
+                    _OPERATIONAL if resolved.is_root else resolved.modules() & _OPERATIONAL
                 )
-                for fac, access in rows
-            ]
+                facilities.append(
+                    FacilityWithAccess(
+                        facility=FacilityRead.model_validate(fac),
+                        role=await role_name(access.role_id),
+                        modules=mods,
+                    )
+                )
             out.append(
                 MunicipalityWithFacilities(
                     municipality=MunicipalityRead.model_validate(mun),
@@ -57,6 +80,8 @@ class TenantService:
         return WorkContextOptions(municipalities=out)
 
     async def select(self, user_id: UUID, payload: WorkContextSelect) -> WorkContextIssued:
+        from app.modules.permissions.service import PermissionService
+
         mun = await self.repo.get_municipality(payload.municipality_id)
         if mun is None:
             raise NotFoundError("Município não encontrado.")
@@ -69,7 +94,15 @@ class TenantService:
         if facility.municipality_id != mun.id:
             raise ForbiddenError("Unidade não pertence ao município informado.")
 
-        modules = list(access.modules)
+        # Resolve permissões (fonte única). Módulos derivam das permissões.
+        resolved = await PermissionService(self.session).resolve(user_id, access.id)
+
+        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+        if resolved.is_root:
+            modules = sorted(_OPERATIONAL)
+        else:
+            modules = sorted(resolved.modules() & _OPERATIONAL)
+
         if payload.module:
             if payload.module not in modules:
                 raise ForbiddenError(
@@ -77,12 +110,18 @@ class TenantService:
                 )
             modules = [payload.module]
 
+        # Nome do perfil (derivado do role).
+        from app.modules.permissions.models import Role
+
+        role = await self.session.get(Role, access.role_id)
+        role_name = role.name if role else ""
+
         token = create_context_token(
             user_id=str(user_id),
             municipality_id=str(mun.id),
             municipality_ibge=mun.ibge,
             facility_id=str(facility.id),
-            role=access.role,
+            role=role_name,
             modules=modules,
         )
 
@@ -90,8 +129,9 @@ class TenantService:
             context_token=token,
             municipality=MunicipalityRead.model_validate(mun),
             facility=FacilityRead.model_validate(facility),
-            role=access.role,
+            role=role_name,
             modules=modules,
+            permissions=resolved.to_list(),
             expires_in=settings.work_context_ttl_minutes * 60,
         )
 
@@ -102,6 +142,7 @@ class TenantService:
         facility_id: UUID,
         role: str,
         modules: list[str],
+        permissions: list[str],
     ) -> WorkContextCurrent:
         mun = await self.repo.get_municipality(municipality_id)
         row = await self.repo.get_facility_access(user_id, facility_id)
@@ -113,6 +154,7 @@ class TenantService:
             facility=FacilityRead.model_validate(facility),
             role=role,
             modules=modules,
+            permissions=permissions,
         )
 
     # ─── Admin CRUD (MASTER) ───────────────────────────────────────────

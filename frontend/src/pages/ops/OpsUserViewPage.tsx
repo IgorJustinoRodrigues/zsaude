@@ -408,7 +408,7 @@ export function OpsUserViewPage() {
                             {fac.role}
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
+                        <div className="flex flex-wrap gap-1.5 items-center">
                           {fac.modules.map((mod: SystemId) => (
                             <span
                               key={mod}
@@ -418,6 +418,14 @@ export function OpsUserViewPage() {
                               {MODULE_LABEL[mod]}
                             </span>
                           ))}
+                          <button
+                            onClick={() => navigate(`/ops/usuarios/${user.id}/acessos/${fac.facilityAccessId}/permissoes`)}
+                            title="Personalizar permissões deste acesso"
+                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                          >
+                            <KeyRound size={11} />
+                            Permissões
+                          </button>
                         </div>
                       </div>
                     </div>

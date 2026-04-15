@@ -5,28 +5,12 @@ import {
   Eye, EyeOff, RefreshCw, Check, X,
 } from 'lucide-react'
 import { userApi, type UserDetail, type UserStatus, type UserLevel } from '../../api/users'
+import { rolesAdminApi, type RoleSummary } from '../../api/roles'
 import { useAuthStore } from '../../store/authStore'
 import { directoryApi, type MunicipalityDto, type FacilityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
-import type { SystemId } from '../../types'
-
-const ALL_MODULES: { id: SystemId; label: string; color: string }[] = [
-  { id: 'cln', label: 'Clínica',     color: '#0ea5e9' },
-  { id: 'dgn', label: 'Diagnóstico', color: '#8b5cf6' },
-  { id: 'hsp', label: 'Hospitalar',  color: '#f59e0b' },
-  { id: 'pln', label: 'Planos',      color: '#10b981' },
-  { id: 'fsc', label: 'Fiscal',      color: '#f97316' },
-  { id: 'ops', label: 'Operações',   color: '#6b7280' },
-]
-
-const ROLES = [
-  'Administrador do Sistema', 'Gestor Regional', 'Supervisor Clínico',
-  'Analista', 'Recepcionista', 'Médico', 'Enfermeiro',
-  'Técnico de Enfermagem', 'Fisioterapeuta', 'Psicólogo',
-  'Assistente Social', 'Consultor Externo',
-]
 
 const STATUSES: UserStatus[] = ['Ativo', 'Inativo', 'Bloqueado']
 const LEVELS: UserLevel[] = ['master', 'admin', 'user']
@@ -77,8 +61,7 @@ function checkPassword(pwd: string) {
 
 interface FacilityAccess {
   facilityId: string
-  role: string
-  modules: SystemId[]
+  roleId: string
 }
 
 interface MunicipalityAccess {
@@ -87,15 +70,13 @@ interface MunicipalityAccess {
   facilities: FacilityAccess[]
 }
 
-const emptyFacility     = (): FacilityAccess     => ({ facilityId: '', role: '', modules: [] })
+const emptyFacility     = (): FacilityAccess     => ({ facilityId: '', roleId: '' })
 const emptyMunicipality = (): MunicipalityAccess => ({ municipalityId: '', expanded: true, facilities: [emptyFacility()] })
 
 function detailToAccesses(
   detail: UserDetail,
   scopeMunIds?: Set<string>,
 ): { accesses: MunicipalityAccess[]; outOfScope: UserDetail['municipalities'] } {
-  // Se scope informado, separa o que está fora do escopo (read-only).
-  // ADMIN só edita os in-scope; os out-of-scope são preservados pelo backend.
   const visible = scopeMunIds
     ? detail.municipalities.filter(m => scopeMunIds.has(m.municipalityId))
     : detail.municipalities
@@ -111,8 +92,7 @@ function detailToAccesses(
         facilities: m.facilities.length > 0
           ? m.facilities.map(f => ({
               facilityId: f.facilityId,
-              role: f.role,
-              modules: f.modules,
+              roleId: f.roleId,
             }))
           : [emptyFacility()],
       }))
@@ -135,6 +115,7 @@ export function OpsUserFormPage() {
   // Diretório (municípios/unidades)
   const [municipalities, setMunicipalities] = useState<MunicipalityDto[]>([])
   const [facilities,     setFacilities]     = useState<FacilityDto[]>([])
+  const [allRoles,       setAllRoles]       = useState<RoleSummary[]>([])
 
   // Campos
   const [login,    setLogin]    = useState('')
@@ -171,13 +152,15 @@ export function OpsUserFormPage() {
       try {
         // MASTER vê tudo; ADMIN vê só seus municípios/unidades
         const scope = actor?.level === 'master' ? 'all' : 'actor'
-        const [muns, facs] = await Promise.all([
+        const [muns, facs, roles] = await Promise.all([
           directoryApi.listMunicipalities(scope),
           directoryApi.listFacilities(undefined, scope),
+          rolesAdminApi.list({ includeArchived: false }),
         ])
         if (cancelled) return
         setMunicipalities(muns)
         setFacilities(facs)
+        setAllRoles(roles)
 
         if (isEdit && id) {
           const detail = await userApi.get(id)
@@ -239,14 +222,12 @@ export function OpsUserFormPage() {
       : m
     ))
 
-  const toggleModule = (mi: number, fi: number, mod: SystemId) =>
-    setAccesses(a => a.map((m, i) => i === mi
-      ? { ...m, facilities: m.facilities.map((f, j) => j === fi
-          ? { ...f, modules: f.modules.includes(mod) ? f.modules.filter(x => x !== mod) : [...f.modules, mod] }
-          : f
-        )}
-      : m
-    ))
+  // Roles disponíveis para um município: SYSTEM ∪ MUNICIPALITY do próprio.
+  const rolesForMunicipality = (munId: string): RoleSummary[] => {
+    return allRoles.filter(r =>
+      r.scope === 'SYSTEM' || r.municipalityId === munId,
+    )
+  }
 
   const validate = () => {
     const e: Record<string, string> = {}
@@ -263,19 +244,16 @@ export function OpsUserFormPage() {
     }
 
     // Validação flexível: permite salvar sem vínculos (usuário sem acessos).
-    // Mas, se município escolhido, todos os campos de unidade precisam estar ok.
     accesses.forEach((m, mi) => {
       if (!m.municipalityId) {
-        // município vazio: ignora se for o único "placeholder" e nenhum outro existir
-        const hasValue = m.facilities.some(f => f.facilityId || f.role || f.modules.length > 0)
+        const hasValue = m.facilities.some(f => f.facilityId || f.roleId)
         if (hasValue) e[`mun-${mi}`] = 'Selecione o município'
         return
       }
       m.facilities.forEach((f, fi) => {
-        if (!f.facilityId && !f.role && f.modules.length === 0) return // placeholder
-        if (!f.facilityId)     e[`fac-${mi}-${fi}`]  = 'Selecione a unidade'
-        if (!f.role)           e[`role-${mi}-${fi}`] = 'Selecione o cargo'
-        if (!f.modules.length) e[`mod-${mi}-${fi}`]  = 'Selecione ao menos um módulo'
+        if (!f.facilityId && !f.roleId) return // placeholder
+        if (!f.facilityId) e[`fac-${mi}-${fi}`]  = 'Selecione a unidade'
+        if (!f.roleId)     e[`role-${mi}-${fi}`] = 'Selecione o perfil'
       })
     })
     setErrors(e)
@@ -288,8 +266,8 @@ export function OpsUserFormPage() {
       .map(m => ({
         municipalityId: m.municipalityId,
         facilities: m.facilities
-          .filter(f => f.facilityId && f.role && f.modules.length > 0)
-          .map(f => ({ facilityId: f.facilityId, role: f.role, modules: f.modules })),
+          .filter(f => f.facilityId && f.roleId)
+          .map(f => ({ facilityId: f.facilityId, roleId: f.roleId })),
       }))
   }
 
@@ -419,11 +397,17 @@ export function OpsUserFormPage() {
               placeholder="(00) 00000-0000" className={inputCls(false)} />
           </Field>
 
-          <Field label="Perfil principal *" error={errors.role}>
-            <select value={role} onChange={e => setRole(e.target.value)} className={inputCls(!!errors.role)}>
-              <option value="">Selecione...</option>
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+          <Field
+            label="Cargo / função principal *"
+            error={errors.role}
+            hint="Descrição livre — serve como rótulo do usuário (ex.: 'Médica', 'Enfermeira'). As permissões vêm do perfil configurado em cada acesso."
+          >
+            <input
+              value={role}
+              onChange={e => setRole(e.target.value)}
+              placeholder="Ex: Recepcionista"
+              className={inputCls(!!errors.role)}
+            />
           </Field>
 
           <Field label="Status">
@@ -571,12 +555,17 @@ export function OpsUserFormPage() {
                                 .map(f => <option key={f.id} value={f.id}>{f.shortName}</option>)}
                             </select>
                           </Field>
-                          <Field label="Cargo / Perfil" error={errors[`role-${mi}-${fi}`]}>
-                            <select value={fac.role}
-                              onChange={e => setFacilityField(mi, fi, 'role', e.target.value)}
+                          <Field label="Perfil" error={errors[`role-${mi}-${fi}`]}>
+                            <select value={fac.roleId}
+                              onChange={e => setFacilityField(mi, fi, 'roleId', e.target.value)}
+                              disabled={!mun.municipalityId}
                               className={inputCls(!!errors[`role-${mi}-${fi}`])}>
                               <option value="">Selecione...</option>
-                              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                              {rolesForMunicipality(mun.municipalityId).map(r => (
+                                <option key={r.id} value={r.id}>
+                                  [{r.scope === 'SYSTEM' ? 'base' : 'local'}] {r.name}
+                                </option>
+                              ))}
                             </select>
                           </Field>
                           <div className="flex items-end pb-0.5">
@@ -589,30 +578,11 @@ export function OpsUserFormPage() {
                           </div>
                         </div>
 
-                        <div className="mt-3">
-                          <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                            Módulos com acesso
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {ALL_MODULES.map(mod => {
-                              const active = fac.modules.includes(mod.id)
-                              return (
-                                <button key={mod.id} type="button" onClick={() => toggleModule(mi, fi, mod.id)}
-                                  className={cn('px-3 py-1.5 rounded-md text-xs font-semibold border transition-all',
-                                    active
-                                      ? 'text-white border-transparent'
-                                      : 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
-                                  )}
-                                  style={active ? { backgroundColor: mod.color } : undefined}>
-                                  {mod.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          {errors[`mod-${mi}-${fi}`] && (
-                            <p className="text-[11px] text-red-500 mt-1.5">{errors[`mod-${mi}-${fi}`]}</p>
-                          )}
-                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-2">
+                          Módulos e permissões são derivados do perfil selecionado.
+                          Personalize permissões específicas em
+                          <strong> /ops/usuarios/{id ?? ':id'}/acessos/{fac.facilityId || ':accessId'}/permissoes</strong>.
+                        </p>
                       </div>
                     ))}
 

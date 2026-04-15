@@ -176,8 +176,50 @@ async def upsert_mun_access(session) -> None:
             )
 
 
+# Mapeia a string de role da v1 para o `code` de um SYSTEM role base (v2).
+# Strings não mapeadas ficam com role_id=None (acesso sem permissão) até
+# o município configurar um role MUNICIPALITY customizado.
+_ROLE_STRING_TO_CODE: dict[str, str] = {
+    "Administrador do Sistema": "system_admin",
+    "Supervisor Clínico": "doctor_base",
+    "Supervisor UPA": "doctor_base",
+    "Consultor Externo": "manager_base",
+    "Analista": "manager_base",
+    "Gestor Regional": "manager_base",
+    "Recepcionista": "receptionist_base",
+    "Técnico de Laboratório": "receptionist_base",  # sem DGN base ainda
+    "Fiscal Sanitário": "visa_agent_base",
+    "Gestor de Frota": "manager_base",
+    "Enfermeira": "nurse_base",
+    "Médico": "doctor_base",
+    "Médica": "doctor_base",
+    "Farmacêutico": "nurse_base",
+    "Assistente Social": "nurse_base",
+    "Técnico de Enfermagem": "nurse_base",
+}
+
+
 async def upsert_fac_access(session) -> None:
-    for user_key, fac_key, role, modules in FAC_ACCESS:
+    from app.modules.permissions.models import Role
+
+    # Cache de role_id por code (SYSTEM roles).
+    role_ids: dict[str, uuid.UUID] = {}
+    rows = await session.scalars(select(Role).where(Role.municipality_id.is_(None)))
+    for r in rows.all():
+        role_ids[r.code] = r.id
+
+    # Fallback: se a string do mock não mapear pra SYSTEM role, usa recepcionista.
+    fallback_role_id = role_ids.get("receptionist_base")
+
+    for user_key, fac_key, role_string, _modules_legacy in FAC_ACCESS:
+        target_code = _ROLE_STRING_TO_CODE.get(role_string)
+        role_id = role_ids.get(target_code) if target_code else fallback_role_id
+        if role_id is None:
+            raise RuntimeError(
+                f"Role base não encontrado para {role_string!r}. "
+                "Rode `ensure_system_base_roles` antes."
+            )
+
         exists = await session.scalar(
             select(FacilityAccess).where(
                 FacilityAccess.user_id == fid(user_key),
@@ -189,10 +231,11 @@ async def upsert_fac_access(session) -> None:
                 FacilityAccess(
                     user_id=fid(user_key),
                     facility_id=fid(fac_key),
-                    role=role,
-                    modules=modules,
+                    role_id=role_id,
                 )
             )
+        elif exists.role_id != role_id:
+            exists.role_id = role_id
 
 
 async def provision_schemas(session) -> None:

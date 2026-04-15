@@ -11,8 +11,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from functools import lru_cache
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.modules.permissions.service import ResolvedPermissions
 
 import jwt
 import redis.asyncio as redis
@@ -125,7 +128,8 @@ CurrentUserDep = Annotated[CurrentUser, Depends(current_user)]
 class WorkContext:
     __slots__ = (
         "user_id", "municipality_id", "municipality_ibge",
-        "facility_id", "role", "modules",
+        "facility_id", "facility_access_id",
+        "role", "modules", "permissions",
     )
 
     def __init__(
@@ -135,18 +139,27 @@ class WorkContext:
         municipality_id: UUID,
         municipality_ibge: str,
         facility_id: UUID,
+        facility_access_id: UUID | None,
         role: str,
         modules: list[str],
+        permissions: "ResolvedPermissions",
     ) -> None:
         self.user_id = user_id
         self.municipality_id = municipality_id
         self.municipality_ibge = municipality_ibge
         self.facility_id = facility_id
+        self.facility_access_id = facility_access_id
         self.role = role
         self.modules = modules
+        self.permissions = permissions
+
+    def has(self, permission_code: str) -> bool:
+        return permission_code in self.permissions
 
 
 async def current_context(
+    db: DB,
+    valkey: Valkey,
     user: CurrentUserDep,
     x_work_context: Annotated[str | None, Header(alias="X-Work-Context")] = None,
 ) -> WorkContext:
@@ -164,13 +177,35 @@ async def current_context(
     if payload.get("sub") != str(user.id):
         raise HTTPException(status_code=403, detail="Contexto pertence a outro usuário.")
 
+    facility_id = UUID(payload["fac"])
+
+    # Resolve acesso + permissões fresco a cada request. A fonte de verdade
+    # é o banco, não o token — assim mudanças em role/override propagam sem
+    # precisar renovar o X-Work-Context.
+    from app.modules.permissions.service import PermissionService
+
+    perm_svc = PermissionService(db, valkey)
+    access, permissions = await perm_svc.resolve_for_facility(user.id, facility_id)
+    if access is None:
+        raise HTTPException(status_code=403, detail="Acesso à unidade revogado.")
+
+    # Módulos derivados das permissões (intersecção com módulos operacionais).
+    # MASTER sempre enxerga todos os operacionais, mesmo os que ainda não
+    # têm permissões registradas no catálogo.
+    if permissions.is_root:
+        derived_modules = sorted(_OPERATIONAL_MODULES)
+    else:
+        derived_modules = sorted(permissions.modules() & _OPERATIONAL_MODULES)
+
     ctx = WorkContext(
-        user_id=UUID(payload["sub"]),
+        user_id=user.id,
         municipality_id=UUID(payload["mun"]),
         municipality_ibge=str(payload.get("ibge", "")),
-        facility_id=UUID(payload["fac"]),
-        role=payload["role"],
-        modules=list(payload.get("mods", [])),
+        facility_id=facility_id,
+        facility_access_id=access.id,
+        role=str(payload.get("role", "")),
+        modules=derived_modules,
+        permissions=permissions,
     )
 
     update_audit_context(
@@ -186,14 +221,37 @@ async def current_context(
 CurrentContextDep = Annotated[WorkContext, Depends(current_context)]
 
 
+# Módulos "operacionais" — os que aparecem no switcher de módulo da UI.
+# Outros módulos (sys, users, roles, audit) existem no catálogo mas não são
+# selecionáveis como contexto de trabalho.
+_OPERATIONAL_MODULES: frozenset[str] = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+
+
 # ─── Guards ──────────────────────────────────────────────────────────────
 
 
-def requires(*, module: str) -> object:
-    """Guard que exige que o contexto ativo inclua `module`."""
+def requires(
+    *,
+    module: str | None = None,
+    permission: str | None = None,
+    any_of: list[str] | None = None,
+) -> object:
+    """Guard que exige permissão/módulo no contexto ativo.
+
+    Escolha **uma** forma:
+    - ``permission="cln.patient.edit"`` → checagem fina (recomendado).
+    - ``any_of=["cln.patient.view", "cln.patient.edit"]`` → qualquer uma.
+    - ``module="cln"`` → qualquer permissão do módulo (derivado).
+    """
+    if permission is None and module is None and any_of is None:
+        raise ValueError("requires() precisa de 'permission', 'any_of' ou 'module'.")
 
     async def _dep(ctx: CurrentContextDep) -> WorkContext:
-        if module not in ctx.modules:
+        if permission is not None and permission not in ctx.permissions:
+            raise HTTPException(status_code=403, detail=f"Sem permissão: {permission}.")
+        if any_of is not None and not ctx.permissions.has_any(*any_of):
+            raise HTTPException(status_code=403, detail="Sem permissão.")
+        if module is not None and not ctx.permissions.has_any_in_module(module):
             raise HTTPException(status_code=403, detail=f"Acesso ao módulo {module} não permitido.")
         return ctx
 

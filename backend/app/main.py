@@ -24,7 +24,8 @@ from app.core.exceptions import (
     validation_error_handler,
 )
 from app.core.logging import configure_logging, get_logger
-from app.db.session import dispose_engine, engine
+from app.core.permissions.seed import ensure_system_base_roles, sync_permissions
+from app.db.session import dispose_engine, engine, sessionmaker
 from app.middleware.audit_context import AuditContextMiddleware
 from app.middleware.audit_writer import AuditWriterMiddleware
 from app.middleware.request_id import RequestIdMiddleware
@@ -39,6 +40,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("startup", env=settings.env, api_prefix=settings.api_v1_prefix)
     # inicializa engine cedo
     engine()
+    # Sincroniza catálogo de permissões (registry → DB) e SYSTEM roles base.
+    # Idempotente — barato o bastante para rodar a cada boot.
+    try:
+        async with sessionmaker()() as session:
+            n_perms = await sync_permissions(session)
+            n_roles = await ensure_system_base_roles(session)
+            await session.commit()
+            log.info("rbac_sync_ok", permissions=n_perms, system_roles=n_roles)
+    except Exception as e:  # noqa: BLE001
+        log.error("rbac_sync_failed", error=str(e))
     try:
         yield
     finally:

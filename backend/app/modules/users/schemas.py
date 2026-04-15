@@ -52,8 +52,7 @@ class UserListItem(CamelModel):
 
 class FacilityAccessInput(CamelModel):
     facility_id: UUID
-    role: str = Field(min_length=2, max_length=100)
-    modules: list[str] = Field(default_factory=list)
+    role_id: UUID
 
 
 class MunicipalityAccessInput(CamelModel):
@@ -62,12 +61,14 @@ class MunicipalityAccessInput(CamelModel):
 
 
 class FacilityAccessDetail(CamelModel):
+    facility_access_id: UUID
     facility_id: UUID
     facility_name: str
     facility_short_name: str
     facility_type: str
-    role: str
-    modules: list[str]
+    role_id: UUID
+    role: str           # nome do role (exibição)
+    modules: list[str]  # derivado das permissões
 
 
 class MunicipalityAccessDetail(CamelModel):

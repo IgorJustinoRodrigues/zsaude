@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import ARRAY, Boolean, Enum, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -75,7 +75,14 @@ class MunicipalityAccess(Base, TimestampedMixin):
 
 
 class FacilityAccess(Base, TimestampedMixin):
-    """Vínculo usuário → unidade, com papel e módulos permitidos."""
+    """Vínculo usuário → unidade.
+
+    ``role_id`` é obrigatório — todo acesso tem um perfil que define a base
+    de permissões. Overrides por acesso ficam em
+    ``facility_access_permission_overrides``.
+    ``version`` bumpa quando o acesso ou overrides mudam — usado para
+    invalidar o cache de resolução.
+    """
 
     __tablename__ = "facility_accesses"
     __table_args__ = (UniqueConstraint("user_id", "facility_id", name="uq_fac_access_user_fac"),)
@@ -87,6 +94,10 @@ class FacilityAccess(Base, TimestampedMixin):
     facility_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("facilities.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    role: Mapped[str] = mapped_column(String(100), nullable=False)
-    # ["cln", "dgn", ...]
-    modules: Mapped[list[str]] = mapped_column(ARRAY(String(10)), nullable=False, server_default="{}")
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("roles.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))

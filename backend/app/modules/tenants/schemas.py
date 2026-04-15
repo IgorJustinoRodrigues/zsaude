@@ -55,6 +55,7 @@ class WorkContextIssued(CamelModel):
     facility: FacilityRead
     role: str
     modules: list[str]
+    permissions: list[str]
     expires_in: int
 
 
@@ -63,6 +64,7 @@ class WorkContextCurrent(CamelModel):
     facility: FacilityRead
     role: str
     modules: list[str]
+    permissions: list[str]
 
 
 # ─── Admin CRUD ──────────────────────────────────────────────────────────────

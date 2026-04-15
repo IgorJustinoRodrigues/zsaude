@@ -41,4 +41,5 @@ async def current(db: DB, ctx: CurrentContextDep) -> WorkContextCurrent:
         facility_id=ctx.facility_id,
         role=ctx.role,
         modules=ctx.modules,
+        permissions=ctx.permissions.to_list(),
     )

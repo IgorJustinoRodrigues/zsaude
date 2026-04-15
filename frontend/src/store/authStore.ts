@@ -39,6 +39,8 @@ interface AuthState {
   clearContext: () => void
   /** Auto-seleciona se há apenas 1 município + 1 unidade. Async (usa options). */
   autoSelectContext: () => Promise<SystemId[] | null>
+  /** Checa se o user tem a permissão no contexto atual. MASTER (['*']) passa. */
+  can: (code: string) => boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -97,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
                   },
                   role: current.role,
                   modules: current.modules,
+                  permissions: current.permissions,
                 },
               })
             } catch {
@@ -176,10 +179,18 @@ export const useAuthStore = create<AuthState>()(
             },
             role: issued.role,
             modules: issued.modules,
+            permissions: issued.permissions,
           },
           currentSystem: null,
         })
         return issued.modules
+      },
+
+      can: (code) => {
+        const perms = get().context?.permissions
+        if (!perms) return false
+        if (perms.includes('*')) return true
+        return perms.includes(code)
       },
 
       autoSelectContext: async () => {

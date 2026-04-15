@@ -112,11 +112,11 @@ class UserRepository:
         self,
         user_id: UUID,
         municipality_ids: set[UUID],
-        facilities: list[tuple[UUID, str, list[str]]],
+        facilities: list[tuple[UUID, UUID]],
     ) -> None:
         """Substitui todos os vínculos do usuário de forma atômica.
 
-        `facilities` é lista de tuplas (facility_id, role, modules).
+        ``facilities`` é lista de tuplas ``(facility_id, role_id)``.
         """
         from sqlalchemy import delete
 
@@ -125,18 +125,54 @@ class UserRepository:
 
         for mid in municipality_ids:
             self.session.add(MunicipalityAccess(user_id=user_id, municipality_id=mid))
-        for fid, role, modules in facilities:
+        for fid, role_id in facilities:
             self.session.add(
-                FacilityAccess(user_id=user_id, facility_id=fid, role=role, modules=modules)
+                FacilityAccess(user_id=user_id, facility_id=fid, role_id=role_id)
             )
         await self.session.flush()
 
-    async def facility_modules(self, user_id: UUID) -> list[str]:
-        """Agregado: todos os módulos distintos que o usuário acessa em qualquer unidade."""
-        stmt = select(FacilityAccess.modules).where(FacilityAccess.user_id == user_id)
-        rows = (await self.session.execute(stmt)).all()
-        out: set[str] = set()
-        for (arr,) in rows:
-            for m in arr or []:
-                out.add(m)
-        return sorted(out)
+    async def bulk_modules_by_user(self, user_ids: list[UUID]) -> dict[UUID, set[str]]:
+        """Módulos acessados por usuário (agregado, considera herança de roles).
+
+        Via CTE recursiva: para cada ``facility_access.role_id``, caminha a
+        cadeia ``parent_id → parent_id → ...`` e acumula grants explícitos
+        em qualquer ancestral.
+
+        Simplificações em troca de ser barato para listagem:
+        - Ignora ``granted=false`` (denies explícitos) — grants "vencem" aqui
+          para o agregado. A autorização real (resolve) aplica precedência.
+        - Ignora overrides por acesso.
+
+        Usar para "quais módulos esse usuário toca". Para checagem fina
+        use ``ctx.permissions``.
+        """
+        if not user_ids:
+            return {}
+
+        from sqlalchemy import text
+
+        stmt = text(
+            """
+            WITH RECURSIVE role_chain(source_id, ancestor_id) AS (
+                SELECT id, id FROM app.roles
+                UNION
+                SELECT rc.source_id, r.parent_id
+                  FROM role_chain rc
+                  JOIN app.roles r ON r.id = rc.ancestor_id
+                 WHERE r.parent_id IS NOT NULL
+            )
+            SELECT DISTINCT fa.user_id, p.module
+              FROM app.facility_accesses fa
+              JOIN role_chain rc ON rc.source_id = fa.role_id
+              JOIN app.role_permissions rp
+                ON rp.role_id = rc.ancestor_id AND rp.granted = true
+              JOIN app.permissions p
+                ON p.code = rp.permission_code
+             WHERE fa.user_id = ANY(:user_ids)
+            """
+        )
+        rows = (await self.session.execute(stmt, {"user_ids": user_ids})).all()
+        out: dict[UUID, set[str]] = {uid: set() for uid in user_ids}
+        for uid, module in rows:
+            out[uid].add(module)
+        return out

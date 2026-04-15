@@ -25,10 +25,12 @@ export interface UserListItem {
 }
 
 export interface FacilityAccessDetail {
+  facilityAccessId: string
   facilityId: string
   facilityName: string
   facilityShortName: string
   facilityType: string
+  roleId: string
   role: string
   modules: SystemId[]
 }
@@ -69,8 +71,7 @@ export interface PageResponse<T> {
 
 export interface FacilityAccessInput {
   facilityId: string
-  role: string
-  modules: SystemId[]
+  roleId: string
 }
 
 export interface MunicipalityAccessInput {

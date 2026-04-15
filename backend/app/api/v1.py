@@ -6,6 +6,11 @@ from fastapi import APIRouter
 
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
+from app.modules.permissions.admin_router import (
+    access_router as roles_admin_access_router,
+    router as roles_admin_router,
+)
+from app.modules.permissions.router import router as roles_router
 from app.modules.sessions.router import router as sessions_router
 from app.modules.system.router import router as system_router
 from app.modules.tenants.admin_router import router as tenants_admin_router
@@ -22,5 +27,8 @@ api_v1.include_router(users_router)
 api_v1.include_router(tenants_router)
 api_v1.include_router(directory_router)
 api_v1.include_router(tenants_admin_router)
+api_v1.include_router(roles_router)
+api_v1.include_router(roles_admin_router)
+api_v1.include_router(roles_admin_access_router)
 api_v1.include_router(system_router)
 api_v1.include_router(audit_router)

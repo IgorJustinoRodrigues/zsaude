@@ -53,6 +53,7 @@ import { OpsAuditReportPage } from '../pages/ops/OpsAuditReportPage'
 import { OpsOccurrencesReportPage } from '../pages/ops/OpsOccurrencesReportPage'
 import { OpsActivityReportPage } from '../pages/ops/OpsActivityReportPage'
 import { OpsSearchesPage } from '../pages/ops/OpsSearchesPage'
+import { OpsUserAccessPermsPage } from '../pages/ops/OpsUserAccessPermsPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -64,6 +65,14 @@ import { SysFacilityFormPage } from '../pages/sys/SysFacilityFormPage'
 import { SysUserAdminPage } from '../pages/sys/SysUserAdminPage'
 import { SysSettingsPage } from '../pages/sys/SysSettingsPage'
 import { SysAuditPage } from '../pages/sys/SysAuditPage'
+import { SysRoleListPage } from '../pages/sys/SysRoleListPage'
+import { SysRoleDetailPage } from '../pages/sys/SysRoleDetailPage'
+import { SysRoleFormPage } from '../pages/sys/SysRoleFormPage'
+
+// Shared (com contexto): Perfis do município
+import { RoleListPage } from '../pages/shared/RoleListPage'
+import { RoleDetailPage } from '../pages/shared/RoleDetailPage'
+import { RoleFormPage } from '../pages/shared/RoleFormPage'
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
@@ -105,6 +114,9 @@ export const router = createBrowserRouter([
               { path: '/sys/unidades/novo',         element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id',          element: <SysFacilityFormPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
+              { path: '/sys/perfis',                element: <SysRoleListPage /> },
+              { path: '/sys/perfis/novo',           element: <SysRoleFormPage /> },
+              { path: '/sys/perfis/:id',            element: <SysRoleDetailPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
             ],
@@ -123,8 +135,11 @@ export const router = createBrowserRouter([
             element: <AppShell />,
             children: [
               // Compartilhadas (ainda exigem contexto, mas não módulo específico)
-              { path: '/usuarios',     element: <UsersPage /> },
-              { path: '/notificacoes', element: <NotificationsPage /> },
+              { path: '/usuarios',           element: <UsersPage /> },
+              { path: '/notificacoes',       element: <NotificationsPage /> },
+              { path: '/shared/perfis',      element: <RoleListPage /> },
+              { path: '/shared/perfis/novo', element: <RoleFormPage /> },
+              { path: '/shared/perfis/:id',  element: <RoleDetailPage /> },
 
               // CLN
               {
@@ -178,6 +193,7 @@ export const router = createBrowserRouter([
                   { path: '/ops/usuarios/novo',            element: <OpsUserFormPage /> },
                   { path: '/ops/usuarios/:id',             element: <OpsUserViewPage /> },
                   { path: '/ops/usuarios/:id/editar',      element: <OpsUserFormPage /> },
+                  { path: '/ops/usuarios/:userId/acessos/:accessId/permissoes', element: <OpsUserAccessPermsPage /> },
                   { path: '/ops/logs',                     element: <OpsLogsPage /> },
                   { path: '/ops/relatorios',               element: <OpsReportsPage /> },
                   { path: '/ops/relatorios/acessos',       element: <OpsAccessReportPage /> },

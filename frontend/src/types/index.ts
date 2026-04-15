@@ -46,6 +46,8 @@ export interface WorkContext {
   facility: Facility
   role: string
   modules: SystemId[]
+  /** Lista de permission codes resolvidos; `['*']` = MASTER (super-usuário). */
+  permissions: string[]
 }
 
 export interface User {

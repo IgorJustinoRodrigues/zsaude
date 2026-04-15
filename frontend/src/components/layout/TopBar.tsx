@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -19,6 +19,8 @@ interface Props { module: SystemId | null }
 
 export function TopBar({ module }: Props) {
   const { user, context, contextOptions, logout } = useAuthStore()
+  const can = useAuthStore(s => s.can)
+  const canManageRoles = can('roles.role.view')
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
   const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
   const navigate = useNavigate()
@@ -380,6 +382,15 @@ export function TopBar({ module }: Props) {
                   >
                     <MapPin size={14} />
                     Trocar unidade
+                  </button>
+                )}
+                {canManageRoles && (
+                  <button
+                    onClick={() => { setUserMenuOpen(false); navigate('/shared/perfis') }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <KeyRound size={14} />
+                    Perfis & permissões
                   </button>
                 )}
                 <button

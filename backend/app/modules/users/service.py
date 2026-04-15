@@ -148,8 +148,18 @@ class UserService:
             fac_stmt = select(FacilityAccess).where(FacilityAccess.user_id.in_(ids))
             for fa in (await self.session.scalars(fac_stmt)).all():
                 muns, facs, mods = counts_by_user[fa.user_id]
-                mods.update(fa.modules or [])
                 counts_by_user[fa.user_id] = (muns, facs + 1, mods)
+
+            # Módulos agregados via CTE (considera herança do role).
+            modules_by_user = await self.repo.bulk_modules_by_user(ids)
+            # MASTER vê todos os módulos operacionais (super-usuário).
+            _OPERATIONAL = {"cln", "dgn", "hsp", "pln", "fsc", "ops"}
+            for u in rows:
+                mods_set = modules_by_user.get(u.id, set())
+                if u.level == UserLevel.MASTER:
+                    mods_set = set(_OPERATIONAL)
+                muns, facs, _ = counts_by_user[u.id]
+                counts_by_user[u.id] = (muns, facs, mods_set)
 
         items = [
             UserListItem(
@@ -175,8 +185,22 @@ class UserService:
     # ─── Admin: detalhe ──────────────────────────────────────────────────────
 
     async def detail(self, user_id: UUID) -> UserDetail:
+        from app.modules.permissions.models import Role
+        from app.modules.permissions.service import PermissionService
+
         user = await self.get_or_404(user_id)
         fac_rows = await self.repo.list_facility_accesses(user_id)
+
+        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+
+        # Cache local de roles por id (evita N queries repetidas).
+        role_ids = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
+        roles_by_id: dict[UUID, Role] = {}
+        if role_ids:
+            r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids)))
+            roles_by_id = {r.id: r for r in r_rows.all()}
+
+        perm_svc = PermissionService(self.session)
 
         # Agrupa por município
         by_mun: dict[UUID, dict] = {}
@@ -189,14 +213,26 @@ class UserService:
                     "municipality_state": mun.state,
                     "facilities": [],
                 }
+
+            role = roles_by_id.get(fa.role_id)
+            role_name = role.name if role else ""
+
+            resolved = await perm_svc.resolve(user.id, fa.id)
+            if resolved.is_root:
+                mods = sorted(_OPERATIONAL)
+            else:
+                mods = sorted(resolved.modules() & _OPERATIONAL)
+
             by_mun[key]["facilities"].append(
                 FacilityAccessDetail(
+                    facility_access_id=fa.id,
                     facility_id=fac.id,
                     facility_name=fac.name,
                     facility_short_name=fac.short_name,
                     facility_type=fac.type.value if hasattr(fac.type, "value") else str(fac.type),
-                    role=fa.role,
-                    modules=list(fa.modules or []),
+                    role_id=fa.role_id,
+                    role=role_name,
+                    modules=mods,
                 )
             )
 
@@ -330,13 +366,12 @@ class UserService:
           ADMIN não gerencia) ficam intactos.
         """
         municipality_ids: set[UUID] = set()
-        facilities: list[tuple[UUID, str, list[str]]] = []
+        facilities: list[tuple[UUID, UUID]] = []  # (facility_id, role_id)
 
         for mun in tree:
             municipality_ids.add(mun.municipality_id)
             for fac in mun.facilities:
-                mods = [m.lower() for m in fac.modules if m.lower() in VALID_MODULES]
-                facilities.append((fac.facility_id, fac.role, mods))
+                facilities.append((fac.facility_id, fac.role_id))
 
         # Preserva acessos fora do escopo quando ADMIN está editando
         if scope is not None:
@@ -348,7 +383,7 @@ class UserService:
             existing_facs = await self.repo.list_facility_accesses(user_id)
             for fa, fac, _mun in existing_facs:
                 if fac.municipality_id not in scope:
-                    facilities.append((fa.facility_id, fa.role, list(fa.modules)))
+                    facilities.append((fa.facility_id, fa.role_id))
 
         # Valida existência dos municípios/unidades referenciados
         if municipality_ids:
@@ -367,12 +402,31 @@ class UserService:
             )
             fac_list = list(fac_rows.all())
             fac_map = {f.id: f for f in fac_list}
-            for fid, _role, _mods in facilities:
+            for fid, _role_id in facilities:
                 if fid not in fac_map:
                     raise NotFoundError("Unidade informada não existe.")
                 # Unidade precisa pertencer a um município vinculado
                 if fac_map[fid].municipality_id not in municipality_ids:
                     raise ForbiddenError("Unidade não pertence aos municípios vinculados.")
+
+        # Valida role_ids (todos precisam existir e ter escopo compatível).
+        if facilities:
+            from app.modules.permissions.models import Role, RoleScope
+
+            role_ids_needed = {rid for _, rid in facilities}
+            r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids_needed)))
+            role_map = {r.id: r for r in r_rows.all()}
+            missing = role_ids_needed - set(role_map.keys())
+            if missing:
+                raise NotFoundError("Perfil informado não existe.")
+            for fid, rid in facilities:
+                role = role_map[rid]
+                # MUNICIPALITY role precisa ser do mesmo município da unidade.
+                if (
+                    role.scope == RoleScope.MUNICIPALITY
+                    and role.municipality_id != fac_map[fid].municipality_id
+                ):
+                    raise ForbiddenError("Perfil não pertence ao município da unidade.")
 
         await self.repo.replace_accesses(user_id, municipality_ids, facilities)
 

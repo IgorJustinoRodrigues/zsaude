@@ -40,6 +40,7 @@ export interface WorkContextIssued {
   facility: FacilityDto
   role: string
   modules: SystemId[]
+  permissions: string[]
   expiresIn: number
 }
 
@@ -48,6 +49,7 @@ export interface WorkContextCurrent {
   facility: FacilityDto
   role: string
   modules: SystemId[]
+  permissions: string[]
 }
 
 export const workContextApi = {
