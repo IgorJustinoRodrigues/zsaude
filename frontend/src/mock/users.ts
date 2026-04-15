@@ -369,7 +369,6 @@ export const mockActivityLogs: ActivityLog[] = [
   { id: 'log5',  userId: 'usr1', action: 'view',             module: 'CLN', description: 'Acessou lista de pacientes',                            ip: '189.40.12.88',  at: ago(9)    },
   { id: 'log6',  userId: 'usr1', action: 'view',             module: 'CLN', description: 'Visualizou prontuário de Ana Beatriz Costa',            ip: '189.40.12.88',  at: ago(8)    },
   { id: 'log7',  userId: 'usr1', action: 'export',           module: 'CLN', description: 'Exportou relatório de produção (Abril/2026)',            ip: '189.40.12.88',  at: ago(6)    },
-  { id: 'log8',  userId: 'usr1', action: 'view',             module: 'DGN', description: 'Acessou painel de exames laboratoriais',                ip: '189.40.12.88',  at: ago(4)    },
   { id: 'log9',  userId: 'usr1', action: 'edit',             module: 'OPS', description: 'Editou dados de Paulo Henrique',                        ip: '189.40.12.88',  at: ago(2)    },
   { id: 'log10', userId: 'usr1', action: 'view',             module: 'OPS', description: 'Visualizou perfil de Beatriz Nunes',                    ip: '189.40.12.88',  at: ago(1)    },
 
@@ -402,10 +401,4 @@ export const mockActivityLogs: ActivityLog[] = [
   { id: 'log34', userId: 'usr2', action: 'view',             module: 'CLN', description: 'Consultou prontuário de Luiz Henrique',                 ip: '201.73.45.12',  at: ago(1820) },
   { id: 'log35', userId: 'usr2', action: 'logout',           module: 'CLN', description: 'Sessão encerrada',                                      ip: '201.73.45.12',  at: ago(1500) },
 
-  // usr3 – Diego Figueiredo
-  { id: 'log36', userId: 'usr3', action: 'login',            module: 'DGN', description: 'Login realizado',                                       ip: '187.65.33.201', at: ago(240)  },
-  { id: 'log37', userId: 'usr3', action: 'view',             module: 'DGN', description: 'Acessou solicitações de exames pendentes',              ip: '187.65.33.201', at: ago(235)  },
-  { id: 'log38', userId: 'usr3', action: 'edit',             module: 'DGN', description: 'Atualizou status de exame para Coletado',              ip: '187.65.33.201', at: ago(220)  },
-  { id: 'log39', userId: 'usr3', action: 'create',           module: 'DGN', description: 'Registrou resultado de hemograma completo',             ip: '187.65.33.201', at: ago(200)  },
-  { id: 'log40', userId: 'usr3', action: 'print',            module: 'DGN', description: 'Imprimiu laudo laboratorial',                           ip: '187.65.33.201', at: ago(185)  },
 ]

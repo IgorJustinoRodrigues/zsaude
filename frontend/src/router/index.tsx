@@ -28,9 +28,7 @@ import { QueuePage } from '../pages/cln/QueuePage'
 import { ProductionPage } from '../pages/cln/ProductionPage'
 
 // DGN – Diagnóstico
-import { LabHomePage } from '../pages/dgn/LabHomePage'
-import { ExamRequestListPage } from '../pages/dgn/ExamRequestListPage'
-import { LabReportPage } from '../pages/dgn/LabReportPage'
+// (telas serão adicionadas aqui)
 
 // HSP – Hospitalar
 // (telas serão adicionadas aqui)
@@ -142,14 +140,10 @@ export const router = createBrowserRouter([
                 ],
               },
 
-              // DGN
+              // DGN — Diagnóstico (telas ainda não criadas)
               {
                 element: <RequireModule moduleId="dgn" />,
-                children: [
-                  { path: '/dgn',        element: <LabHomePage /> },
-                  { path: '/dgn/exames', element: <ExamRequestListPage /> },
-                  { path: '/dgn/laudos', element: <LabReportPage /> },
-                ],
+                children: [],
               },
 
               // HSP — Hospitalar (telas ainda não criadas)

@@ -227,54 +227,6 @@ export interface Consultation {
   status: 'Rascunho' | 'Finalizado'
 }
 
-// ─── Exams / Lab ─────────────────────────────────────────────────────────────
-
-export type ExamStatus = 'Solicitado' | 'Coletado' | 'Em Análise' | 'Resultado Liberado' | 'Cancelado'
-
-export interface ExamItem {
-  id: string
-  code: string
-  name: string
-  referenceValue: string
-  unit: string
-  result?: string
-  status: ExamStatus
-  abnormal?: boolean
-}
-
-export interface ExamRequest {
-  id: string
-  patientId: string
-  patientName: string
-  professionalId: string
-  professionalName: string
-  unitId: string
-  unitName: string
-  requestDate: string
-  collectionDate?: string
-  releaseDate?: string
-  status: ExamStatus
-  urgency: boolean
-  exams: ExamItem[]
-  notes?: string
-}
-
-// ─── Medical Reports (Laudo) ──────────────────────────────────────────────────
-
-export interface Report {
-  id: string
-  examRequestId: string
-  patientId: string
-  patientName: string
-  professionalId: string
-  professionalName: string
-  date: string
-  content: string
-  conclusion: string
-  signed: boolean
-  released: boolean
-}
-
 // ─── Insurance (Convênios) ────────────────────────────────────────────────────
 
 export type InsuranceStatus = 'Ativo' | 'Suspenso' | 'Encerrado'

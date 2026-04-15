@@ -1,7 +1,7 @@
 import { cn } from '../../lib/utils'
-import type { AppointmentStatus, QueueStatus, ExamStatus, TriageRisk, LicenseStatus, VehicleStatus } from '../../types'
+import type { AppointmentStatus, QueueStatus, TriageRisk, LicenseStatus, VehicleStatus } from '../../types'
 
-type AnyStatus = AppointmentStatus | QueueStatus | ExamStatus | TriageRisk | LicenseStatus | VehicleStatus | string
+type AnyStatus = AppointmentStatus | QueueStatus | TriageRisk | LicenseStatus | VehicleStatus | string
 
 const STATUS_STYLES: Record<string, string> = {
   // Appointment
@@ -14,11 +14,6 @@ const STATUS_STYLES: Record<string, string> = {
   'Cancelado': 'bg-gray-100 text-gray-600',
   // Queue
   'Em Triagem': 'bg-orange-100 text-orange-700',
-  // Exam
-  'Solicitado': 'bg-blue-100 text-blue-700',
-  'Coletado': 'bg-cyan-100 text-cyan-700',
-  'Em Análise': 'bg-amber-100 text-amber-700',
-  'Resultado Liberado': 'bg-emerald-100 text-emerald-700',
   // Triage risk
   'Imediato': 'bg-red-600 text-white',
   'Muito Urgente': 'bg-orange-500 text-white',

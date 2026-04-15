@@ -1,16 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
-import { Edit, CalendarCheck, FlaskConical, FileText } from 'lucide-react'
+import { Edit, CalendarCheck } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { StatusBadge } from '../../components/shared/StatusBadge'
 import { getPatientById } from '../../mock/patients'
 import { getAppointmentsByPatient } from '../../mock/appointments'
-import { getExamsByPatient } from '../../mock/exams'
 import { formatDate, calcAge } from '../../lib/utils'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 
-const TABS = ['Dados Pessoais', 'Consultas', 'Exames'] as const
+const TABS = ['Dados Pessoais', 'Consultas'] as const
 type Tab = typeof TABS[number]
 
 export function PatientDetailPage() {
@@ -22,7 +21,6 @@ export function PatientDetailPage() {
   if (!patient) return <div className="text-center py-20 text-muted-foreground">Paciente não encontrado.</div>
 
   const appts = getAppointmentsByPatient(id!)
-  const exams = getExamsByPatient(id!)
 
   return (
     <div>
@@ -142,34 +140,6 @@ export function PatientDetailPage() {
         </div>
       )}
 
-      {tab === 'Exames' && (
-        <div className="space-y-4">
-          {exams.length === 0 && (
-            <p className="text-center text-sm text-muted-foreground py-12">Nenhum exame solicitado.</p>
-          )}
-          {exams.map(e => (
-            <div key={e.id} className="bg-white rounded-xl border border-border p-5">
-              <div className="flex items-center gap-3 mb-3">
-                <FlaskConical size={18} className="text-violet-500 shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{e.exams.length} exame{e.exams.length > 1 ? 's' : ''} solicitados</p>
-                  <p className="text-xs text-muted-foreground">Solicitado em {formatDate(e.requestDate)} · {e.professionalName}</p>
-                </div>
-                <StatusBadge status={e.status} />
-              </div>
-              <div className="space-y-1 pl-7">
-                {e.exams.map(ex => (
-                  <div key={ex.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <FileText size={12} />
-                    <span>{ex.name}</span>
-                    {ex.result && <span className={cn('font-medium', ex.abnormal ? 'text-red-600' : 'text-foreground')}>→ {ex.result} {ex.unit}</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
