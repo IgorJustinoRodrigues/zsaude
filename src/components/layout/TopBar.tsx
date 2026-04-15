@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu, AlertCircle, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -171,48 +171,88 @@ export function TopBar({ module }: Props) {
           >
             <Bell size={16} />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
             )}
           </button>
 
           {notifOpen && (
             <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Notificações</p>
                   {unreadCount > 0 && (
-                    <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
-                      {unreadCount}
-                    </span>
+                    <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">{unreadCount}</span>
                   )}
                 </div>
-                {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="text-[10px] text-sky-500 hover:text-sky-700 font-medium flex items-center gap-1">
-                    <Check size={11} /> Marcar todas
-                  </button>
-                )}
-              </div>
-              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                {notifications.map(n => (
-                  <div
-                    key={n.id}
-                    onClick={() => markRead(n.id)}
-                    className={cn('px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors', !n.read && 'bg-sky-50/50 dark:bg-sky-950/30')}
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={e => { e.stopPropagation(); markAllRead() }}
+                      className="text-[10px] text-sky-500 hover:text-sky-700 font-medium flex items-center gap-1 transition-colors"
+                    >
+                      <Check size={11} /> Marcar todas
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setNotifOpen(false); navigate('/notificacoes') }}
+                    className="text-[10px] text-sky-500 hover:text-sky-700 font-medium flex items-center gap-1 transition-colors"
                   >
-                    <div className="flex gap-3">
-                      <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 shrink-0',
-                        n.type === 'error' ? 'bg-red-500' :
-                        n.type === 'warning' ? 'bg-amber-400' :
-                        n.type === 'success' ? 'bg-emerald-500' : 'bg-sky-500'
-                      )} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">{n.title}</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{n.message}</p>
-                        <p className="text-[10px] text-slate-400 mt-1.5">{formatDateTime(n.createdAt)}</p>
+                    Ver todas <ArrowRight size={10} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista (scrollável) */}
+              <div className="overflow-y-auto scrollbar-thin divide-y divide-slate-50 dark:divide-slate-800/60" style={{ maxHeight: '320px' }}>
+                {notifications.slice(0, 8).map(n => {
+                  const Icon =
+                    n.type === 'error'   ? AlertCircle :
+                    n.type === 'warning' ? AlertTriangle :
+                    n.type === 'success' ? CheckCircle : Info
+                  const color =
+                    n.type === 'error'   ? '#ef4444' :
+                    n.type === 'warning' ? '#f59e0b' :
+                    n.type === 'success' ? '#10b981' : '#0ea5e9'
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => { markRead(n.id); setNotifOpen(false); navigate('/notificacoes') }}
+                      className={cn(
+                        'w-full flex gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors',
+                        !n.read && 'bg-sky-50/40 dark:bg-sky-950/20'
+                      )}
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                        style={{ backgroundColor: color + '15', color }}>
+                        <Icon size={13} />
                       </div>
-                    </div>
-                  </div>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <p className={cn('text-xs leading-snug truncate', n.read ? 'font-medium text-slate-600 dark:text-slate-300' : 'font-semibold text-slate-900 dark:text-white')}>
+                            {n.title}
+                          </p>
+                          {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0 mt-1" />}
+                        </div>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{n.message}</p>
+                        <p className="text-[10px] text-slate-400 mt-1">{formatDateTime(n.createdAt)}</p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Footer */}
+              <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => { setNotifOpen(false); navigate('/notificacoes') }}
+                  className="w-full text-center text-[11px] text-sky-500 hover:text-sky-700 font-medium transition-colors"
+                >
+                  Ver todas as {notifications.length} notificações
+                </button>
               </div>
             </div>
           )}
@@ -243,12 +283,9 @@ export function TopBar({ module }: Props) {
             <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
               {user ? initials(user.name) : 'U'}
             </div>
-            <div className="text-left hidden md:block">
-              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">
-                {user?.name?.split(' ')[0]} {user?.name?.split(' ').slice(-1)[0]}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5 leading-none">{user?.role}</p>
-            </div>
+            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 hidden md:block">
+              {user?.name?.split(' ')[0]}
+            </span>
             <ChevronDown size={12} className={cn('text-slate-400 transition-transform', userMenuOpen && 'rotate-180')} />
           </button>
 
