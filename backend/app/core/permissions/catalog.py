@@ -35,10 +35,12 @@ P("users.access.manage", "Conceder/remover acesso a município ou unidade")
 # ── Auditoria ───────────────────────────────────────────────────────────────
 P("audit.log.view", "Consultar logs de auditoria")
 
-# ── Operações (relatórios, presença, frota) ─────────────────────────────────
+# ── Operações (relatórios, presença, importações) ──────────────────────────
 P("ops.session.view", "Visualizar sessões e presença de usuários")
 P("ops.report.view", "Visualizar relatórios operacionais")
 P("ops.report.export", "Exportar relatórios")
+P("ops.import.execute", "Executar importações (CNES, etc) no município atual")
+P("ops.import.view", "Visualizar histórico de importações")
 
 # ── DGN (Diagnóstico) ───────────────────────────────────────────────────────
 P("dgn.exam.view", "Visualizar solicitações de exame")

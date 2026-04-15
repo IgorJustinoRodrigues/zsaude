@@ -54,6 +54,8 @@ import { OpsOccurrencesReportPage } from '../pages/ops/OpsOccurrencesReportPage'
 import { OpsActivityReportPage } from '../pages/ops/OpsActivityReportPage'
 import { OpsSearchesPage } from '../pages/ops/OpsSearchesPage'
 import { OpsUserAccessPermsPage } from '../pages/ops/OpsUserAccessPermsPage'
+import { OpsImportsPage } from '../pages/ops/OpsImportsPage'
+import { OpsImportCnesPage } from '../pages/ops/OpsImportCnesPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -196,6 +198,8 @@ export const router = createBrowserRouter([
                   { path: '/ops/usuarios/:id',             element: <OpsUserViewPage /> },
                   { path: '/ops/usuarios/:id/editar',      element: <OpsUserFormPage /> },
                   { path: '/ops/usuarios/:userId/acessos/:accessId/permissoes', element: <OpsUserAccessPermsPage /> },
+                  { path: '/ops/importacoes',        element: <OpsImportsPage /> },
+                  { path: '/ops/importacoes/cnes',   element: <OpsImportCnesPage /> },
                   { path: '/ops/logs',                     element: <OpsLogsPage /> },
                   { path: '/ops/relatorios',               element: <OpsReportsPage /> },
                   { path: '/ops/relatorios/acessos',       element: <OpsAccessReportPage /> },

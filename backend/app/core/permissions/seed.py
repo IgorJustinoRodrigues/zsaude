@@ -106,6 +106,7 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
             "users.access.view", "users.access.manage",
             "audit.log.view",
             "ops.session.view", "ops.report.view", "ops.report.export",
+            "ops.import.execute", "ops.import.view",
         ],
     ),
     (
@@ -141,7 +142,7 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
     (
         "manager_base",
         "Gestor",
-        "Relatórios, auditoria e visão gerencial dos usuários.",
+        "Relatórios, auditoria, importações e visão gerencial dos usuários.",
         [
             "users.user.view",
             "users.access.view",
@@ -149,6 +150,8 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
             "ops.session.view",
             "ops.report.view",
             "ops.report.export",
+            "ops.import.execute",
+            "ops.import.view",
         ],
     ),
     (

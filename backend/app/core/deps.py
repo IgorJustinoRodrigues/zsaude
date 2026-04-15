@@ -215,6 +215,16 @@ async def current_context(
         role=ctx.role,
     )
 
+    # Reemite search_path na conexão atual, já com o ibge resolvido.
+    # (O listener on-begin roda antes do `current_context` preencher o
+    # AuditContext, então a primeira transação começa apontando só para
+    # `app, public`. Forçamos o SET agora para que queries nas tabelas
+    # do schema mun_<ibge> sejam resolvidas.)
+    if ctx.municipality_ibge:
+        from sqlalchemy import text
+        from app.db.tenant_schemas import search_path_for
+        await db.execute(text(f"SET LOCAL search_path = {search_path_for(ctx.municipality_ibge)}"))
+
     return ctx
 
 
