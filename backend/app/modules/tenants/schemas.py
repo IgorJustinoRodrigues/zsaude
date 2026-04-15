@@ -15,6 +15,7 @@ class FacilityRead(CamelModel):
     short_name: str
     type: str
     cnes: str | None = None
+    municipality_id: UUID
 
 
 class FacilityWithAccess(CamelModel):

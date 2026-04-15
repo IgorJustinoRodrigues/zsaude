@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Query
+from sqlalchemy import select
 
 from app.core.deps import DB, CurrentContextDep, CurrentUserDep
+from app.modules.tenants.models import Facility, Municipality
 from app.modules.tenants.schemas import (
+    FacilityRead,
+    MunicipalityRead,
     WorkContextCurrent,
     WorkContextIssued,
     WorkContextOptions,

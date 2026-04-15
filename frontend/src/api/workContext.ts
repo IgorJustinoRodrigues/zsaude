@@ -9,6 +9,7 @@ export interface FacilityDto {
   shortName: string
   type: string
   cnes: string | null
+  municipalityId: string
 }
 
 export interface MunicipalityDto {
@@ -60,4 +61,14 @@ export const workContextApi = {
     }),
 
   current: () => api.get<WorkContextCurrent>('/api/v1/work-context/current', { withContext: true }),
+}
+
+// ─── Directory: municípios e unidades (read-only) ─────────────────────────────
+
+export const directoryApi = {
+  listMunicipalities: () => api.get<MunicipalityDto[]>('/api/v1/municipalities'),
+  listFacilities: (municipalityId?: string) =>
+    api.get<FacilityDto[]>(
+      `/api/v1/facilities${municipalityId ? `?municipalityId=${municipalityId}` : ''}`,
+    ),
 }

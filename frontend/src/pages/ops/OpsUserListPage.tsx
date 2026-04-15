@@ -1,12 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, UserPlus, ChevronUp, ChevronDown, ChevronsUpDown,
   Eye, Pencil, Users, UserCheck, UserX, ShieldOff,
-  Filter, X,
+  Filter, X, ChevronLeft, ChevronRight,
 } from 'lucide-react'
-import { mockUsers, mockMunicipalities, type UserRecord, type UserStatus } from '../../mock/users'
-import { initials, normalize, cn } from '../../lib/utils'
+import { initials, cn } from '../../lib/utils'
+import { userApi, type UserListItem, type UserStats, type UserStatus } from '../../api/users'
+import { HttpError } from '../../api/client'
+import type { SystemId } from '../../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,31 +26,18 @@ const STATUS_STYLE: Record<UserStatus, string> = {
   Bloqueado:'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400',
 }
 
-function allModules(user: UserRecord): string[] {
-  const set = new Set<string>()
-  user.municipalities.forEach(m => m.facilities.forEach(f => f.modules.forEach(mod => set.add(mod))))
-  return [...set]
-}
-
-function municipalityNames(user: UserRecord): string[] {
-  return user.municipalities.map(m => {
-    const found = mockMunicipalities.find(mun => mun.id === m.municipalityId)
-    return found?.name ?? m.municipalityId
-  })
-}
-
-// ─── Sort ─────────────────────────────────────────────────────────────────────
-
-type SortField = 'name' | 'email' | 'primaryRole' | 'status' | 'createdAt'
+type SortField = 'name' | 'primaryRole' | 'status' | 'createdAt'
 type SortDir   = 'asc' | 'desc'
 
-function sortUsers(users: UserRecord[], field: SortField, dir: SortDir) {
-  return [...users].sort((a, b) => {
-    const va = a[field] ?? ''
-    const vb = b[field] ?? ''
-    const cmp = va < vb ? -1 : va > vb ? 1 : 0
-    return dir === 'asc' ? cmp : -cmp
-  })
+const PAGE_SIZE = 20
+
+function useDebounced<T>(value: T, delay = 300): T {
+  const [v, setV] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return v
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -56,34 +45,77 @@ function sortUsers(users: UserRecord[], field: SortField, dir: SortDir) {
 export function OpsUserListPage() {
   const navigate = useNavigate()
 
-  const [search,     setSearch]     = useState('')
-  const [status,     setStatus]     = useState<UserStatus | 'Todos'>('Todos')
-  const [moduleFilter, setModuleFilter] = useState<string>('Todos')
-  const [sortField,  setSortField]  = useState<SortField>('name')
-  const [sortDir,    setSortDir]    = useState<SortDir>('asc')
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounced(search, 300)
+  const [status, setStatus] = useState<UserStatus | 'Todos'>('Todos')
+  const [moduleFilter, setModuleFilter] = useState<SystemId | 'Todos'>('Todos')
+  const [sortField, setSortField] = useState<SortField>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [showFilter, setShowFilter] = useState(false)
+  const [page, setPage] = useState(1)
 
-  const counts = useMemo(() => ({
-    total:    mockUsers.length,
-    ativo:    mockUsers.filter(u => u.status === 'Ativo').length,
-    inativo:  mockUsers.filter(u => u.status === 'Inativo').length,
-    bloqueado:mockUsers.filter(u => u.status === 'Bloqueado').length,
-  }), [])
+  const [stats, setStats] = useState<UserStats | null>(null)
+  const [items, setItems] = useState<UserListItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const filtered = useMemo(() => {
-    const q = normalize(search)
-    const base = mockUsers.filter(u => {
-      const matchStatus = status === 'Todos' || u.status === status
-      const matchModule = moduleFilter === 'Todos' || allModules(u).includes(moduleFilter)
-      const matchSearch = !q || [u.name, u.email, u.cpf, u.primaryRole].some(v => normalize(v).includes(q))
-      return matchStatus && matchModule && matchSearch
+  // Reset de página quando filtros mudam
+  useEffect(() => { setPage(1) }, [debouncedSearch, status, moduleFilter])
+
+  // Carrega stats uma vez
+  useEffect(() => {
+    userApi.stats().then(setStats).catch(() => {})
+  }, [])
+
+  // Carrega lista ao mudar filtro/página
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await userApi.list({
+        search: debouncedSearch || undefined,
+        status: status === 'Todos' ? undefined : status,
+        module: moduleFilter === 'Todos' ? undefined : moduleFilter,
+        page,
+        pageSize: PAGE_SIZE,
+      })
+      setItems(res.items)
+      setTotal(res.total)
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 403) {
+        setError('Apenas administradores podem listar usuários.')
+      } else {
+        setError('Não foi possível carregar os usuários.')
+      }
+      setItems([])
+      setTotal(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [debouncedSearch, status, moduleFilter, page])
+
+  useEffect(() => { void reload() }, [reload])
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const sorted = useMemo(() => {
+    // Ordenação client-side sobre a página atual — backend já ordena por name
+    const list = [...items]
+    list.sort((a, b) => {
+      let va: string = '', vb: string = ''
+      if (sortField === 'createdAt') { va = a.createdAt; vb = b.createdAt }
+      else if (sortField === 'status') { va = a.status; vb = b.status }
+      else if (sortField === 'primaryRole') { va = a.primaryRole; vb = b.primaryRole }
+      else { va = a.name; vb = b.name }
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
     })
-    return sortUsers(base, sortField, sortDir)
-  }, [search, status, moduleFilter, sortField, sortDir])
+    return list
+  }, [items, sortField, sortDir])
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortField(field); setSortDir('asc') }
+    else { setSortField(field); setSortDir(field === 'createdAt' ? 'desc' : 'asc') }
   }
 
   const hasFilter = status !== 'Todos' || moduleFilter !== 'Todos'
@@ -95,7 +127,9 @@ export function OpsUserListPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-lg md:text-xl font-bold text-slate-900 dark:text-white">Usuários</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{counts.total} usuários cadastrados</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {stats ? `${stats.total} usuários cadastrados` : 'Carregando...'}
+          </p>
         </div>
         <button
           onClick={() => navigate('/ops/usuarios/novo')}
@@ -108,10 +142,10 @@ export function OpsUserListPage() {
 
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard icon={<Users size={14} className="text-slate-400" />} bg="bg-slate-100 dark:bg-slate-800" label="Total" value={counts.total} />
-        <SummaryCard icon={<UserCheck size={14} className="text-emerald-500" />} bg="bg-emerald-50 dark:bg-emerald-950/40" label="Ativos" value={counts.ativo} />
-        <SummaryCard icon={<UserX size={14} className="text-slate-400" />} bg="bg-slate-100 dark:bg-slate-800" label="Inativos" value={counts.inativo} />
-        <SummaryCard icon={<ShieldOff size={14} className="text-red-500" />} bg="bg-red-50 dark:bg-red-950/40" label="Bloqueados" value={counts.bloqueado} />
+        <SummaryCard icon={<Users size={14} className="text-slate-400" />} bg="bg-slate-100 dark:bg-slate-800" label="Total" value={stats?.total ?? 0} />
+        <SummaryCard icon={<UserCheck size={14} className="text-emerald-500" />} bg="bg-emerald-50 dark:bg-emerald-950/40" label="Ativos" value={stats?.ativo ?? 0} />
+        <SummaryCard icon={<UserX size={14} className="text-slate-400" />} bg="bg-slate-100 dark:bg-slate-800" label="Inativos" value={stats?.inativo ?? 0} />
+        <SummaryCard icon={<ShieldOff size={14} className="text-red-500" />} bg="bg-red-50 dark:bg-red-950/40" label="Bloqueados" value={stats?.bloqueado ?? 0} />
       </div>
 
       {/* Barra de busca e filtros */}
@@ -200,8 +234,22 @@ export function OpsUserListPage() {
         </div>
       )}
 
+      {/* Erro */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
       {/* Resultado */}
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+          <svg className="animate-spin w-5 h-5 text-sky-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
           <Search size={28} className="mb-2 opacity-30" />
           <p className="text-sm">Nenhum usuário encontrado</p>
@@ -210,7 +258,7 @@ export function OpsUserListPage() {
         <>
           {/* Mobile: cards */}
           <div className="lg:hidden space-y-2">
-            {filtered.map(u => (
+            {sorted.map(u => (
               <MobileCard
                 key={u.id} user={u}
                 onView={() => navigate(`/ops/usuarios/${u.id}`)}
@@ -224,7 +272,7 @@ export function OpsUserListPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                  <Th>Usuário</Th>
+                  <Th sortable field="name" current={sortField} dir={sortDir} onSort={toggleSort}>Usuário</Th>
                   <Th sortable field="primaryRole" current={sortField} dir={sortDir} onSort={toggleSort}>Perfil</Th>
                   <Th>Municípios</Th>
                   <Th>Módulos</Th>
@@ -236,7 +284,7 @@ export function OpsUserListPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filtered.map(u => (
+                {sorted.map(u => (
                   <TableRow
                     key={u.id} user={u}
                     onView={() => navigate(`/ops/usuarios/${u.id}`)}
@@ -245,8 +293,31 @@ export function OpsUserListPage() {
                 ))}
               </tbody>
             </table>
-            <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30">
-              <p className="text-xs text-slate-400">{filtered.length} de {counts.total} usuários</p>
+          </div>
+
+          {/* Paginação */}
+          <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+            <span>
+              {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} de {total}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <span className="px-2 text-slate-400">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 disabled:opacity-30 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <ChevronRight size={13} />
+              </button>
             </div>
           </div>
         </>
@@ -255,7 +326,7 @@ export function OpsUserListPage() {
   )
 }
 
-// ─── Summary card ─────────────────────────────────────────────────────────────
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
 
 function SummaryCard({ icon, bg, label, value }: { icon: React.ReactNode; bg: string; label: string; value: number }) {
   return (
@@ -269,16 +340,9 @@ function SummaryCard({ icon, bg, label, value }: { icon: React.ReactNode; bg: st
   )
 }
 
-// ─── Th ───────────────────────────────────────────────────────────────────────
-
-function Th({
-  children, sortable, field, current, dir, onSort,
-}: {
-  children?: React.ReactNode
-  sortable?: boolean
-  field?: SortField
-  current?: SortField
-  dir?: SortDir
+function Th({ children, sortable, field, current, dir, onSort }: {
+  children?: React.ReactNode; sortable?: boolean
+  field?: SortField; current?: SortField; dir?: SortDir
   onSort?: (f: SortField) => void
 }) {
   const active = sortable && field === current
@@ -292,8 +356,7 @@ function Th({
           {children}
           {active
             ? dir === 'asc' ? <ChevronUp size={11} className="text-sky-500" /> : <ChevronDown size={11} className="text-sky-500" />
-            : <ChevronsUpDown size={11} className="opacity-40" />
-          }
+            : <ChevronsUpDown size={11} className="opacity-40" />}
         </button>
       ) : (
         <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{children}</span>
@@ -302,15 +365,9 @@ function Th({
   )
 }
 
-// ─── Table row ────────────────────────────────────────────────────────────────
-
-function TableRow({ user, onView, onEdit }: { user: UserRecord; onView: () => void; onEdit: () => void }) {
-  const mods = allModules(user)
-  const muns = municipalityNames(user)
-
+function TableRow({ user, onView, onEdit }: { user: UserListItem; onView: () => void; onEdit: () => void }) {
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-      {/* Usuário */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
@@ -322,24 +379,20 @@ function TableRow({ user, onView, onEdit }: { user: UserRecord; onView: () => vo
           </div>
         </div>
       </td>
-      {/* Perfil */}
       <td className="px-4 py-3">
         <p className="text-sm text-slate-600 dark:text-slate-300 truncate max-w-[180px]">{user.primaryRole}</p>
         <p className="text-xs text-slate-400">{user.cpf}</p>
       </td>
-      {/* Municípios */}
       <td className="px-4 py-3">
-        <div className="flex flex-col gap-0.5">
-          {muns.slice(0, 2).map(m => (
-            <span key={m} className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[140px]">{m}</span>
-          ))}
-          {muns.length > 2 && <span className="text-[10px] text-slate-400">+{muns.length - 2} mais</span>}
+        <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+          <span>{user.municipalityCount} município{user.municipalityCount !== 1 ? 's' : ''}</span>
+          <span className="text-slate-300">·</span>
+          <span>{user.facilityCount} unidade{user.facilityCount !== 1 ? 's' : ''}</span>
         </div>
       </td>
-      {/* Módulos */}
       <td className="px-4 py-3">
         <div className="flex flex-wrap gap-1">
-          {mods.map(mod => (
+          {user.modules.map(mod => (
             <span
               key={mod}
               className="text-[10px] font-bold px-1.5 py-0.5 rounded"
@@ -350,17 +403,14 @@ function TableRow({ user, onView, onEdit }: { user: UserRecord; onView: () => vo
           ))}
         </div>
       </td>
-      {/* Status */}
       <td className="px-4 py-3">
         <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full', STATUS_STYLE[user.status])}>
           {user.status}
         </span>
       </td>
-      {/* Cadastro */}
       <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
         {new Date(user.createdAt).toLocaleDateString('pt-BR')}
       </td>
-      {/* Ações */}
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1">
           <ActionBtn icon={<Eye size={14} />} title="Ver detalhes" onClick={onView} />
@@ -371,11 +421,7 @@ function TableRow({ user, onView, onEdit }: { user: UserRecord; onView: () => vo
   )
 }
 
-// ─── Mobile card ──────────────────────────────────────────────────────────────
-
-function MobileCard({ user, onView, onEdit }: { user: UserRecord; onView: () => void; onEdit: () => void }) {
-  const mods = allModules(user)
-  const muns = municipalityNames(user)
+function MobileCard({ user, onView, onEdit }: { user: UserListItem; onView: () => void; onEdit: () => void }) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex items-start gap-3">
       <div className="w-10 h-10 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
@@ -392,10 +438,12 @@ function MobileCard({ user, onView, onEdit }: { user: UserRecord; onView: () => 
           </span>
         </div>
         <p className="text-xs text-slate-500 mt-1">{user.primaryRole} · {user.cpf}</p>
-        <p className="text-xs text-slate-400 truncate mt-0.5">{muns.join(', ')}</p>
+        <p className="text-xs text-slate-400 truncate mt-0.5">
+          {user.municipalityCount} município{user.municipalityCount !== 1 ? 's' : ''} · {user.facilityCount} unidade{user.facilityCount !== 1 ? 's' : ''}
+        </p>
         <div className="flex items-center justify-between mt-2">
           <div className="flex flex-wrap gap-1">
-            {mods.map(mod => (
+            {user.modules.map(mod => (
               <span
                 key={mod}
                 className="text-[10px] font-bold px-1.5 py-0.5 rounded"
@@ -414,8 +462,6 @@ function MobileCard({ user, onView, onEdit }: { user: UserRecord; onView: () => 
     </div>
   )
 }
-
-// ─── Action button ────────────────────────────────────────────────────────────
 
 function ActionBtn({ icon, title, onClick }: { icon: React.ReactNode; title: string; onClick: () => void }) {
   return (

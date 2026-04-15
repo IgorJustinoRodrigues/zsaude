@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
-  Camera, User, Eye, EyeOff, RefreshCw, Check, X,
+  Eye, EyeOff, RefreshCw, Check, X,
 } from 'lucide-react'
-import { mockUsers, mockMunicipalities, mockFacilities } from '../../mock/users'
-import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
+import { userApi, type UserDetail, type UserStatus } from '../../api/users'
+import { directoryApi, type MunicipalityDto, type FacilityDto } from '../../api/workContext'
+import { HttpError } from '../../api/client'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
@@ -25,11 +26,7 @@ const ROLES = [
   'Assistente Social', 'Consultor Externo',
 ]
 
-const BR_STATES = [
-  'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS',
-  'MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC',
-  'SP','SE','TO',
-]
+const STATUSES: UserStatus[] = ['Ativo', 'Inativo', 'Bloqueado']
 
 // ── Máscaras ──────────────────────────────────────────────────────────────────
 
@@ -46,11 +43,6 @@ function maskPhone(v: string) {
     .replace(/(\d{5})(\d)/, '$1-$2')
 }
 
-function maskCep(v: string) {
-  return v.replace(/\D/g, '').slice(0, 8)
-    .replace(/(\d{5})(\d)/, '$1-$2')
-}
-
 // ── Gerador de senha ──────────────────────────────────────────────────────────
 
 const CHARSET = {
@@ -63,21 +55,12 @@ const CHARSET = {
 function generatePassword(length = 12): string {
   const all = CHARSET.upper + CHARSET.lower + CHARSET.digit + CHARSET.special
   const pick = (s: string) => s[Math.floor(Math.random() * s.length)]
-  // garante ao menos 1 de cada categoria
   const required = [pick(CHARSET.upper), pick(CHARSET.lower), pick(CHARSET.digit), pick(CHARSET.special)]
   const rest = Array.from({ length: length - required.length }, () => pick(all))
   return [...required, ...rest].sort(() => Math.random() - 0.5).join('')
 }
 
-interface PasswordRules {
-  length: boolean
-  upper: boolean
-  lower: boolean
-  digit: boolean
-  special: boolean
-}
-
-function checkPassword(pwd: string): PasswordRules {
+function checkPassword(pwd: string) {
   return {
     length:  pwd.length >= 8,
     upper:   /[A-Z]/.test(pwd),
@@ -87,7 +70,7 @@ function checkPassword(pwd: string): PasswordRules {
   }
 }
 
-// ── Tipos ─────────────────────────────────────────────────────────────────────
+// ── Tipos internos ────────────────────────────────────────────────────────────
 
 interface FacilityAccess {
   facilityId: string
@@ -101,69 +84,114 @@ interface MunicipalityAccess {
   facilities: FacilityAccess[]
 }
 
-const emptyFacility     = (): FacilityAccess      => ({ facilityId: '', role: '', modules: [] })
-const emptyMunicipality = (): MunicipalityAccess  => ({ municipalityId: '', expanded: true, facilities: [emptyFacility()] })
+const emptyFacility     = (): FacilityAccess     => ({ facilityId: '', role: '', modules: [] })
+const emptyMunicipality = (): MunicipalityAccess => ({ municipalityId: '', expanded: true, facilities: [emptyFacility()] })
+
+function detailToAccesses(detail: UserDetail): MunicipalityAccess[] {
+  if (detail.municipalities.length === 0) return [emptyMunicipality()]
+  return detail.municipalities.map(m => ({
+    municipalityId: m.municipalityId,
+    expanded: true,
+    facilities: m.facilities.length > 0
+      ? m.facilities.map(f => ({
+          facilityId: f.facilityId,
+          role: f.role,
+          modules: f.modules,
+        }))
+      : [emptyFacility()],
+  }))
+}
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export function OpsUserFormPage() {
-  const navigate   = useNavigate()
-  const { id }     = useParams<{ id: string }>()
-  const isEdit     = !!id
-  const existing   = useMemo(() => mockUsers.find(u => u.id === id), [id])
+  const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const isEdit = !!id
 
-  // Dados pessoais
-  const [photo,        setPhoto]        = useState<string | null>(existing?.avatar ?? null)
-  const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [name,         setName]         = useState(existing?.name ?? '')
-  const [cpf,          setCpf]          = useState(existing?.cpf ?? '')
-  const [email,        setEmail]        = useState(existing?.email ?? '')
-  const [whatsapp,     setWhatsapp]     = useState(existing?.phone ?? '')
+  // Estado de carga
+  const [loading,    setLoading]    = useState(isEdit)
+  const [saving,     setSaving]     = useState(false)
+  const [globalError, setGlobalError] = useState('')
+  const [existing,   setExisting]   = useState<UserDetail | null>(null)
 
-  // Endereço
-  const [cep,          setCep]          = useState('')
-  const [street,       setStreet]       = useState('')
-  const [number,       setNumber]       = useState('')
-  const [complement,   setComplement]   = useState('')
-  const [neighborhood, setNeighborhood] = useState('')
-  const [city,         setCity]         = useState('')
-  const [addrState,    setAddrState]    = useState('')
+  // Diretório (municípios/unidades)
+  const [municipalities, setMunicipalities] = useState<MunicipalityDto[]>([])
+  const [facilities,     setFacilities]     = useState<FacilityDto[]>([])
 
-  // Senha
-  const [password,     setPassword]     = useState('')
+  // Campos
+  const [login,    setLogin]    = useState('')
+  const [name,     setName]     = useState('')
+  const [cpf,      setCpf]      = useState('')
+  const [email,    setEmail]    = useState('')
+  const [phone,    setPhone]    = useState('')
+  const [role,     setRole]     = useState('')
+  const [status,   setStatus]   = useState<UserStatus>('Ativo')
+
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
-  // Acessos — converte o formato do mock para o formato interno do form
-  const initialAccesses = useMemo<MunicipalityAccess[]>(() => {
-    if (!existing) return [emptyMunicipality()]
-    return existing.municipalities.map(m => ({
-      municipalityId: m.municipalityId,
-      expanded: true,
-      facilities: m.facilities.map(f => ({
-        facilityId: f.facilityId,
-        role: f.role,
-        modules: f.modules,
-      })),
-    }))
-  }, [existing])
-
-  const [accesses, setAccesses] = useState<MunicipalityAccess[]>(initialAccesses)
+  const [accesses, setAccesses] = useState<MunicipalityAccess[]>([emptyMunicipality()])
   const [errors,   setErrors]   = useState<Record<string, string>>({})
 
   const pwdRules = checkPassword(password)
   const pwdValid = Object.values(pwdRules).every(Boolean)
 
-  const handleGenerate = () => {
-    const pwd = generatePassword()
-    setPassword(pwd)
-    setShowPassword(true)
-  }
+  // Carrega diretórios + usuário (edição)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const [muns, facs] = await Promise.all([
+          directoryApi.listMunicipalities(),
+          directoryApi.listFacilities(),
+        ])
+        if (cancelled) return
+        setMunicipalities(muns)
+        setFacilities(facs)
 
-  // Acessos helpers
+        if (isEdit && id) {
+          const detail = await userApi.get(id)
+          if (cancelled) return
+          setExisting(detail)
+          setLogin(detail.login)
+          setName(detail.name)
+          setCpf(detail.cpf)
+          setEmail(detail.email)
+          setPhone(detail.phone)
+          setRole(detail.primaryRole)
+          setStatus(detail.status)
+          setAccesses(detailToAccesses(detail))
+        }
+      } catch (e) {
+        if (e instanceof HttpError) setGlobalError(e.message)
+        else setGlobalError('Não foi possível carregar os dados.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [id, isEdit])
+
+  // Login auto-sugerido a partir do nome (só no modo create, antes do toque)
+  const [loginTouched, setLoginTouched] = useState(false)
+  useEffect(() => {
+    if (isEdit || loginTouched) return
+    const slug = name
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+      .split(/\s+/).filter(Boolean)
+    if (slug.length >= 2) setLogin(`${slug[0]}.${slug[slug.length - 1]}`)
+    else if (slug.length === 1) setLogin(slug[0])
+  }, [name, isEdit, loginTouched])
+
+  // Helpers acessos
   const addMunicipality    = () => setAccesses(a => [...a, emptyMunicipality()])
   const removeMunicipality = (mi: number) => setAccesses(a => a.filter((_, i) => i !== mi))
   const toggleMunicipality = (mi: number) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, expanded: !m.expanded } : m))
-  const setMunicipality    = (mi: number, id: string) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, municipalityId: id } : m))
+  const setMunicipality    = (mi: number, mid: string) =>
+    setAccesses(a => a.map((m, i) => i === mi ? { ...m, municipalityId: mid, facilities: [emptyFacility()] } : m))
   const addFacility        = (mi: number) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, facilities: [...m.facilities, emptyFacility()] } : m))
   const removeFacility     = (mi: number, fi: number) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, facilities: m.facilities.filter((_, j) => j !== fi) } : m))
 
@@ -184,18 +212,29 @@ export function OpsUserFormPage() {
 
   const validate = () => {
     const e: Record<string, string> = {}
-    if (!name.trim())    e.name     = 'Campo obrigatório'
-    if (!cpf.trim())     e.cpf      = 'Campo obrigatório'
-    if (!email.trim())   e.email    = 'Campo obrigatório'
+    if (!name.trim())   e.name  = 'Campo obrigatório'
+    if (!login.trim())  e.login = 'Campo obrigatório'
+    else if (!/^[a-z0-9._-]+$/.test(login)) e.login = 'Use apenas letras minúsculas, números, . _ -'
+    if (!cpf.trim())    e.cpf   = 'Campo obrigatório'
+    if (!email.trim())  e.email = 'Campo obrigatório'
+    if (!role.trim())   e.role  = 'Selecione o perfil principal'
+
     if (!isEdit) {
       if (!password)      e.password = 'Campo obrigatório'
       else if (!pwdValid) e.password = 'A senha não atende aos requisitos'
-    } else if (password && !pwdValid) {
-      e.password = 'A senha não atende aos requisitos'
     }
+
+    // Validação flexível: permite salvar sem vínculos (usuário sem acessos).
+    // Mas, se município escolhido, todos os campos de unidade precisam estar ok.
     accesses.forEach((m, mi) => {
-      if (!m.municipalityId) e[`mun-${mi}`] = 'Selecione o município'
+      if (!m.municipalityId) {
+        // município vazio: ignora se for o único "placeholder" e nenhum outro existir
+        const hasValue = m.facilities.some(f => f.facilityId || f.role || f.modules.length > 0)
+        if (hasValue) e[`mun-${mi}`] = 'Selecione o município'
+        return
+      }
       m.facilities.forEach((f, fi) => {
+        if (!f.facilityId && !f.role && f.modules.length === 0) return // placeholder
         if (!f.facilityId)     e[`fac-${mi}-${fi}`]  = 'Selecione a unidade'
         if (!f.role)           e[`role-${mi}-${fi}`] = 'Selecione o cargo'
         if (!f.modules.length) e[`mod-${mi}-${fi}`]  = 'Selecione ao menos um módulo'
@@ -205,16 +244,73 @@ export function OpsUserFormPage() {
     return Object.keys(e).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const buildPayloadAccesses = () => {
+    return accesses
+      .filter(m => m.municipalityId)
+      .map(m => ({
+        municipalityId: m.municipalityId,
+        facilities: m.facilities
+          .filter(f => f.facilityId && f.role && f.modules.length > 0)
+          .map(f => ({ facilityId: f.facilityId, role: f.role, modules: f.modules })),
+      }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setGlobalError('')
     if (!validate()) return
-    navigate(isEdit ? `/ops/usuarios/${id}` : '/ops/usuarios')
+
+    setSaving(true)
+    try {
+      if (isEdit && id) {
+        await userApi.update(id, {
+          email,
+          name,
+          phone,
+          primaryRole: role,
+          status,
+          municipalities: buildPayloadAccesses(),
+        })
+        navigate(`/ops/usuarios/${id}`, { replace: true })
+      } else {
+        const created = await userApi.create({
+          login,
+          email,
+          name,
+          cpf: cpf.replace(/\D/g, ''),
+          phone,
+          primaryRole: role,
+          password,
+          status,
+          municipalities: buildPayloadAccesses(),
+        })
+        navigate(`/ops/usuarios/${created.id}`, { replace: true })
+      }
+    } catch (err) {
+      if (err instanceof HttpError) {
+        if (err.code === 'conflict') setGlobalError(err.message)
+        else if (err.status === 422) setGlobalError('Campos inválidos. Revise os dados.')
+        else setGlobalError(err.message)
+      } else {
+        setGlobalError('Erro ao salvar.')
+      }
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <svg className="animate-spin w-6 h-6 text-sky-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        </svg>
+      </div>
+    )
   }
 
   return (
-    <>
     <form onSubmit={handleSubmit} className="space-y-0">
-
       {/* Cabeçalho */}
       <div className="flex items-center gap-3 mb-6">
         <button type="button" onClick={() => navigate('/ops/usuarios')}
@@ -223,7 +319,7 @@ export function OpsUserFormPage() {
         </button>
         <div>
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">
-            {isEdit ? `Editar usuário` : 'Cadastro de usuário'}
+            {isEdit ? 'Editar usuário' : 'Cadastro de usuário'}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {isEdit ? (existing?.name ?? '') : 'Preencha os dados e configure os acessos'}
@@ -231,177 +327,123 @@ export function OpsUserFormPage() {
         </div>
       </div>
 
-      {/* ── Seção 1: Dados pessoais ────────────────────────────────────────── */}
-      <FormSection title="Dados pessoais" subtitle="Identificação e informações de contato do usuário">
-        <div className="flex flex-col sm:flex-row gap-6">
-
-          {/* Avatar */}
-          <div className="shrink-0 flex flex-col items-center gap-2">
-            <button type="button" onClick={() => setShowPhotoModal(true)}
-              className="relative w-24 h-24 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-sky-400 dark:hover:border-sky-500 transition-colors overflow-hidden group">
-              {photo
-                ? <img src={photo} alt="Foto" className="w-full h-full object-cover" />
-                : <User size={32} className="text-slate-300 dark:text-slate-600 absolute inset-0 m-auto" />
-              }
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
-                <Camera size={18} className="text-white" />
-              </div>
-            </button>
-            <button type="button" onClick={() => setShowPhotoModal(true)}
-              className="text-[11px] text-sky-500 hover:text-sky-600 transition-colors">
-              {photo ? 'Alterar foto' : 'Adicionar foto'}
-            </button>
-          </div>
-
-          {/* Campos */}
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-4">
-            <Field label="Nome completo *" error={errors.name} className="sm:col-span-2 xl:col-span-2">
-              <input value={name} onChange={e => setName(e.target.value)}
-                placeholder="Nome completo do usuário" className={inputCls(!!errors.name)} />
-            </Field>
-
-            <Field label="CPF *" error={errors.cpf}>
-              <input value={cpf} onChange={e => setCpf(maskCpf(e.target.value))}
-                placeholder="000.000.000-00" className={inputCls(!!errors.cpf)} />
-            </Field>
-
-            <Field label="E-mail *" error={errors.email}>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="email@prefeitura.gov.br" className={inputCls(!!errors.email)} />
-            </Field>
-
-            <Field label="WhatsApp">
-              <input value={whatsapp} onChange={e => setWhatsapp(maskPhone(e.target.value))}
-                placeholder="(00) 00000-0000" className={inputCls(false)} />
-            </Field>
-          </div>
+      {globalError && (
+        <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
+          {globalError}
         </div>
-      </FormSection>
+      )}
 
-      {/* ── Seção 2: Endereço ─────────────────────────────────────────────── */}
-      <FormSection title="Endereço" subtitle="Localização residencial do usuário">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-x-5 gap-y-4">
-          <Field label="CEP">
-            <input value={cep} onChange={e => setCep(maskCep(e.target.value))}
-              placeholder="00000-000" className={inputCls(false)} />
+      {/* Dados pessoais */}
+      <FormSection title="Dados pessoais" subtitle="Identificação e contato do usuário">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-4">
+          <Field label="Nome completo *" error={errors.name} className="sm:col-span-2 xl:col-span-2">
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Nome completo do usuário" className={inputCls(!!errors.name)} />
           </Field>
 
-          <Field label="Logradouro" className="xl:col-span-2">
-            <input value={street} onChange={e => setStreet(e.target.value)}
-              placeholder="Rua, Avenida, Travessa..." className={inputCls(false)} />
+          <Field label="Login *" error={errors.login}>
+            <input
+              value={login}
+              onChange={e => { setLogin(e.target.value.toLowerCase()); setLoginTouched(true) }}
+              disabled={isEdit}
+              placeholder="login.do.usuario"
+              className={cn(inputCls(!!errors.login), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')}
+            />
           </Field>
 
-          <Field label="Número">
-            <input value={number} onChange={e => setNumber(e.target.value)}
-              placeholder="Ex: 123" className={inputCls(false)} />
+          <Field label="CPF *" error={errors.cpf}>
+            <input value={cpf} onChange={e => setCpf(maskCpf(e.target.value))} disabled={isEdit}
+              placeholder="000.000.000-00"
+              className={cn(inputCls(!!errors.cpf), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
           </Field>
 
-          <Field label="Complemento">
-            <input value={complement} onChange={e => setComplement(e.target.value)}
-              placeholder="Apto, Bloco, Sala..." className={inputCls(false)} />
+          <Field label="E-mail *" error={errors.email}>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="email@prefeitura.gov.br" className={inputCls(!!errors.email)} />
           </Field>
 
-          <Field label="Bairro">
-            <input value={neighborhood} onChange={e => setNeighborhood(e.target.value)}
-              placeholder="Nome do bairro" className={inputCls(false)} />
+          <Field label="Telefone">
+            <input value={phone} onChange={e => setPhone(maskPhone(e.target.value))}
+              placeholder="(00) 00000-0000" className={inputCls(false)} />
           </Field>
 
-          <Field label="Cidade">
-            <input value={city} onChange={e => setCity(e.target.value)}
-              placeholder="Nome da cidade" className={inputCls(false)} />
+          <Field label="Perfil principal *" error={errors.role}>
+            <select value={role} onChange={e => setRole(e.target.value)} className={inputCls(!!errors.role)}>
+              <option value="">Selecione...</option>
+              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
           </Field>
 
-          <Field label="Estado">
-            <select value={addrState} onChange={e => setAddrState(e.target.value)} className={inputCls(false)}>
-              <option value="">UF</option>
-              {BR_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+          <Field label="Status">
+            <select value={status} onChange={e => setStatus(e.target.value as UserStatus)} className={inputCls(false)}>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
         </div>
       </FormSection>
 
-      {/* ── Seção 3: Senha de acesso ───────────────────────────────────────── */}
-      <FormSection
-        title="Senha de acesso"
-        subtitle={isEdit
-          ? 'Deixe em branco para manter a senha atual. O login é feito por CPF ou e-mail.'
-          : 'O usuário poderá alterar a senha no primeiro acesso. O login é feito por CPF ou e-mail.'
-        }
-      >
-        <div className="space-y-4">
-
-          {/* Campo de senha */}
-          <Field label={isEdit ? 'Nova senha' : 'Senha provisória *'} error={errors.password}>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Digite ou gere uma senha"
-                  className={cn(inputCls(!!errors.password), 'pr-10 font-mono')}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+      {/* Senha (só no cadastro) */}
+      {!isEdit && (
+        <FormSection
+          title="Senha de acesso"
+          subtitle="O usuário poderá alterar a senha após o primeiro acesso."
+        >
+          <div className="space-y-4">
+            <Field label="Senha provisória *" error={errors.password}>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Digite ou gere uma senha"
+                    className={cn(inputCls(!!errors.password), 'pr-10 font-mono')}
+                  />
+                  <button type="button" onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <button type="button" onClick={() => { setPassword(generatePassword()); setShowPassword(true) }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-sky-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors whitespace-nowrap">
+                  <RefreshCw size={13} />
+                  Gerar senha
                 </button>
               </div>
-              <button
-                type="button"
-                onClick={handleGenerate}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-sky-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors whitespace-nowrap"
-                title="Gerar senha aleatória"
-              >
-                <RefreshCw size={13} />
-                Gerar senha
-              </button>
-            </div>
-          </Field>
+            </Field>
 
-          {/* Regras de segurança */}
-          {password && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
-              {([
-                { key: 'length',  label: 'Mín. 8 caracteres' },
-                { key: 'upper',   label: 'Letra maiúscula'   },
-                { key: 'lower',   label: 'Letra minúscula'   },
-                { key: 'digit',   label: 'Número'            },
-                { key: 'special', label: 'Caractere especial' },
-              ] as const).map(rule => {
-                const ok = pwdRules[rule.key]
-                return (
-                  <div key={rule.key} className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs border transition-colors',
-                    ok
-                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                      : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400',
-                  )}>
-                    {ok
-                      ? <Check size={12} className="shrink-0" />
-                      : <X size={12} className="shrink-0 text-slate-300 dark:text-slate-600" />
-                    }
-                    {rule.label}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+            {password && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2">
+                {([
+                  { key: 'length',  label: 'Mín. 8 caracteres' },
+                  { key: 'upper',   label: 'Letra maiúscula'   },
+                  { key: 'lower',   label: 'Letra minúscula'   },
+                  { key: 'digit',   label: 'Número'            },
+                  { key: 'special', label: 'Caractere especial' },
+                ] as const).map(rule => {
+                  const ok = pwdRules[rule.key]
+                  return (
+                    <div key={rule.key} className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs border transition-colors',
+                      ok
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400',
+                    )}>
+                      {ok ? <Check size={12} /> : <X size={12} className="text-slate-300 dark:text-slate-600" />}
+                      {rule.label}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </FormSection>
+      )}
 
-          {/* Aviso */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            Ao gerar, a senha ficará visível automaticamente. Compartilhe-a com o usuário antes de salvar.
-          </p>
-        </div>
-      </FormSection>
-
-      {/* ── Seção 4: Acessos ──────────────────────────────────────────────── */}
+      {/* Acessos */}
       <FormSection
         title="Acessos por município"
-        subtitle="Defina em quais unidades o usuário terá acesso e com qual perfil"
+        subtitle="Defina as unidades e módulos acessíveis. Pode ficar vazio para cadastrar sem acessos."
         action={
           <button type="button" onClick={addMunicipality}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 transition-colors">
@@ -412,13 +454,13 @@ export function OpsUserFormPage() {
       >
         <div className="space-y-4">
           {accesses.map((mun, mi) => {
-            const availableFacilities = mockFacilities.filter(f => f.municipalityId === mun.municipalityId)
-            const selectedFacIds      = mun.facilities.map(f => f.facilityId)
+            const availableFacilities = mun.municipalityId
+              ? facilities.filter(f => f.municipalityId === mun.municipalityId)
+              : []
+            const selectedFacIds = mun.facilities.map(f => f.facilityId)
 
             return (
               <div key={mi} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
-
-                {/* Cabeçalho município */}
                 <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-slate-800/50">
                   <button type="button" onClick={() => toggleMunicipality(mi)}
                     className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors shrink-0">
@@ -429,7 +471,7 @@ export function OpsUserFormPage() {
                       className={cn('w-full bg-transparent text-sm font-semibold outline-none',
                         mun.municipalityId ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500')}>
                       <option value="">Selecione o município...</option>
-                      {mockMunicipalities.map(m => (
+                      {municipalities.map(m => (
                         <option key={m.id} value={m.id}>{m.name} – {m.state}</option>
                       ))}
                     </select>
@@ -443,7 +485,6 @@ export function OpsUserFormPage() {
                   )}
                 </div>
 
-                {/* Unidades */}
                 {mun.expanded && (
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {mun.facilities.map((fac, fi) => (
@@ -473,12 +514,10 @@ export function OpsUserFormPage() {
                                   className="p-2 rounded-lg text-slate-300 dark:text-slate-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
                                   <Trash2 size={14} />
                                 </button>
-                              : <div className="w-9" />
-                            }
+                              : <div className="w-9" />}
                           </div>
                         </div>
 
-                        {/* Módulos */}
                         <div className="mt-3">
                           <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
                             Módulos com acesso
@@ -524,36 +563,25 @@ export function OpsUserFormPage() {
       {/* Ações */}
       <div className="flex items-center justify-end gap-3 pt-6 pb-6 border-t border-slate-100 dark:border-slate-800 mt-2">
         <button type="button" onClick={() => navigate(isEdit ? `/ops/usuarios/${id}` : '/ops/usuarios')}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          disabled={saving}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50">
           Cancelar
         </button>
-        <button type="submit"
-          className="px-5 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-semibold hover:bg-slate-700 dark:hover:bg-white transition-colors">
-          {isEdit ? 'Salvar alterações' : 'Cadastrar usuário'}
+        <button type="submit" disabled={saving}
+          className="px-5 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-semibold hover:bg-slate-700 dark:hover:bg-white transition-colors disabled:opacity-60">
+          {saving ? 'Salvando...' : isEdit ? 'Salvar alterações' : 'Cadastrar usuário'}
         </button>
       </div>
-
     </form>
-
-    {showPhotoModal && (
-      <PhotoCropModal
-        onConfirm={dataUrl => { setPhoto(dataUrl); setShowPhotoModal(false) }}
-        onClose={() => setShowPhotoModal(false)}
-      />
-    )}
-    </>
   )
 }
 
-// ── Componentes auxiliares ─────────────────────────────────────────────────────
+// ── Componentes auxiliares ────────────────────────────────────────────────────
 
 function FormSection({
   title, subtitle, action, children,
 }: {
-  title: string
-  subtitle?: string
-  action?: React.ReactNode
-  children: React.ReactNode
+  title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 py-8 border-t border-slate-100 dark:border-slate-800 first:border-t-0 first:pt-0">
@@ -574,19 +602,14 @@ function inputCls(hasError: boolean) {
   return cn(
     'w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border rounded-lg outline-none transition-colors',
     'text-slate-800 dark:text-slate-200 placeholder-slate-400',
-    hasError
-      ? 'border-red-400 focus:border-red-500'
-      : 'border-slate-200 dark:border-slate-700 focus:border-sky-400'
+    hasError ? 'border-red-400 focus:border-red-500' : 'border-slate-200 dark:border-slate-700 focus:border-sky-400'
   )
 }
 
 function Field({
   label, error, children, className,
 }: {
-  label: string
-  error?: string
-  children: React.ReactNode
-  className?: string
+  label: string; error?: string; children: React.ReactNode; className?: string
 }) {
   return (
     <div className={cn('space-y-1.5', className)}>
