@@ -28,6 +28,11 @@ from app.modules.permissions.schemas import (
 router = APIRouter(tags=["roles"])
 
 
+def _scope(ctx: WorkContext) -> UUID | None:
+    """MASTER (is_root) opera cross-município — service trata None como irrestrito."""
+    return None if ctx.permissions.is_root else ctx.municipality_id
+
+
 # ── Catálogo ────────────────────────────────────────────────────────────
 
 
@@ -86,7 +91,7 @@ async def update_role(
     return await RoleService(db, valkey).update(
         role_id,
         payload,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
 
 
@@ -100,7 +105,7 @@ async def archive_role(
     return await RoleService(db, valkey).archive(
         role_id,
         archived=True,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
 
 
@@ -114,7 +119,7 @@ async def unarchive_role(
     return await RoleService(db, valkey).archive(
         role_id,
         archived=False,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
 
 
@@ -129,7 +134,7 @@ async def set_role_permissions(
     return await RoleService(db, valkey).set_permissions(
         role_id,
         payload,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
 
 
@@ -149,7 +154,7 @@ async def get_access_permissions(
     return await AccessPermissionService(db).detail(
         user_id=user_id,
         access_id=access_id,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
 
 
@@ -169,5 +174,5 @@ async def set_access_permissions(
         user_id=user_id,
         access_id=access_id,
         payload=payload,
-        acting_on_municipality=ctx.municipality_id,
+        acting_on_municipality=_scope(ctx),
     )
