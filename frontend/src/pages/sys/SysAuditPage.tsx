@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Search, ChevronLeft, ChevronRight, ScrollText } from 'lucide-react'
-import { sysApi, type AuditLogItem } from '../../api/sys'
+import { auditApi, type AuditLogItem } from '../../api/audit'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
@@ -31,7 +31,7 @@ export function SysAuditPage() {
 
   const load = useCallback(() => {
     setLoading(true); setError('')
-    sysApi.listAudit({
+    auditApi.list({
       page, pageSize: PAGE_SIZE,
       search: search || undefined,
       scope: scope === 'master' ? 'master' : undefined,
