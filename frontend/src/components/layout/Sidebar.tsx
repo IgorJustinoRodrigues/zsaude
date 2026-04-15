@@ -11,6 +11,7 @@ import { useAuthStore } from '../../store/authStore'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
+import { BrandName } from '../shared/BrandName'
 
 const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React.ReactNode; color: string }> = {
   cln: { label: 'Clínica',     abbrev: 'CLN', icon: <Stethoscope size={18} />,    color: '#0ea5e9' },
@@ -121,7 +122,7 @@ export function Sidebar({ module }: Props) {
             'md:hidden',
             !desktopCollapsed && 'lg:block',
           )}>
-            z<span className="text-sky-500">Saúde</span>
+            <BrandName accentClassName="text-sky-500" />
           </span>
 
           {/* Botão fechar mobile */}

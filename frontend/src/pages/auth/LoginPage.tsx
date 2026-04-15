@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/authStore'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { Eye, EyeOff } from 'lucide-react'
+import { BrandName } from '../../components/shared/BrandName'
 
 export function LoginPage() {
   const { login, autoSelectContext, selectSystem } = useAuthStore()
@@ -84,7 +85,7 @@ export function LoginPage() {
 
         <div className="relative">
           <span className="text-2xl font-bold text-white tracking-tight">
-            z<span className="text-sky-400">Saúde</span>
+            <BrandName accentClassName="text-sky-400" />
           </span>
         </div>
 
@@ -119,7 +120,7 @@ export function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden mb-10 text-center">
             <span className="text-2xl font-bold tracking-tight">
-              z<span className="text-sky-500">Saúde</span>
+              <BrandName accentClassName="text-sky-500" />
             </span>
           </div>
 

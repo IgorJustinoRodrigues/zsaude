@@ -11,6 +11,7 @@ import {
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
+import { BrandName } from '../../components/shared/BrandName'
 
 const ICONS: Record<SystemId, React.ReactNode> = {
   cln: <Stethoscope size={22} />,
@@ -70,7 +71,7 @@ export function SystemSelectPage() {
       {/* Top bar */}
       <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6">
         <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
-          z<span className="text-sky-500">Saúde</span>
+          <BrandName accentClassName="text-sky-500" />
         </span>
 
         <div className="flex items-center gap-2">

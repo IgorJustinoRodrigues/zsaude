@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
+import { BrandName } from '../shared/BrandName'
 
 /**
  * Layout da área MASTER. Sidebar violeta escuro pra deixar claro que o usuário
@@ -32,7 +33,9 @@ export function SysShell() {
             <Shield size={16} className="text-white" />
           </div>
           <div>
-            <p className="text-sm font-bold text-white tracking-tight">zSaúde</p>
+            <p className="text-sm font-bold text-white tracking-tight">
+              <BrandName accentClassName="text-violet-300" />
+            </p>
             <p className="text-[10px] font-bold tracking-widest text-violet-400 uppercase">Plataforma</p>
           </div>
         </div>
