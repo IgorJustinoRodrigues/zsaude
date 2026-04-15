@@ -311,25 +311,35 @@ class UserService:
             self._ensure_payload_in_scope(scope, payload.municipalities)
         user = await self.get_or_404(user_id)
 
+        # Snapshot dos campos para calcular diff (só o que mudou de fato).
+        changes: dict[str, dict] = {}
+        def _track(field: str, old, new) -> None:
+            if old != new:
+                changes[field] = {"from": old, "to": new}
+
         if payload.email is not None and payload.email != user.email:
             other = await self.repo.get_by_email(payload.email)
             if other and other.id != user.id:
                 raise ConflictError("E-mail já cadastrado para outro usuário.")
+            _track("email", user.email, payload.email)
             user.email = payload.email
 
         if payload.name is not None:
+            _track("name", user.name, payload.name)
             user.name = payload.name
         if payload.phone is not None:
+            _track("phone", user.phone, payload.phone)
             user.phone = payload.phone
         if payload.primary_role is not None:
+            _track("primaryRole", user.primary_role, payload.primary_role)
             user.primary_role = payload.primary_role
 
         if payload.status is not None:
             new_status = UserStatus(payload.status)
+            _track("status", user.status.value if hasattr(user.status, "value") else str(user.status), new_status.value)
             user.status = new_status
             user.is_active = new_status != UserStatus.BLOQUEADO
             if new_status != UserStatus.ATIVO:
-                # Invalida tokens em circulação
                 user.token_version += 1
 
         if payload.level is not None:
@@ -338,18 +348,89 @@ class UserService:
                 from app.modules.sessions.models import SessionEndReason
                 from app.modules.sessions.service import SessionService
 
+                _track("level", user.level.value, new_level.value)
                 user.level = new_level
                 user.is_superuser = (new_level == UserLevel.MASTER)
-                # Mudança de nível invalida sessões ativas
                 user.token_version += 1
                 await SessionService(self.session).end_all_for_user(user_id, SessionEndReason.LEVEL_CHANGED)
 
         await self.repo.update(user)
 
         if payload.municipalities is not None:
-            await self._apply_accesses(user.id, payload.municipalities, scope=scope)
+            access_changes = await self._apply_accesses_with_diff(
+                user.id, payload.municipalities, scope=scope,
+            )
+            if access_changes:
+                changes["accesses"] = access_changes
+
+        # Se alguma coisa mudou, grava um único audit log com o diff enxuto.
+        if changes:
+            from app.modules.audit.writer import write_audit
+
+            await write_audit(
+                self.session,
+                module="SYS",
+                action="edit",
+                severity="info",
+                resource="User",
+                resource_id=str(user.id),
+                description=f"Editou usuário {user.name}",
+                details={
+                    "targetUserId": str(user.id),
+                    "targetUserName": user.name,
+                    "changes": changes,
+                },
+            )
 
         return user
+
+    async def _apply_accesses_with_diff(
+        self,
+        user_id: UUID,
+        tree: list,
+        *,
+        scope: set[UUID] | None = None,
+    ) -> dict | None:
+        """Versão de ``_apply_accesses`` que retorna o diff ({added, removed,
+        changed}) comparando o estado antes × depois.
+
+        Se nada mudou, retorna ``None``. Caso contrário, um dict compacto:
+        ``{"added": [{facilityId, roleId}, ...], "removed": [{facilityId}],
+           "changed": [{facilityId, from: role_id, to: role_id}]}``
+        """
+        # Estado antes.
+        before = {
+            fa.facility_id: fa.role_id
+            for fa, _fac, _mun in await self.repo.list_facility_accesses(user_id)
+        }
+
+        await self._apply_accesses(user_id, tree, scope=scope)
+
+        # Estado depois.
+        after = {
+            fa.facility_id: fa.role_id
+            for fa, _fac, _mun in await self.repo.list_facility_accesses(user_id)
+        }
+
+        added = [
+            {"facilityId": str(fid), "roleId": str(rid)}
+            for fid, rid in after.items() if fid not in before
+        ]
+        removed = [
+            {"facilityId": str(fid)}
+            for fid in before.keys() if fid not in after
+        ]
+        changed = [
+            {"facilityId": str(fid), "from": str(before[fid]), "to": str(after[fid])}
+            for fid in after if fid in before and before[fid] != after[fid]
+        ]
+        if not (added or removed or changed):
+            return None
+        result: dict = {}
+        if added:   result["added"]   = added
+        if removed: result["removed"] = removed
+        if changed: result["changed"] = changed
+        return result
 
     async def _apply_accesses(
         self,

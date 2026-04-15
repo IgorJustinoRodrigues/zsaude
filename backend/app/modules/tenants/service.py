@@ -195,11 +195,30 @@ class TenantService:
         mun = await self.repo.get_municipality(municipality_id)
         if mun is None:
             raise NotFoundError("Município não encontrado.")
-        if payload.name is not None:
+
+        changes: dict[str, dict] = {}
+        if payload.name is not None and payload.name != mun.name:
+            changes["name"] = {"from": mun.name, "to": payload.name}
             mun.name = payload.name
         if payload.state is not None:
-            mun.state = payload.state.upper()
+            new_state = payload.state.upper()
+            if new_state != mun.state:
+                changes["state"] = {"from": mun.state, "to": new_state}
+                mun.state = new_state
         await self.session.flush()
+
+        if changes:
+            from app.modules.audit.writer import write_audit
+            await write_audit(
+                self.session,
+                module="SYS",
+                action="edit",
+                severity="info",
+                resource="Municipality",
+                resource_id=str(mun.id),
+                description=f"Editou município {mun.name}",
+                details={"municipalityId": str(mun.id), "changes": changes},
+            )
         return await self._municipality_detail(mun)
 
     async def archive_municipality(self, municipality_id: UUID) -> MunicipalityDetail:
@@ -249,18 +268,44 @@ class TenantService:
         fac = await self.session.scalar(select(Facility).where(Facility.id == facility_id))
         if fac is None:
             raise NotFoundError("Unidade não encontrada.")
-        if payload.name is not None:
+
+        changes: dict[str, dict] = {}
+        if payload.name is not None and payload.name != fac.name:
+            changes["name"] = {"from": fac.name, "to": payload.name}
             fac.name = payload.name
-        if payload.short_name is not None:
+        if payload.short_name is not None and payload.short_name != fac.short_name:
+            changes["shortName"] = {"from": fac.short_name, "to": payload.short_name}
             fac.short_name = payload.short_name
         if payload.type is not None:
             try:
-                fac.type = FacilityType(payload.type)
+                new_type = FacilityType(payload.type)
             except ValueError:
                 raise ForbiddenError(f"Tipo de unidade inválido: {payload.type}") from None
+            if new_type != fac.type:
+                changes["type"] = {
+                    "from": fac.type.value if hasattr(fac.type, "value") else str(fac.type),
+                    "to": new_type.value,
+                }
+                fac.type = new_type
         if payload.cnes is not None:
-            fac.cnes = payload.cnes or None
+            new_cnes = payload.cnes or None
+            if new_cnes != fac.cnes:
+                changes["cnes"] = {"from": fac.cnes, "to": new_cnes}
+                fac.cnes = new_cnes
         await self.session.flush()
+
+        if changes:
+            from app.modules.audit.writer import write_audit
+            await write_audit(
+                self.session,
+                module="SYS",
+                action="edit",
+                severity="info",
+                resource="Facility",
+                resource_id=str(fac.id),
+                description=f"Editou unidade {fac.name}",
+                details={"facilityId": str(fac.id), "changes": changes},
+            )
         return fac
 
     async def archive_facility(self, facility_id: UUID) -> Facility:
