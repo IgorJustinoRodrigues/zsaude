@@ -68,8 +68,11 @@ export function Sidebar({ module }: Props) {
     return init
   })
 
+  const closeAllGroups = () => setOpenGroups({})
+
+  // Accordion: ao abrir um grupo fecha os outros
   const toggleGroup = (label: string) =>
-    setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }))
+    setOpenGroups(prev => ({ [label]: !prev[label] }))
 
   // No mobile: expanded se aberto; no tablet: sempre collapsed; no desktop: segue sidebarCollapsed
   const isExpanded = sidebarMobileOpen  // mobile override
@@ -163,7 +166,7 @@ export function Sidebar({ module }: Props) {
                 active={location.pathname === `/${module}`}
                 color={meta.color}
                 collapsed={desktopCollapsed}
-                onClick={() => { navigate(`/${module}`); closeMobileSidebar() }}
+                onClick={() => { navigate(`/${module}`); closeMobileSidebar(); closeAllGroups() }}
               />
 
               {MODULE_NAV[module]?.map((entry, i) => {
@@ -192,7 +195,9 @@ export function Sidebar({ module }: Props) {
                       {/* Quando collapsed: botão vai direto para collapsedPath */}
                       <button
                         onClick={() => {
-                          if (desktopCollapsed) { navigate(entry.collapsedPath); closeMobileSidebar() }
+                          // tablet (md < lg): sidebar sempre icon-only, navega direto
+                          const isTablet = !sidebarMobileOpen && window.innerWidth < 1024
+                          if (desktopCollapsed || isTablet) { navigate(entry.collapsedPath); closeMobileSidebar() }
                           else toggleGroup(entry.label)
                         }}
                         title={entry.label}
@@ -250,7 +255,7 @@ export function Sidebar({ module }: Props) {
                     active={location.pathname === entry.path}
                     color={meta.color}
                     collapsed={desktopCollapsed}
-                    onClick={() => { navigate(entry.path); closeMobileSidebar() }}
+                    onClick={() => { navigate(entry.path); closeMobileSidebar(); closeAllGroups() }}
                   />
                 )
               })}
