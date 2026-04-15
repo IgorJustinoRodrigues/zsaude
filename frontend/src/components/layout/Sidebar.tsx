@@ -53,9 +53,10 @@ interface Props { module: SystemId | null }
 
 export function Sidebar({ module }: Props) {
   const { sidebarCollapsed, sidebarMobileOpen, toggleSidebar, closeMobileSidebar } = useUIStore()
-  const { user, context, logout } = useAuthStore()
+  const { user, context, contextOptions, logout } = useAuthStore()
   const canSwitchModule = (context?.modules?.length ?? 0) > 1
-  const totalFacilities = user?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
+  const totalFacilities =
+    contextOptions?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
   const canSwitchUnit = totalFacilities > 1
   const navigate = useNavigate()
   const location = useLocation()

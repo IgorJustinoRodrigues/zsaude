@@ -22,7 +22,7 @@ const MODULE_COLORS: Record<SystemId, string> = {
 interface Props { module: SystemId | null }
 
 export function TopBar({ module }: Props) {
-  const { user, context, logout } = useAuthStore()
+  const { user, context, contextOptions, logout } = useAuthStore()
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
   const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
   const navigate = useNavigate()
@@ -45,7 +45,8 @@ export function TopBar({ module }: Props) {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
   const canSwitchModule = available.length > 1
-  const totalFacilities = user?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
+  const totalFacilities =
+    contextOptions?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
   const canSwitchUnit = totalFacilities > 1
 
   useEffect(() => {

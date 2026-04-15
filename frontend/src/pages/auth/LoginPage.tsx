@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
+import { HttpError } from '../../api/client'
 import { Eye, EyeOff } from 'lucide-react'
 
 export function LoginPage() {
   const { login, autoSelectContext, selectSystem } = useAuthStore()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ login: 'igor.santos', password: '123456' })
+  const [form, setForm] = useState({ login: 'igor.santos', password: 'Admin@123' })
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -14,23 +15,38 @@ export function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await new Promise(r => setTimeout(r, 600))
-    const ok = login(form.login, form.password)
-    if (!ok) { setError('Usuário ou senha inválidos.'); setLoading(false); return }
+    setError('')
 
-    // Tenta auto-selecionar contexto (só 1 município + 1 unidade)
-    const autoCtx = autoSelectContext()
-    if (autoCtx) {
-      const { context } = useAuthStore.getState()
-      // Tenta auto-selecionar módulo (só 1 módulo disponível)
-      if (context?.modules.length === 1) {
-        selectSystem(context.modules[0])
-        navigate(`/${context.modules[0]}`, { replace: true })
+    try {
+      await login(form.login, form.password)
+    } catch (err) {
+      if (err instanceof HttpError) {
+        if (err.status === 429) setError('Muitas tentativas. Aguarde alguns instantes.')
+        else setError(err.message || 'Usuário ou senha inválidos.')
       } else {
-        navigate('/selecionar-sistema', { replace: true })
+        setError('Não foi possível conectar ao servidor.')
       }
-    } else {
+      setLoading(false)
+      return
+    }
+
+    // Auto-seleção: 1 município + 1 unidade
+    try {
+      const modules = await autoSelectContext()
+      if (modules) {
+        if (modules.length === 1) {
+          selectSystem(modules[0])
+          navigate(`/${modules[0]}`, { replace: true })
+        } else {
+          navigate('/selecionar-sistema', { replace: true })
+        }
+      } else {
+        navigate('/selecionar-contexto', { replace: true })
+      }
+    } catch {
       navigate('/selecionar-contexto', { replace: true })
+    } finally {
+      setLoading(false)
     }
   }
 

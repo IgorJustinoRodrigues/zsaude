@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
-import { mockMunicipalities, mockFacilities } from '../../mock/users'
 import {
   MapPin, Building2, ChevronRight, Sun, Moon, LogOut,
   ChevronDown, Layers,
 } from 'lucide-react'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
-import type { Municipality, Facility } from '../../types'
 
 const FACILITY_TYPE_COLOR: Record<string, string> = {
   SMS:         '#0ea5e9',
@@ -22,46 +20,37 @@ const FACILITY_TYPE_COLOR: Record<string, string> = {
 }
 
 export function ContextSelectPage() {
-  const { user, autoSelectContext, selectContext, logout, isAuthenticated } = useAuthStore()
+  const { user, contextOptions, fetchContextOptions, selectContext, selectSystem, logout, isAuthenticated } = useAuthStore()
   const { darkMode, toggleDarkMode } = useUIStore()
   const navigate = useNavigate()
   const [expandedMun, setExpandedMun] = useState<string | null>(null)
+  const [selecting, setSelecting] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return }
-    // Se só tem 1 município e 1 unidade, seleciona automaticamente
-    const auto = autoSelectContext()
-    if (auto) navigate('/selecionar-sistema')
+    // Carrega options do backend caso ainda não estejam em memória
+    if (!contextOptions) {
+      fetchContextOptions().catch(() => navigate('/login'))
+    }
   }, []) // eslint-disable-line
 
   if (!user) return null
 
-  // Build list of municipalities the user has access to
-  const accessible: Array<{
-    municipality: Municipality
-    facilities: Array<{ facility: Facility; role: string; modules: string[] }>
-  }> = user.municipalities.flatMap(munAccess => {
-    const municipality = mockMunicipalities.find(m => m.id === munAccess.municipalityId)
-    if (!municipality) return []
-    const facilities = munAccess.facilities.flatMap(fa => {
-      const facility = mockFacilities.find(f => f.id === fa.facilityId)
-      if (!facility) return []
-      return [{ facility, role: fa.role, modules: fa.modules }]
-    })
-    return [{ municipality, facilities }]
-  })
-
+  const accessible = contextOptions?.municipalities ?? []
   const totalFacilities = accessible.reduce((s, m) => s + m.facilities.length, 0)
 
-  const handleSelect = (municipalityId: string, facilityId: string) => {
-    selectContext(municipalityId, facilityId)
-    // Descobre os módulos do contexto selecionado para checar se tem só 1
-    const munAccess = user?.municipalities.find(m => m.municipalityId === municipalityId)
-    const facAccess = munAccess?.facilities.find(f => f.facilityId === facilityId)
-    if (facAccess?.modules.length === 1) {
-      navigate(`/${facAccess.modules[0]}`, { replace: true })
-    } else {
-      navigate('/selecionar-sistema')
+  const handleSelect = async (municipalityId: string, facilityId: string) => {
+    setSelecting(facilityId)
+    try {
+      const modules = await selectContext(municipalityId, facilityId)
+      if (modules.length === 1) {
+        selectSystem(modules[0])
+        navigate(`/${modules[0]}`, { replace: true })
+      } else {
+        navigate('/selecionar-sistema')
+      }
+    } finally {
+      setSelecting(null)
     }
   }
 
@@ -163,7 +152,8 @@ export function ContextSelectPage() {
                           <button
                             key={facility.id}
                             onClick={() => handleSelect(municipality.id, facility.id)}
-                            className="group w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left"
+                            disabled={selecting !== null}
+                            className="group w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-60"
                           >
                             {/* Type indicator */}
                             <div
