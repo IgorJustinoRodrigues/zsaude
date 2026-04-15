@@ -63,9 +63,23 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # `exc.errors()` pode conter objetos não serializáveis (ex.: ValueError em ctx).
+    # Sanitiza convertendo tudo pra str quando necessário.
+    def _clean(err: dict) -> dict:
+        out = {}
+        for k, v in err.items():
+            if k == "ctx" and isinstance(v, dict):
+                out[k] = {kk: str(vv) for kk, vv in v.items()}
+            elif isinstance(v, (str, int, float, bool, list, dict)) or v is None:
+                out[k] = v
+            else:
+                out[k] = str(v)
+        return out
+
+    errors = [_clean(e) for e in exc.errors()]
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"code": "validation_error", "message": "Dados inválidos.", "errors": exc.errors()},
+        content={"code": "validation_error", "message": "Dados inválidos.", "errors": errors},
     )
 
 

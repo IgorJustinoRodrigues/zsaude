@@ -263,7 +263,7 @@ class UserService:
             level=level_enum,
         )
         await self.repo.add(user)
-        await self._apply_accesses(user.id, payload.municipalities)
+        await self._apply_accesses(user.id, payload.municipalities, scope=scope)
         return user
 
     # ─── Admin: atualizar ────────────────────────────────────────────────────
@@ -307,12 +307,24 @@ class UserService:
         await self.repo.update(user)
 
         if payload.municipalities is not None:
-            await self._apply_accesses(user.id, payload.municipalities)
+            await self._apply_accesses(user.id, payload.municipalities, scope=scope)
 
         return user
 
-    async def _apply_accesses(self, user_id: UUID, tree: list) -> None:
-        """Substitui municipalities/facilities do usuário."""
+    async def _apply_accesses(
+        self,
+        user_id: UUID,
+        tree: list,
+        *,
+        scope: set[UUID] | None = None,
+    ) -> None:
+        """Aplica acessos do usuário.
+
+        - Sem `scope` (MASTER): substitui todos os acessos pelo payload.
+        - Com `scope` (ADMIN): substitui apenas os acessos dos municípios
+          dentro do escopo; acessos em municípios fora do escopo (que o
+          ADMIN não gerencia) ficam intactos.
+        """
         municipality_ids: set[UUID] = set()
         facilities: list[tuple[UUID, str, list[str]]] = []
 
@@ -321,6 +333,18 @@ class UserService:
             for fac in mun.facilities:
                 mods = [m.lower() for m in fac.modules if m.lower() in VALID_MODULES]
                 facilities.append((fac.facility_id, fac.role, mods))
+
+        # Preserva acessos fora do escopo quando ADMIN está editando
+        if scope is not None:
+            existing_muns = await self.repo.list_municipality_accesses(user_id)
+            for ma in existing_muns:
+                if ma.municipality_id not in scope:
+                    municipality_ids.add(ma.municipality_id)
+
+            existing_facs = await self.repo.list_facility_accesses(user_id)
+            for fa, fac, _mun in existing_facs:
+                if fac.municipality_id not in scope:
+                    facilities.append((fa.facility_id, fa.role, list(fa.modules)))
 
         # Valida existência dos municípios/unidades referenciados
         if municipality_ids:

@@ -89,19 +89,33 @@ interface MunicipalityAccess {
 const emptyFacility     = (): FacilityAccess     => ({ facilityId: '', role: '', modules: [] })
 const emptyMunicipality = (): MunicipalityAccess => ({ municipalityId: '', expanded: true, facilities: [emptyFacility()] })
 
-function detailToAccesses(detail: UserDetail): MunicipalityAccess[] {
-  if (detail.municipalities.length === 0) return [emptyMunicipality()]
-  return detail.municipalities.map(m => ({
-    municipalityId: m.municipalityId,
-    expanded: true,
-    facilities: m.facilities.length > 0
-      ? m.facilities.map(f => ({
-          facilityId: f.facilityId,
-          role: f.role,
-          modules: f.modules,
-        }))
-      : [emptyFacility()],
-  }))
+function detailToAccesses(
+  detail: UserDetail,
+  scopeMunIds?: Set<string>,
+): { accesses: MunicipalityAccess[]; outOfScope: UserDetail['municipalities'] } {
+  // Se scope informado, separa o que está fora do escopo (read-only).
+  // ADMIN só edita os in-scope; os out-of-scope são preservados pelo backend.
+  const visible = scopeMunIds
+    ? detail.municipalities.filter(m => scopeMunIds.has(m.municipalityId))
+    : detail.municipalities
+  const outOfScope = scopeMunIds
+    ? detail.municipalities.filter(m => !scopeMunIds.has(m.municipalityId))
+    : []
+
+  const accesses = visible.length === 0
+    ? [emptyMunicipality()]
+    : visible.map(m => ({
+        municipalityId: m.municipalityId,
+        expanded: true,
+        facilities: m.facilities.length > 0
+          ? m.facilities.map(f => ({
+              facilityId: f.facilityId,
+              role: f.role,
+              modules: f.modules,
+            }))
+          : [emptyFacility()],
+      }))
+  return { accesses, outOfScope }
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -143,6 +157,7 @@ export function OpsUserFormPage() {
     : LEVELS.filter(l => l !== 'master')
 
   const [accesses, setAccesses] = useState<MunicipalityAccess[]>([emptyMunicipality()])
+  const [outOfScope, setOutOfScope] = useState<UserDetail['municipalities']>([])
   const [errors,   setErrors]   = useState<Record<string, string>>({})
 
   const pwdRules = checkPassword(password)
@@ -175,7 +190,13 @@ export function OpsUserFormPage() {
           setRole(detail.primaryRole)
           setStatus(detail.status)
           setLevelState(detail.level)
-          setAccesses(detailToAccesses(detail))
+          // ADMIN só edita municípios do seu escopo; MASTER vê tudo.
+          const scopeSet = actor?.level === 'master'
+            ? undefined
+            : new Set(muns.map(m => m.id))
+          const { accesses, outOfScope } = detailToAccesses(detail, scopeSet)
+          setAccesses(accesses)
+          setOutOfScope(outOfScope)
         }
       } catch (e) {
         if (e instanceof HttpError) setGlobalError(e.message)
@@ -598,6 +619,29 @@ export function OpsUserFormPage() {
               </div>
             )
           })}
+
+          {/* Acessos fora do escopo do ADMIN (read-only) */}
+          {outOfScope.length > 0 && (
+            <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/60 dark:bg-slate-900/40">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Acessos fora do seu escopo de administração
+              </p>
+              <p className="text-xs text-slate-500 mb-3">
+                Este usuário também atua nos municípios abaixo. Você não pode
+                editá-los; eles serão preservados como estão.
+              </p>
+              <ul className="space-y-1">
+                {outOfScope.map(m => (
+                  <li key={m.municipalityId} className="text-xs text-slate-600 dark:text-slate-300">
+                    · <span className="font-medium">{m.municipalityName}</span>{' '}
+                    <span className="text-slate-400">
+                      — {m.facilities.length} unidade{m.facilities.length !== 1 ? 's' : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </FormSection>
 
