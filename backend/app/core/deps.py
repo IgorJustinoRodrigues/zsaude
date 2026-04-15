@@ -102,6 +102,17 @@ async def current_user(
 
     update_audit_context(user_id=user.id, user_name=user.name)
 
+    # Presença: toca last_seen_at da sessão (throttled a 30s). Só funciona
+    # para tokens emitidos após a feature de sessões existir (que carregam sid).
+    sid = payload.get("sid")
+    if sid:
+        try:
+            from app.modules.sessions.service import SessionService
+
+            await SessionService(db).touch(UUID(sid), user_id=user.id)
+        except Exception:  # noqa: BLE001
+            pass  # presença nunca pode quebrar o request
+
     return CurrentUser(id=user.id, login=user.login, name=user.name, token_version=user.token_version)
 
 

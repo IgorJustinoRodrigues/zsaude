@@ -5,10 +5,13 @@ import {
   ChevronsUpDown, Calendar, ChevronLeft, ChevronRight,
   User, KeySquare, Monitor, CheckCircle2, ArrowLeft,
 } from 'lucide-react'
-import { mockSystemLogs } from '../../mock/logs'
-import { mockUsers } from '../../mock/users'
+import { type SystemLog } from '../../mock/logs'
+import { auditApi, toSystemLog } from '../../api/audit'
+import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
+
+interface UserOption { id: string; name: string; email: string }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -20,16 +23,6 @@ function fmt(date: Date) {
 function fmtDate(date: Date) {
   return date.toLocaleDateString('pt-BR')
 }
-
-// ─── Usuários disponíveis ─────────────────────────────────────────────────────
-
-const ALL_USERS = [...new Set(mockSystemLogs.map(l => l.userId))]
-  .map(id => {
-    const log  = mockSystemLogs.find(l => l.userId === id)!
-    const user = mockUsers.find(u => u.id === id)
-    return { id, name: log.userName, email: user?.email ?? '' }
-  })
-  .sort((a, b) => a.name.localeCompare(b.name))
 
 const LAST_N_OPTIONS = [
   { label: 'Últimos 10',  value: 10  },
@@ -44,10 +37,11 @@ const PAGE_SIZES = [10, 20, 50]
 // ─── Searchable Select ────────────────────────────────────────────────────────
 
 function UserSelect({
-  value, onChange,
+  value, onChange, users,
 }: {
   value: string | null
   onChange: (id: string | null) => void
+  users: UserOption[]
 }) {
   const [open,   setOpen]   = useState(false)
   const [query,  setQuery]  = useState('')
@@ -63,11 +57,11 @@ function UserSelect({
 
   const filtered = useMemo(() => {
     const q = normalize(query)
-    if (!q) return ALL_USERS
-    return ALL_USERS.filter(u => normalize(u.name).includes(q) || normalize(u.email).includes(q))
-  }, [query])
+    if (!q) return users
+    return users.filter(u => normalize(u.name).includes(q) || normalize(u.email).includes(q))
+  }, [query, users])
 
-  const selected = value ? ALL_USERS.find(u => u.id === value) : null
+  const selected = value ? users.find(u => u.id === value) : null
 
   return (
     <div ref={ref} className="relative w-full max-w-sm">
@@ -173,6 +167,32 @@ export function OpsAccessReportPage() {
   const [dateTo,       setDateTo]       = useState('')
   const [page,         setPage]         = useState(1)
   const [pageSize,     setPageSize]     = useState(20)
+  const [allLogs,      setAllLogs]      = useState<SystemLog[]>([])
+
+  // Carrega eventos de autenticação (login/logout/login_failed) do back
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const items = await auditApi.listAll({ module: 'AUTH' }, 2000)
+        if (alive) setAllLogs(items.map(toSystemLog))
+      } catch (e) {
+        if (alive) toast.error('Falha ao carregar acessos',
+          e instanceof HttpError ? e.message : '')
+      }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  // Usuários presentes nos logs (derivado)
+  const userOptions = useMemo<UserOption[]>(() => {
+    const map = new Map<string, UserOption>()
+    for (const l of allLogs) {
+      if (!l.userId || map.has(l.userId)) continue
+      map.set(l.userId, { id: l.userId, name: l.userName, email: '' })
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [allLogs])
 
   // reset page ao mudar filtros
   useEffect(() => setPage(1), [selectedUser, lastN, dateFrom, dateTo, pageSize])
@@ -180,11 +200,11 @@ export function OpsAccessReportPage() {
   // Logs de acesso do usuário selecionado
   const rawLogs = useMemo(() => {
     const accessActions = ['login', 'logout', 'login_failed'] as const
-    return mockSystemLogs
+    return allLogs
       .filter(l => accessActions.includes(l.action as typeof accessActions[number]))
       .filter(l => !selectedUser || l.userId === selectedUser)
       .sort((a, b) => b.at.getTime() - a.at.getTime())  // mais recente primeiro
-  }, [selectedUser])
+  }, [allLogs, selectedUser])
 
   // Aplica filtros de período
   const filtered = useMemo(() => {
@@ -233,7 +253,7 @@ export function OpsAccessReportPage() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    const userName = selectedUser ? ALL_USERS.find(u => u.id === selectedUser)?.name ?? 'usuario' : 'todos'
+    const userName = selectedUser ? userOptions.find(u => u.id === selectedUser)?.name ?? 'usuario' : 'todos'
     a.download = `acessos_${normalize(userName).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
@@ -241,7 +261,7 @@ export function OpsAccessReportPage() {
   }
 
   const hasData = filtered.length > 0
-  const userObj = selectedUser ? ALL_USERS.find(u => u.id === selectedUser) : null
+  const userObj = selectedUser ? userOptions.find(u => u.id === selectedUser) : null
 
   return (
     <div className="space-y-5">
@@ -283,7 +303,11 @@ export function OpsAccessReportPage() {
         <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
           Usuário
         </label>
-        <UserSelect value={selectedUser} onChange={id => { setSelectedUser(id); clearPeriod() }} />
+        <UserSelect
+          value={selectedUser}
+          onChange={id => { setSelectedUser(id); clearPeriod() }}
+          users={userOptions}
+        />
         {!selectedUser && (
           <p className="text-xs text-slate-400">Selecione um usuário para ver o histórico de acessos, ou deixe em branco para visualizar todos.</p>
         )}

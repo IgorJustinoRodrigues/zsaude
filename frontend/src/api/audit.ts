@@ -2,6 +2,7 @@
 
 import { api } from './client'
 import type { PageResponse } from './users'
+import type { LogAction, LogSeverity, SystemLog } from '../mock/logs'
 
 export interface AuditLogItem {
   id: string
@@ -54,4 +55,59 @@ export const auditApi = {
       page: params.page,
       pageSize: params.pageSize,
     })}`),
+
+  /**
+   * Busca até `maxItems` logs seguindo paginação do servidor.
+   * Útil para relatórios que fazem análise client-side.
+   */
+  async listAll(params: AuditListParams = {}, maxItems = 1000): Promise<AuditLogItem[]> {
+    const pageSize = Math.min(200, maxItems)
+    let page = 1
+    const out: AuditLogItem[] = []
+    while (out.length < maxItems) {
+      const res = await auditApi.list({ ...params, page, pageSize })
+      out.push(...res.items)
+      if (res.items.length < pageSize) break
+      if (out.length >= res.total) break
+      page += 1
+    }
+    return out.slice(0, maxItems)
+  },
+}
+
+/** Converte um item da API para o shape `SystemLog` usado pelos relatórios. */
+export function toSystemLog(item: AuditLogItem): SystemLog {
+  // Ação pode vir com valor desconhecido — restringe aos literais esperados.
+  const knownActions: LogAction[] = [
+    'login', 'logout', 'login_failed',
+    'view', 'create', 'edit', 'delete', 'export', 'print',
+    'permission_change', 'password_reset', 'block_user',
+  ]
+  const action = (knownActions.includes(item.action as LogAction)
+    ? item.action
+    : 'view') as LogAction
+
+  const knownSev: LogSeverity[] = ['info', 'warning', 'error', 'critical']
+  const severity = (knownSev.includes(item.severity as LogSeverity)
+    ? item.severity
+    : 'info') as LogSeverity
+
+  return {
+    id: item.id,
+    hash: item.requestId || item.id.slice(0, 16),
+    userId: item.userId ?? '',
+    userName: item.userName || '—',
+    action,
+    severity,
+    module: item.module,
+    resource: item.resource,
+    resourceId: item.resourceId,
+    description: item.description,
+    details: typeof item.details === 'object'
+      ? JSON.stringify(item.details, null, 2)
+      : String(item.details ?? ''),
+    ip: item.ip,
+    userAgent: item.userAgent,
+    at: new Date(item.at),
+  }
 }

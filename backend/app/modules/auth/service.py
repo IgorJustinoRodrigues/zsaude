@@ -22,6 +22,8 @@ from app.modules.audit.writer import write_audit
 from app.modules.auth.models import PasswordReset, RefreshToken
 from app.modules.auth.repository import AuthRepository
 from app.modules.auth.schemas import TokenPair
+from app.modules.sessions.models import SessionEndReason
+from app.modules.sessions.service import SessionService
 from app.modules.users.models import User, UserStatus
 from app.modules.users.repository import UserRepository
 
@@ -137,6 +139,7 @@ class AuthService:
                 family_id=str(token.family_id),
             )
             await self.repo.revoke_family(token.family_id)
+            await SessionService(self.session).end_by_family(token.family_id, SessionEndReason.REVOKED_REPLAY)
             target_user = await self.users.get_by_id(token.user_id)
             await write_audit(
                 self.session,
@@ -182,7 +185,11 @@ class AuthService:
         token.revoked_at = now
         await self.session.flush()
 
-        access = create_access_token(subject=str(user.id), token_version=user.token_version)
+        access = create_access_token(
+            subject=str(user.id),
+            token_version=user.token_version,
+            family_id=str(token.family_id),
+        )
         return TokenPair(
             access_token=access,
             refresh_token=new_opaque,
@@ -197,6 +204,8 @@ class AuthService:
         if token is not None:
             await self.repo.revoke_family(token.family_id)
             user = await self.users.get_by_id(token.user_id)
+            # Encerra a sessão correspondente
+            await SessionService(self.session).end_by_family(token.family_id, SessionEndReason.LOGOUT)
             await write_audit(
                 self.session,
                 module="AUTH",
@@ -253,17 +262,29 @@ class AuthService:
 
     async def _issue_pair(self, user: User, ip: str, ua: str) -> TokenPair:
         now = datetime.now(UTC)
-        access = create_access_token(subject=str(user.id), token_version=user.token_version)
+        family_id = uuid.uuid4()
+        access = create_access_token(
+            subject=str(user.id),
+            token_version=user.token_version,
+            family_id=str(family_id),
+        )
         refresh_plain = generate_opaque_token()
         refresh = RefreshToken(
             user_id=user.id,
-            family_id=uuid.uuid4(),
+            family_id=family_id,
             token_hash=hash_opaque_token(refresh_plain),
             expires_at=now + timedelta(days=settings.jwt_refresh_ttl_days),
             user_agent=ua,
             ip=ip,
         )
         await self.repo.add_refresh(refresh)
+        # Sessão lógica começa aqui
+        await SessionService(self.session).start(
+            user_id=user.id,
+            family_id=family_id,
+            ip=ip,
+            user_agent=ua,
+        )
         return TokenPair(
             access_token=access,
             refresh_token=refresh_plain,

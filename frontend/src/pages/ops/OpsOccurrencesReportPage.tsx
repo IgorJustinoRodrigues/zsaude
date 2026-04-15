@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Search, X, Filter, Eye, Download,
@@ -7,7 +7,9 @@ import {
   TriangleAlert, Flame, ShieldAlert as OccIcon,
   TrendingUp,
 } from 'lucide-react'
-import { mockSystemLogs, type SystemLog, type LogAction, type LogSeverity } from '../../mock/logs'
+import { type SystemLog, type LogAction, type LogSeverity } from '../../mock/logs'
+import { auditApi, toSystemLog } from '../../api/audit'
+import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { normalize, cn } from '../../lib/utils'
 
@@ -123,14 +125,34 @@ export function OpsOccurrencesReportPage() {
   const [selected,       setSelected]       = useState<SystemLog | null>(null)
   const [page,           setPage]           = useState(1)
   const [pageSize,       setPageSize]       = useState(20)
+  const [logs,           setLogs]           = useState<SystemLog[]>([])
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        // Backend já tem filtro de severidade; pega só as ocorrências.
+        const [w, e, c] = await Promise.all([
+          auditApi.listAll({ severity: 'warning' }, 700),
+          auditApi.listAll({ severity: 'error' }, 200),
+          auditApi.listAll({ severity: 'critical' }, 100),
+        ])
+        if (alive) setLogs([...w, ...e, ...c].map(toSystemLog))
+      } catch (err) {
+        if (alive) toast.error('Falha ao carregar ocorrências',
+          err instanceof HttpError ? err.message : '')
+      }
+    })()
+    return () => { alive = false }
+  }, [])
 
   const toggleArr = <T,>(arr: T[], val: T): T[] =>
     arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
 
-  // Base: apenas ocorrências (não-info)
+  // Base: apenas ocorrências (não-info). `logs` já vem filtrado.
   const baseOccurrences = useMemo(
-    () => mockSystemLogs.filter(l => OCCURRENCE_SEVERITIES.includes(l.severity)),
-    [],
+    () => logs.filter(l => OCCURRENCE_SEVERITIES.includes(l.severity)),
+    [logs],
   )
 
   // Usuários únicos nas ocorrências

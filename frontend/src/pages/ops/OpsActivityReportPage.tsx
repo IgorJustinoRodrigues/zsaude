@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Search, X, Filter, Eye, Download,
@@ -7,7 +7,9 @@ import {
   Printer, ShieldAlert, KeyRound, ShieldOff,
   ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react'
-import { mockSystemLogs, type SystemLog, type LogAction } from '../../mock/logs'
+import { type SystemLog, type LogAction } from '../../mock/logs'
+import { auditApi, toSystemLog } from '../../api/audit'
+import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
 
@@ -93,22 +95,37 @@ export function OpsActivityReportPage() {
   const [selected,     setSelected]     = useState<SystemLog | null>(null)
   const [page,         setPage]         = useState(1)
   const [pageSize,     setPageSize]     = useState(20)
+  const [logs,         setLogs]         = useState<SystemLog[]>([])
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const items = await auditApi.listAll({}, 2000)
+        if (alive) setLogs(items.map(toSystemLog))
+      } catch (e) {
+        if (alive) toast.error('Falha ao carregar atividade',
+          e instanceof HttpError ? e.message : '')
+      }
+    })()
+    return () => { alive = false }
+  }, [])
 
   const toggleArr = <T,>(arr: T[], val: T): T[] =>
     arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]
 
   const logUsers = useMemo(() => {
-    const ids = [...new Set(mockSystemLogs.map(l => l.userId))]
+    const ids = [...new Set(logs.map(l => l.userId).filter(Boolean))]
     return ids.map(id => ({
-      id, name: mockSystemLogs.find(l => l.userId === id)?.userName ?? id,
+      id, name: logs.find(l => l.userId === id)?.userName ?? id,
     })).sort((a, b) => a.name.localeCompare(b.name))
-  }, [])
+  }, [logs])
 
   // Conjunto filtrado
   const filtered = useMemo(() => {
     const q   = normalize(search)
     const now = Date.now()
-    const list = mockSystemLogs.filter(l => {
+    const list = logs.filter(l => {
       if (filterModule.length && !filterModule.includes(l.module))   return false
       if (filterAction.length && !filterAction.includes(l.action))   return false
       if (filterUser.length   && !filterUser.includes(l.userId))     return false

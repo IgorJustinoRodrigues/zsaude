@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
+from app.modules.sessions.router import router as sessions_router
 from app.modules.system.router import router as system_router
 from app.modules.tenants.admin_router import router as tenants_admin_router
 from app.modules.tenants.directory_router import router as directory_router
@@ -14,6 +15,9 @@ from app.modules.users.router import router as users_router
 
 api_v1 = APIRouter()
 api_v1.include_router(auth_router)
+# sessions_router vem antes de users_router porque tem /users/presence
+# que colide com /users/{user_id}. FastAPI usa primeira rota que casa.
+api_v1.include_router(sessions_router)
 api_v1.include_router(users_router)
 api_v1.include_router(tenants_router)
 api_v1.include_router(directory_router)

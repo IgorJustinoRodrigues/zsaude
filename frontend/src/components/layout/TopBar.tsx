@@ -1,18 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Clock, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useUIStore } from '../../store/uiStore'
-import { mockAllUsersPresence, SYSTEMS } from '../../mock/users'
+import { SYSTEMS } from '../../mock/users'
+import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
-
-const SYSTEM_COLORS: Record<string, string> = {
-  CLN: '#0ea5e9', DGN: '#8b5cf6', HSP: '#f59e0b',
-  PLN: '#10b981', FSC: '#f97316', OPS: '#6b7280',
-}
 
 const MODULE_COLORS: Record<SystemId, string> = {
   cln: '#0ea5e9', dgn: '#8b5cf6', hsp: '#f59e0b',
@@ -31,8 +27,20 @@ export function TopBar({ module }: Props) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
-  const onlineUsers  = mockAllUsersPresence.filter(u => u.online)
-  const offlineUsers = mockAllUsersPresence.filter(u => !u.online)
+  const [onlineUsers, setOnlineUsers] = useState<PresenceItem[]>([])
+
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      try {
+        const list = await sessionsApi.presence('actor')
+        if (alive) setOnlineUsers(list)
+      } catch { /* silencioso — presença não quebra topbar */ }
+    }
+    void load()
+    const id = setInterval(load, 15_000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
 
   const goToUsers = () => {
     setUsersOpen(false)
@@ -117,52 +125,46 @@ export function TopBar({ module }: Props) {
               </div>
 
               {/* Lista online (scrollável) */}
-              <div className="overflow-y-auto scrollbar-thin divide-y divide-slate-50 dark:divide-slate-800/60" style={{ maxHeight: '192px' }}>
-                {onlineUsers.map(u => {
-                  const color = SYSTEM_COLORS[u.system] ?? '#6b7280'
+              <div className="overflow-y-auto scrollbar-thin divide-y divide-slate-50 dark:divide-slate-800/60" style={{ maxHeight: '240px' }}>
+                {onlineUsers.length === 0 ? (
+                  <p className="px-4 py-8 text-xs text-center text-slate-400">
+                    Ninguém online agora.
+                  </p>
+                ) : onlineUsers.map(u => {
+                  const since = new Date(u.startedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                   return (
                     <button
-                      key={u.id}
+                      key={u.sessionId}
                       onClick={() => goToUsers()}
                       className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left"
                     >
                       <div className="relative shrink-0">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white"
-                          style={{ backgroundColor: color }}
-                        >
-                          {initials(u.name)}
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white bg-sky-500">
+                          {initials(u.userName)}
                         </div>
                         <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-white dark:border-slate-900" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{u.name}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{u.role} · {u.unit}</p>
+                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{u.userName}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{u.primaryRole}</p>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ backgroundColor: color + '18', color }}>
-                          {u.system}
-                        </span>
-                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400">desde {u.since}</span>
+                      <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <span className="text-[10px] font-mono text-slate-400 truncate max-w-[100px]">{u.ip || '—'}</span>
+                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400">desde {since}</span>
                       </div>
                     </button>
                   )
                 })}
               </div>
 
-              {/* Resumo offline */}
-              {offlineUsers.length > 0 && (
-                <button
-                  onClick={() => goToUsers()}
-                  className="w-full flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <Clock size={11} />
-                    <span className="text-[11px]">{offlineUsers.length} usuários offline</span>
-                  </div>
-                  <span className="text-[10px] text-sky-500 flex items-center gap-1">Ver histórico <ArrowRight size={9} /></span>
-                </button>
-              )}
+              {/* Rodapé */}
+              <button
+                onClick={() => goToUsers()}
+                className="w-full flex items-center justify-between px-4 py-2.5 border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <span className="text-[11px] text-slate-500">Ver todos os usuários e histórico</span>
+                <ArrowRight size={11} className="text-sky-500" />
+              </button>
             </div>
           )}
         </div>

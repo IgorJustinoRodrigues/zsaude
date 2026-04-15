@@ -299,10 +299,14 @@ class UserService:
         if payload.level is not None:
             new_level = UserLevel(payload.level)
             if user.level != new_level:
+                from app.modules.sessions.models import SessionEndReason
+                from app.modules.sessions.service import SessionService
+
                 user.level = new_level
                 user.is_superuser = (new_level == UserLevel.MASTER)
                 # Mudança de nível invalida sessões ativas
                 user.token_version += 1
+                await SessionService(self.session).end_all_for_user(user_id, SessionEndReason.LEVEL_CHANGED)
 
         await self.repo.update(user)
 
@@ -420,10 +424,19 @@ class UserService:
     # ─── Admin: ativar/bloquear ─────────────────────────────────────────────
 
     async def set_status(self, user_id: UUID, status: UserStatus) -> User:
+        from app.modules.sessions.models import SessionEndReason
+        from app.modules.sessions.service import SessionService
+
         user = await self.get_or_404(user_id)
         user.status = status
         user.is_active = status != UserStatus.BLOQUEADO
         if status != UserStatus.ATIVO:
             user.token_version += 1
+            reason = (
+                SessionEndReason.USER_BLOCKED
+                if status == UserStatus.BLOQUEADO
+                else SessionEndReason.USER_DEACTIVATED
+            )
+            await SessionService(self.session).end_all_for_user(user_id, reason)
         await self.repo.update(user)
         return user

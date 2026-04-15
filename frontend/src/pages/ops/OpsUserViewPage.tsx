@@ -3,10 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, User, Mail, Phone, MapPin, Building2, Shield,
   Eye as EyeIcon, EyeOff, KeyRound, RefreshCw, Check, X, Copy, Lock,
-  UserCheck, UserX, ShieldOff,
+  UserCheck, UserX, ShieldOff, Activity as ActivityIcon, Clock, LogOut as LogOutIcon,
 } from 'lucide-react'
 import { initials, cn } from '../../lib/utils'
 import { userApi, type UserDetail } from '../../api/users'
+import { sessionsApi, type SessionRead } from '../../api/sessions'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import type { SystemId } from '../../types'
@@ -370,6 +371,9 @@ export function OpsUserViewPage() {
         </div>
       </ViewSection>
 
+      {/* Sessões */}
+      <SessionsSection userId={user.id} />
+
       {/* Acessos */}
       <ViewSection title="Acessos por município" icon={<Building2 size={15} />}>
         {user.municipalities.length === 0 ? (
@@ -463,6 +467,145 @@ function StatusBtn({
       {icon}
       <span className="hidden sm:inline">{label}</span>
     </button>
+  )
+}
+
+// ─── SessionsSection ──────────────────────────────────────────────────────────
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  if (m < 60) return `${m}min`
+  const h = Math.floor(m / 60)
+  const r = m % 60
+  return r ? `${h}h ${r}min` : `${h}h`
+}
+
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR')
+}
+
+const END_REASON_LABEL: Record<string, string> = {
+  logout:             'Logout',
+  expired:            'Expirada',
+  revoked_replay:     'Revogada (replay)',
+  revoked_by_admin:   'Revogada por admin',
+  user_blocked:       'Usuário bloqueado',
+  user_deactivated:   'Usuário inativado',
+  level_changed:      'Nível alterado',
+}
+
+function SessionsSection({ userId }: { userId: string }) {
+  const [sessions, setSessions] = useState<SessionRead[]>([])
+  const [loading, setLoading] = useState(true)
+  const [revoking, setRevoking] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const list = await sessionsApi.userSessions(userId, 20)
+      setSessions(list)
+    } catch (e) {
+      if (e instanceof HttpError && e.status !== 403) {
+        toast.error('Falha ao carregar sessões', e.message)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [userId]) // eslint-disable-line
+
+  const revoke = async (sid: string) => {
+    setRevoking(sid)
+    try {
+      await sessionsApi.revokeSession(userId, sid)
+      toast.success('Sessão encerrada')
+      await load()
+    } catch (e) {
+      toast.error('Falha ao encerrar sessão', e instanceof HttpError ? e.message : '')
+    } finally {
+      setRevoking(null)
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6 py-8 border-t border-slate-100 dark:border-slate-800">
+      <div>
+        <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+          <ActivityIcon size={15} />
+          <h2 className="text-sm font-semibold">Sessões recentes</h2>
+        </div>
+        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+          Últimos logins. Online = atividade nos últimos 2 minutos.
+        </p>
+      </div>
+
+      <div>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <svg className="animate-spin w-4 h-4 text-sky-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-slate-400 italic py-8 text-center border border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+            Nenhuma sessão registrada ainda.
+          </p>
+        ) : (
+          <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+            {sessions.map(s => (
+              <div key={s.id} className="flex items-center gap-3 px-4 py-3">
+                <div className={cn(
+                  'w-2 h-2 rounded-full shrink-0',
+                  s.isOnline ? 'bg-emerald-500' : s.isActive ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-600',
+                )} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {formatWhen(s.startedAt)}
+                    </p>
+                    {s.isOnline && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                        Online
+                      </span>
+                    )}
+                    {!s.isOnline && s.isActive && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                        Ociosa
+                      </span>
+                    )}
+                    {!s.isActive && s.endReason && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        {END_REASON_LABEL[s.endReason] ?? s.endReason}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                    <span className="flex items-center gap-1">
+                      <Clock size={10} />
+                      {formatDuration(s.durationSeconds)}
+                    </span>
+                    {s.ip && <span className="font-mono">{s.ip}</span>}
+                  </div>
+                </div>
+                {s.isActive && (
+                  <button
+                    onClick={() => revoke(s.id)}
+                    disabled={revoking === s.id}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors disabled:opacity-50"
+                    title="Encerrar sessão"
+                  >
+                    <LogOutIcon size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

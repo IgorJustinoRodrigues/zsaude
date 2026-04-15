@@ -68,6 +68,7 @@ def _now_utc() -> datetime:
 def create_access_token(
     subject: str,
     token_version: int = 1,
+    family_id: str | None = None,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
     now = _now_utc()
@@ -79,6 +80,10 @@ def create_access_token(
         "typ": "access",
         "ver": token_version,
     }
+    if family_id:
+        # Identificador da sessão (família de refresh tokens). Usado para
+        # atualizar `last_seen_at` nas requisições autenticadas.
+        payload["sid"] = family_id
     if extra_claims:
         payload.update(extra_claims)
     return jwt.encode(payload, settings.read_jwt_private_key(), algorithm=settings.jwt_algorithm)
