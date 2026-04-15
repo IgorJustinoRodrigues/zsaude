@@ -225,10 +225,6 @@ export function PhotoCropModal({ onConfirm, onClose }: Props) {
                     className="w-full rounded-xl bg-black"
                     style={{ maxHeight: 260, objectFit: 'cover' }}
                   />
-                  {/* Guia 1:1 */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="border-2 border-white/70 rounded-full aspect-square w-40 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-                  </div>
                   <button
                     type="button"
                     onClick={flipCamera}
