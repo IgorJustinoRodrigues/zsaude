@@ -45,6 +45,7 @@ import { OpsUsersReportPage } from '../pages/ops/OpsUsersReportPage'
 import { OpsAuditReportPage } from '../pages/ops/OpsAuditReportPage'
 import { OpsOccurrencesReportPage } from '../pages/ops/OpsOccurrencesReportPage'
 import { OpsActivityReportPage } from '../pages/ops/OpsActivityReportPage'
+import { OpsSearchesPage } from '../pages/ops/OpsSearchesPage'
 
 export const router = createBrowserRouter([
   { path: '/', element: <Navigate to="/login" replace /> },
@@ -96,6 +97,7 @@ export const router = createBrowserRouter([
       { path: '/ops/relatorios/auditoria',    element: <OpsAuditReportPage /> },
       { path: '/ops/relatorios/ocorrencias', element: <OpsOccurrencesReportPage /> },
       { path: '/ops/relatorios/atividade',   element: <OpsActivityReportPage /> },
+      { path: '/ops/pesquisas',              element: <OpsSearchesPage /> },
 
       // Fallback
       { path: '/:module/*', element: <ModulePlaceholder /> },

@@ -4,7 +4,7 @@ import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
-  BarChart2,
+  BarChart2, SearchCheck,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -44,6 +44,8 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
     { kind: 'item', icon: <ScrollText size={16} />, label: 'Logs do sistema', path: '/ops/logs' },
     { kind: 'section', label: 'Relatórios' },
     { kind: 'item', icon: <BarChart2 size={16} />, label: 'Relatórios', path: '/ops/relatorios' },
+    { kind: 'section', label: 'Pesquisas' },
+    { kind: 'item', icon: <SearchCheck size={16} />, label: 'Pesquisas', path: '/ops/pesquisas' },
   ],
 }
 
