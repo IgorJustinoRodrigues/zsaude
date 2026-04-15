@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Building2, Search } from 'lucide-react'
 import { directoryApi, type FacilityDto, type MunicipalityDto } from '../../api/workContext'
+import { toast } from '../../store/toastStore'
+import { HttpError } from '../../api/client'
 import { normalize, cn } from '../../lib/utils'
 
 export function SysFacilityListPage() {
@@ -15,6 +17,10 @@ export function SysFacilityListPage() {
   useEffect(() => {
     Promise.all([directoryApi.listMunicipalities(), directoryApi.listFacilities()])
       .then(([m, f]) => { setMuns(m); setFacilities(f) })
+      .catch(e => toast.error(
+        'Falha ao carregar unidades',
+        e instanceof HttpError ? e.message : 'Tente novamente.',
+      ))
       .finally(() => setLoading(false))
   }, [])
 

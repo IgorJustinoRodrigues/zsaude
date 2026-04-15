@@ -4,6 +4,7 @@ import { TopBar } from './TopBar'
 import { useUIStore } from '../../store/uiStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
+import { Toaster } from '../ui/Toaster'
 
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
 
@@ -31,6 +32,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <Toaster />
     </div>
   )
 }

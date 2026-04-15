@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { Eye, EyeOff } from 'lucide-react'
 
 export function LoginPage() {
@@ -20,14 +21,22 @@ export function LoginPage() {
     try {
       await login(form.login, form.password)
     } catch (err) {
+      let msg = 'Usuário ou senha inválidos.'
       if (err instanceof HttpError) {
-        if (err.status === 429) setError('Muitas tentativas. Aguarde alguns instantes.')
-        else setError(err.message || 'Usuário ou senha inválidos.')
+        if (err.status === 429) msg = 'Muitas tentativas. Aguarde alguns instantes.'
+        else if (err.message) msg = err.message
       } else {
-        setError('Não foi possível conectar ao servidor.')
+        msg = 'Não foi possível conectar ao servidor.'
       }
+      setError(msg)
+      toast.error('Não foi possível entrar', msg)
       setLoading(false)
       return
+    }
+
+    const loggedUser = useAuthStore.getState().user
+    if (loggedUser) {
+      toast.success(`Bem-vindo, ${loggedUser.name.split(' ')[0]}`)
     }
 
     // MASTER vai direto pra área da plataforma — sem seleção de contexto.

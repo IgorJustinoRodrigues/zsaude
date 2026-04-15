@@ -8,6 +8,7 @@ import {
   TrendingUp,
 } from 'lucide-react'
 import { mockSystemLogs, type SystemLog, type LogAction, type LogSeverity } from '../../mock/logs'
+import { toast } from '../../store/toastStore'
 import { normalize, cn } from '../../lib/utils'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ export function OpsOccurrencesReportPage() {
     a.download = `ocorrencias_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Relatório exportado', `${filtered.length} ocorrências · ${a.download}`)
   }
 
   return (

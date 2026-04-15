@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Search, ChevronLeft, ChevronRight, ScrollText } from 'lucide-react'
 import { sysApi, type AuditLogItem } from '../../api/sys'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
 const SEV_STYLE: Record<string, string> = {
@@ -36,7 +37,11 @@ export function SysAuditPage() {
       scope: scope === 'master' ? 'master' : undefined,
     })
       .then(r => { setItems(r.items); setTotal(r.total) })
-      .catch(e => setError(e instanceof HttpError ? e.message : 'Erro ao carregar logs.'))
+      .catch(e => {
+        const msg = e instanceof HttpError ? e.message : 'Erro ao carregar logs.'
+        setError(msg)
+        toast.error('Falha ao carregar logs', msg)
+      })
       .finally(() => setLoading(false))
   }, [page, search, scope])
 

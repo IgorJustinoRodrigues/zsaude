@@ -8,6 +8,7 @@ import {
   ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react'
 import { mockSystemLogs, type SystemLog, type LogAction } from '../../mock/logs'
+import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
 
 // ─── Meta ─────────────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ export function OpsActivityReportPage() {
     const a    = document.createElement('a')
     a.href = url; a.download = `atividade_${new Date().toISOString().slice(0, 10)}.csv`
     a.click(); URL.revokeObjectURL(url)
+    toast.success('Relatório exportado', `${filtered.length} ações · ${a.download}`)
   }
 
   return (

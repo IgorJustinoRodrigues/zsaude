@@ -6,6 +6,7 @@ import {
   Calendar, MapPin, Building2,
 } from 'lucide-react'
 import { mockUsers, mockMunicipalities, mockFacilities } from '../../mock/users'
+import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
 import type { UserRecord } from '../../mock/users'
 
@@ -145,6 +146,7 @@ export function OpsUsersReportPage() {
     a.download = `usuarios_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Relatório exportado', `${filtered.length} usuários · ${a.download}`)
   }
 
   return (

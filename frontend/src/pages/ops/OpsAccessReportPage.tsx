@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { mockSystemLogs } from '../../mock/logs'
 import { mockUsers } from '../../mock/users'
+import { toast } from '../../store/toastStore'
 import { normalize, initials, cn } from '../../lib/utils'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -236,6 +237,7 @@ export function OpsAccessReportPage() {
     a.download = `acessos_${normalize(userName).replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Relatório exportado', `${filtered.length} registros · ${a.download}`)
   }
 
   const hasData = filtered.length > 0

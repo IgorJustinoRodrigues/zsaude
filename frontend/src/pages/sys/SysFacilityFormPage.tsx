@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { sysApi } from '../../api/sys'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 
 const TYPES = ['SMS','UBS','UPA','Hospital','Lab','VISA','Policlínica','CEO','CAPS','Transportes','Outro']
 
@@ -57,17 +58,24 @@ export function SysFacilityFormPage() {
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     setError('')
-    if (!validate()) return
+    if (!validate()) {
+      toast.warning('Revise os campos', 'Existem erros de validação no formulário.')
+      return
+    }
     setSaving(true)
     try {
       if (isEdit && id) {
         await sysApi.updateFacility(id, { name, shortName, type, cnes: cnes || null })
+        toast.success('Unidade atualizada', name)
       } else {
         await sysApi.createFacility({ municipalityId, name, shortName, type, cnes: cnes || null })
+        toast.success('Unidade criada', `${shortName} cadastrada.`)
       }
       navigate('/sys/unidades', { replace: true })
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao salvar.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao salvar.'
+      setError(msg)
+      toast.error(isEdit ? 'Falha ao salvar alterações' : 'Falha ao criar unidade', msg)
       setSaving(false)
     }
   }

@@ -8,6 +8,7 @@ import {
 import { initials, cn } from '../../lib/utils'
 import { userApi, type UserListItem, type UserStats, type UserStatus } from '../../api/users'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import type { SystemId } from '../../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,11 +84,12 @@ export function OpsUserListPage() {
       setItems(res.items)
       setTotal(res.total)
     } catch (e) {
+      let msg = 'Não foi possível carregar os usuários.'
       if (e instanceof HttpError && e.status === 403) {
-        setError('Apenas administradores podem listar usuários.')
-      } else {
-        setError('Não foi possível carregar os usuários.')
+        msg = 'Apenas administradores podem listar usuários.'
       }
+      setError(msg)
+      toast.error('Falha ao carregar', msg)
       setItems([])
       setTotal(0)
     } finally {

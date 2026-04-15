@@ -6,6 +6,7 @@ import {
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { initials, cn } from '../../lib/utils'
+import { Toaster } from '../ui/Toaster'
 
 /**
  * Layout da área MASTER. Sidebar violeta escuro pra deixar claro que o usuário
@@ -96,6 +97,8 @@ export function SysShell() {
           <Outlet />
         </main>
       </div>
+
+      <Toaster />
     </div>
   )
 }

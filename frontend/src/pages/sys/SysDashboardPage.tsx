@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { userApi, type UserStats } from '../../api/users'
+import { toast } from '../../store/toastStore'
+import { HttpError } from '../../api/client'
 import { cn } from '../../lib/utils'
 
 export function SysDashboardPage() {
@@ -16,6 +18,10 @@ export function SysDashboardPage() {
   useEffect(() => {
     Promise.all([sysApi.listMunicipalities(true), userApi.stats()])
       .then(([m, s]) => { setMuns(m); setUserStats(s) })
+      .catch(e => toast.error(
+        'Falha ao carregar dashboard',
+        e instanceof HttpError ? e.message : 'Tente novamente.',
+      ))
       .finally(() => setLoading(false))
   }, [])
 

@@ -6,6 +6,7 @@ import {
 import { sysApi, type MunicipalityAdminDetail, type FacilityAdmin } from '../../api/sys'
 import { directoryApi } from '../../api/workContext'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
 export function SysMunicipalityViewPage() {
@@ -26,7 +27,9 @@ export function SysMunicipalityViewPage() {
       const facs = await directoryApi.listFacilities(id)
       setFacilities(facs as FacilityAdmin[])
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao carregar.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao carregar.'
+      setError(msg)
+      toast.error('Falha ao carregar município', msg)
     } finally {
       setLoading(false)
     }
@@ -38,9 +41,19 @@ export function SysMunicipalityViewPage() {
     if (!mun) return
     setActing(true)
     try {
-      if (mun.archived) await sysApi.unarchiveMunicipality(mun.id)
-      else await sysApi.archiveMunicipality(mun.id)
+      if (mun.archived) {
+        await sysApi.unarchiveMunicipality(mun.id)
+        toast.success('Município reativado', mun.name)
+      } else {
+        await sysApi.archiveMunicipality(mun.id)
+        toast.success('Município arquivado', mun.name)
+      }
       await load()
+    } catch (e) {
+      toast.error(
+        'Falha ao atualizar',
+        e instanceof HttpError ? e.message : 'Tente novamente.',
+      )
     } finally { setActing(false) }
   }
 

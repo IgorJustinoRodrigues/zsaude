@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Settings, Check, AlertCircle } from 'lucide-react'
 import { sysApi, type SystemSetting } from '../../api/sys'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 
 export function SysSettingsPage() {
   const [items, setItems] = useState<SystemSetting[]>([])
@@ -18,7 +19,11 @@ export function SysSettingsPage() {
         setItems(list)
         setDrafts(Object.fromEntries(list.map(s => [s.key, JSON.stringify(s.value)])))
       })
-      .catch(e => setError(e instanceof HttpError ? e.message : 'Erro ao carregar.'))
+      .catch(e => {
+        const msg = e instanceof HttpError ? e.message : 'Erro ao carregar.'
+        setError(msg)
+        toast.error('Falha ao carregar configurações', msg)
+      })
       .finally(() => setLoading(false))
   }
 
@@ -33,9 +38,12 @@ export function SysSettingsPage() {
       const updated = await sysApi.updateSetting(key, value)
       setItems(prev => prev.map(s => s.key === key ? updated : s))
       setOkKey(key)
+      toast.success('Configuração atualizada', key)
       setTimeout(() => setOkKey(null), 1600)
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao salvar.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao salvar.'
+      setError(msg)
+      toast.error('Falha ao atualizar configuração', msg)
     } finally { setSavingKey(null) }
   }
 

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, MapPin, Search, Archive, ArchiveRestore } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { normalize, cn } from '../../lib/utils'
 
 export function SysMunicipalityListPage() {
@@ -32,9 +33,19 @@ export function SysMunicipalityListPage() {
   const toggleArchive = async (m: MunicipalityAdminDetail) => {
     setActing(m.id)
     try {
-      if (m.archived) await sysApi.unarchiveMunicipality(m.id)
-      else await sysApi.archiveMunicipality(m.id)
+      if (m.archived) {
+        await sysApi.unarchiveMunicipality(m.id)
+        toast.success('Município reativado', m.name)
+      } else {
+        await sysApi.archiveMunicipality(m.id)
+        toast.success('Município arquivado', `${m.name} foi arquivado.`)
+      }
       load()
+    } catch (e) {
+      toast.error(
+        'Falha ao atualizar município',
+        e instanceof HttpError ? e.message : 'Tente novamente.',
+      )
     } finally { setActing(null) }
   }
 

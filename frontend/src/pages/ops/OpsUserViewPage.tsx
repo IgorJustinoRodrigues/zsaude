@@ -8,6 +8,7 @@ import {
 import { initials, cn } from '../../lib/utils'
 import { userApi, type UserDetail } from '../../api/users'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import type { SystemId } from '../../types'
 
 // ─── Modal de reset de senha (agora consome a API) ────────────────────────────
@@ -46,8 +47,11 @@ function ResetPasswordModal({
     try {
       const res = await userApi.resetPassword(userId, password && pwdValid ? password : undefined)
       setGenerated(res.newPassword)
+      toast.success('Senha redefinida', `${userName} deverá usar a nova senha no próximo acesso.`)
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao redefinir senha.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao redefinir senha.'
+      setError(msg)
+      toast.error('Falha ao redefinir senha', msg)
     } finally {
       setLoading(false)
     }
@@ -58,8 +62,11 @@ function ResetPasswordModal({
     try {
       await navigator.clipboard.writeText(generated)
       setCopied(true)
+      toast.success('Senha copiada', 'Cola em local seguro antes de entregar ao usuário.')
       setTimeout(() => setCopied(false), 2000)
-    } catch { /* ignore */ }
+    } catch {
+      toast.error('Não foi possível copiar', 'Seu navegador bloqueou o acesso ao clipboard.')
+    }
   }
 
   return (
@@ -230,11 +237,12 @@ export function OpsUserViewPage() {
     try {
       setUser(await userApi.get(id))
     } catch (e) {
+      let msg = 'Não foi possível carregar o usuário.'
       if (e instanceof HttpError) {
-        setError(e.status === 404 ? 'Usuário não encontrado.' : e.message)
-      } else {
-        setError('Não foi possível carregar o usuário.')
+        msg = e.status === 404 ? 'Usuário não encontrado.' : e.message
       }
+      setError(msg)
+      toast.error('Falha ao carregar usuário', msg)
     } finally {
       setLoading(false)
     }
@@ -246,12 +254,21 @@ export function OpsUserViewPage() {
     if (!user) return
     setStatusLoading(true)
     try {
-      if (action === 'activate') await userApi.activate(user.id)
-      else if (action === 'deactivate') await userApi.deactivate(user.id)
-      else await userApi.block(user.id)
+      if (action === 'activate') {
+        await userApi.activate(user.id)
+        toast.success('Usuário ativado', user.name)
+      } else if (action === 'deactivate') {
+        await userApi.deactivate(user.id)
+        toast.success('Usuário inativado', `${user.name} não poderá mais acessar.`)
+      } else {
+        await userApi.block(user.id)
+        toast.warning('Usuário bloqueado', `Todas as sessões ativas de ${user.name} foram encerradas.`)
+      }
       await load()
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao atualizar status.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao atualizar status.'
+      setError(msg)
+      toast.error('Falha ao atualizar status', msg)
     } finally {
       setStatusLoading(false)
     }

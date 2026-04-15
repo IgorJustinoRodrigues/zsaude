@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
+import { toast } from '../../store/toastStore'
+import { HttpError } from '../../api/client'
 import {
   MapPin, Building2, ChevronRight, Sun, Moon, LogOut,
   ChevronDown, Layers,
@@ -41,12 +43,21 @@ export function ContextSelectPage() {
     setSelecting(facilityId)
     try {
       const modules = await selectContext(municipalityId, facilityId)
+      const ctx = useAuthStore.getState().context
+      if (ctx) {
+        toast.success('Contexto selecionado', `${ctx.facility.shortName} · ${ctx.municipality.name}`)
+      }
       if (modules.length === 1) {
         selectSystem(modules[0])
         navigate(`/${modules[0]}`, { replace: true })
       } else {
         navigate('/selecionar-sistema')
       }
+    } catch (e) {
+      toast.error(
+        'Falha ao selecionar contexto',
+        e instanceof HttpError ? e.message : 'Tente novamente.',
+      )
     } finally {
       setSelecting(null)
     }

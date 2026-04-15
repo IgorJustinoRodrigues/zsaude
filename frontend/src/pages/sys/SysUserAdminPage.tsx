@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search, UserPlus, Users, Shield, UserCheck, UserX } from 'lucide-react'
 import { userApi, type UserListItem } from '../../api/users'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { initials, cn } from '../../lib/utils'
 
 type LevelFilter = 'master' | 'admin' | 'all'
@@ -33,7 +34,9 @@ export function SysUserAdminPage() {
       const r = await userApi.list({ search: search || undefined, pageSize: 100 })
       setItems(r.items)
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao carregar.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao carregar.'
+      setError(msg)
+      toast.error('Falha ao carregar', msg)
     } finally { setLoading(false) }
   }, [search])
 

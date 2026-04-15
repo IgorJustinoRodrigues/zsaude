@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { mockSystemLogs, type SystemLog, type LogAction, type LogSeverity } from '../../mock/logs'
 import { mockUsers } from '../../mock/users'
+import { toast } from '../../store/toastStore'
 import { normalize, cn } from '../../lib/utils'
 
 // ─── Meta ─────────────────────────────────────────────────────────────────────
@@ -199,6 +200,7 @@ export function OpsAuditReportPage() {
     a.download = `auditoria_${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast.success('Relatório exportado', `${filtered.length} eventos · ${a.download}`)
   }
 
   return (

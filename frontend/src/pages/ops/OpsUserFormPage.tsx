@@ -8,6 +8,7 @@ import { userApi, type UserDetail, type UserStatus, type UserLevel } from '../..
 import { useAuthStore } from '../../store/authStore'
 import { directoryApi, type MunicipalityDto, type FacilityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 
@@ -199,8 +200,10 @@ export function OpsUserFormPage() {
           setOutOfScope(outOfScope)
         }
       } catch (e) {
-        if (e instanceof HttpError) setGlobalError(e.message)
-        else setGlobalError('Não foi possível carregar os dados.')
+        const msg = e instanceof HttpError ? e.message : 'Não foi possível carregar os dados.'
+        if (cancelled) return
+        setGlobalError(msg)
+        toast.error('Falha ao carregar dados do formulário', msg)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -293,7 +296,10 @@ export function OpsUserFormPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setGlobalError('')
-    if (!validate()) return
+    if (!validate()) {
+      toast.warning('Revise os campos', 'Existem erros no formulário.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -313,6 +319,7 @@ export function OpsUserFormPage() {
           level: isActorMaster ? safeLevel : undefined,
           municipalities: buildPayloadAccesses(),
         })
+        toast.success('Usuário atualizado', name)
         navigate(`/ops/usuarios/${id}`, { replace: true })
       } else {
         const created = await userApi.create({
@@ -327,16 +334,18 @@ export function OpsUserFormPage() {
           level: safeLevel,
           municipalities: buildPayloadAccesses(),
         })
+        toast.success('Usuário criado', `${created.name} · login ${created.login}`)
         navigate(`/ops/usuarios/${created.id}`, { replace: true })
       }
     } catch (err) {
+      let msg = 'Erro ao salvar.'
       if (err instanceof HttpError) {
-        if (err.code === 'conflict') setGlobalError(err.message)
-        else if (err.status === 422) setGlobalError('Campos inválidos. Revise os dados.')
-        else setGlobalError(err.message)
-      } else {
-        setGlobalError('Erro ao salvar.')
+        if (err.code === 'conflict') msg = err.message
+        else if (err.status === 422) msg = 'Campos inválidos. Revise os dados.'
+        else msg = err.message
       }
+      setGlobalError(msg)
+      toast.error(isEdit ? 'Falha ao salvar alterações' : 'Falha ao cadastrar usuário', msg)
       setSaving(false)
     }
   }

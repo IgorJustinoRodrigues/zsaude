@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, MapPin } from 'lucide-react'
 import { sysApi } from '../../api/sys'
 import { HttpError } from '../../api/client'
+import { toast } from '../../store/toastStore'
 
 const UF_LIST = [
   'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA',
@@ -46,18 +47,28 @@ export function SysMunicipalityFormPage() {
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     setError('')
-    if (!validate()) return
+    if (!validate()) {
+      toast.warning('Revise os campos', 'Existem erros de validação no formulário.')
+      return
+    }
     setSaving(true)
     try {
       if (isEdit && id) {
         await sysApi.updateMunicipality(id, { name, state })
+        toast.success('Município atualizado', name)
         navigate(`/sys/municipios/${id}`, { replace: true })
       } else {
         const created = await sysApi.createMunicipality({ name, state, ibge })
+        toast.success(
+          'Município criado',
+          `${created.name} provisionado no schema ${created.schemaName}.`,
+        )
         navigate(`/sys/municipios/${created.id}`, { replace: true })
       }
     } catch (e) {
-      setError(e instanceof HttpError ? e.message : 'Erro ao salvar.')
+      const msg = e instanceof HttpError ? e.message : 'Erro ao salvar.'
+      setError(msg)
+      toast.error(isEdit ? 'Falha ao salvar alterações' : 'Falha ao criar município', msg)
       setSaving(false)
     }
   }
