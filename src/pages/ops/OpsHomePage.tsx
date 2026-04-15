@@ -41,6 +41,22 @@ function buildHourlyData(appts: typeof mockAppointments) {
   })
 }
 
+// Gera distribuição por especialidade nas últimas 24h
+function buildSpecialtyData(appts: typeof mockAppointments) {
+  const map = new Map<string, { Atendidos: number; 'Em andamento': number; Agendados: number; Ausentes: number }>()
+  appts.forEach(a => {
+    if (!map.has(a.specialty)) map.set(a.specialty, { Atendidos: 0, 'Em andamento': 0, Agendados: 0, Ausentes: 0 })
+    const entry = map.get(a.specialty)!
+    if (a.status === 'Atendido') entry.Atendidos++
+    else if (a.status === 'Em Atendimento' || a.status === 'Aguardando') entry['Em andamento']++
+    else if (a.status === 'Ausente' || a.status === 'Cancelado') entry.Ausentes++
+    else entry.Agendados++
+  })
+  return [...map.entries()]
+    .map(([specialty, v]) => ({ specialty, total: v.Atendidos + v['Em andamento'] + v.Agendados + v.Ausentes, ...v }))
+    .sort((a, b) => b.total - a.total)
+}
+
 // Tooltip customizado
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
@@ -79,6 +95,7 @@ export function OpsHomePage() {
   const totalPatients = mockPatients.filter(p => p.active).length
   const qStats        = getQueueStats()
   const hourlyData    = buildHourlyData(last24hAppts)
+  const specialtyData = buildSpecialtyData(last24hAppts)
 
   const concludedPct = todayAppts.length > 0 ? Math.round((concluded / todayAppts.length) * 100) : 0
   const queuePct     = qStats.total > 0 ? Math.round((qStats.attended / qStats.total) * 100) : 0
@@ -271,6 +288,73 @@ export function OpsHomePage() {
         <div className="flex items-center justify-center gap-2 mt-3 text-[11px] text-slate-400">
           <span className="inline-block w-4 border-t-2 border-dashed border-amber-400" />
           Hora atual: <span className="font-semibold text-amber-500">{String(CURRENT_HOUR).padStart(2, '0')}h</span>
+        </div>
+      </div>
+
+      {/* Specialty chart */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Atendimentos por especialidade</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Últimas 24 horas · {specialtyData.length} especialidades</p>
+          </div>
+          <div className="flex items-center gap-4 text-[11px]">
+            {[
+              { label: 'Atendidos',    color: '#10b981' },
+              { label: 'Em andamento', color: '#8b5cf6' },
+              { label: 'Agendados',    color: '#0ea5e9' },
+              { label: 'Ausentes',     color: '#f87171' },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
+                <span className="text-slate-400">{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Rows */}
+        <div className="space-y-3">
+          {specialtyData.map((row, i) => {
+            const max = specialtyData[0].total
+            // cada segmento é relativo ao max global — barra mais cheia = especialidade com mais atendimentos
+            const seg = (v: number) => max > 0 ? (v / max) * 100 : 0
+            const attendedPct = row.total > 0 ? Math.round((row.Atendidos / row.total) * 100) : 0
+
+            return (
+              <div key={row.specialty}>
+                <div className="flex items-center justify-between mb-1.5 gap-3">
+                  {/* Rank + name */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600 w-4 shrink-0 tabular-nums">
+                      {i + 1}
+                    </span>
+                    <span className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+                      {row.specialty}
+                    </span>
+                  </div>
+                  {/* % atendidos + total */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-[11px] text-emerald-500 font-semibold tabular-nums">
+                      {attendedPct}% atend.
+                    </span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-300 tabular-nums w-4 text-right">
+                      {row.total}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stacked bar — larguras relativas ao max global */}
+                <div className="flex h-2 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                  <div className="h-full bg-emerald-500" style={{ width: `${seg(row.Atendidos)}%` }} />
+                  <div className="h-full bg-violet-500"  style={{ width: `${seg(row['Em andamento'])}%` }} />
+                  <div className="h-full bg-sky-400"     style={{ width: `${seg(row.Agendados)}%` }} />
+                  <div className="h-full bg-red-400"     style={{ width: `${seg(row.Ausentes)}%` }} />
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
