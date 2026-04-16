@@ -29,7 +29,7 @@ export function HspHomePage() {
             <button
               key={card.title}
               onClick={() => navigate(card.to)}
-              className="bg-white border border-border rounded-xl p-5 text-left hover:border-primary/40 hover:shadow-sm transition-all"
+              className="bg-card border border-border rounded-xl p-5 text-left hover:border-primary/40 hover:shadow-sm transition-all"
             >
               <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3">
                 <Icon size={18} />

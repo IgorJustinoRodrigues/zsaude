@@ -218,6 +218,18 @@ export interface PatientListItem {
   updatedAt: string
 }
 
+export interface PatientPhotoMeta {
+  id: string
+  patientId: string
+  mimeType: string
+  fileSize: number
+  width: number | null
+  height: number | null
+  uploadedBy: string | null
+  uploadedByName: string
+  uploadedAt: string
+}
+
 export interface PatientFieldHistoryItem {
   id: string
   patientId: string
@@ -317,6 +329,13 @@ export const hspApi = {
       { method: 'DELETE', withContext: true },
     ),
 
+  /** Reativa um paciente previamente desativado. */
+  restore: (id: string, reason?: string) =>
+    apiFetch<PatientRead>(
+      `/api/v1/hsp/patients/${id}/restore${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`,
+      { method: 'POST', withContext: true },
+    ),
+
   // ── Foto ──────────────────────────────────────────
   uploadPhoto: async (id: string, file: File | Blob, meta?: { width?: number; height?: number }) => {
     const fd = new FormData()
@@ -338,6 +357,16 @@ export const hspApi = {
   removePhoto: (id: string) =>
     apiFetch<void>(`/api/v1/hsp/patients/${id}/photo`, {
       method: 'DELETE', withContext: true,
+    }),
+
+  /** Lista todas as fotos já enviadas (mais recente primeiro). */
+  listPhotos: (id: string) =>
+    api.get<PatientPhotoMeta[]>(`/api/v1/hsp/patients/${id}/photos`, { withContext: true }),
+
+  /** Define uma foto antiga como a atual. */
+  restorePhoto: (id: string, photoId: string) =>
+    apiFetch<PatientRead>(`/api/v1/hsp/patients/${id}/photos/${photoId}/restore`, {
+      method: 'POST', withContext: true,
     }),
 
   // ── Histórico ─────────────────────────────────────

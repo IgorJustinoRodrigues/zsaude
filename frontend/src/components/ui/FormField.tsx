@@ -22,12 +22,12 @@ export function FormField({ label, required, hint, error, valid, className, chil
     <label className={cn('flex flex-col gap-1', className)}>
       <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
         {label}
-        {required && <span className="text-rose-500">*</span>}
-        {valid && !error && <Check size={11} className="text-emerald-500 ml-0.5" />}
+        {required && <span className="text-rose-500 dark:text-rose-400">*</span>}
+        {valid && !error && <Check size={11} className="text-emerald-500 dark:text-emerald-400 ml-0.5" />}
       </span>
       {children}
       {error ? (
-        <span className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5">
+        <span className="text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1 mt-0.5">
           <AlertCircle size={11} />
           {error}
         </span>

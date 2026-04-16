@@ -32,7 +32,7 @@ export function MaskedInput({ value, onChange, mask, invalid, className, ...rest
       className={cn(
         'text-sm border rounded-lg bg-background px-3 py-2 focus:outline-none focus:ring-2',
         invalid
-          ? 'border-rose-300 focus:ring-rose-200 focus:border-rose-400'
+          ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-200 dark:focus:ring-rose-900 focus:border-rose-400'
           : 'border-border focus:ring-primary/20 focus:border-primary',
         className,
       )}

@@ -4,6 +4,7 @@ import { Search, ArrowRight, UserPlus, AlertCircle } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
+import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientListItem, type PatientLookupParams } from '../../api/hsp'
 import { toast } from '../../store/toastStore'
@@ -11,18 +12,18 @@ import { cnsMask, cpfMask } from '../../lib/masks'
 import { validateCns, validateCpf } from '../../lib/validators'
 import { calcAge, cn, formatCPF, formatDate, initials } from '../../lib/utils'
 
-type Mode = 'cpf' | 'cns' | 'documento' | 'name'
+type Mode = 'name' | 'cpf' | 'cns' | 'documento'
 
 const TABS: { id: Mode; label: string }[] = [
+  { id: 'name',      label: 'Nome + Nascimento' },
   { id: 'cpf',       label: 'CPF' },
   { id: 'cns',       label: 'CNS' },
   { id: 'documento', label: 'Outro documento' },
-  { id: 'name',      label: 'Nome + Nascimento' },
 ]
 
 export function HspPatientSearchPage() {
   const navigate = useNavigate()
-  const [mode, setMode] = useState<Mode>('cpf')
+  const [mode, setMode] = useState<Mode>('name')
 
   // Campos por modo
   const [cpf, setCpf] = useState('')
@@ -109,7 +110,7 @@ export function HspPatientSearchPage() {
         back="/hsp"
       />
 
-      <div className="bg-white rounded-xl border border-border p-6 space-y-5">
+      <div className="bg-card rounded-xl border border-border p-6 space-y-5">
         {/* Tabs de modo */}
         <div className="flex gap-2 flex-wrap">
           {TABS.map(t => (
@@ -219,8 +220,8 @@ export function HspPatientSearchPage() {
       {searched && !loading && (
         <div className="mt-6">
           {results.length === 0 ? (
-            <div className="bg-white rounded-xl border border-border p-8 text-center">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 text-amber-600 mb-3">
+            <div className="bg-card rounded-xl border border-border p-8 text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 mb-3">
                 <AlertCircle size={20} />
               </div>
               <p className="text-sm font-medium">Nenhum paciente encontrado</p>
@@ -235,7 +236,7 @@ export function HspPatientSearchPage() {
               </button>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-border overflow-hidden">
+            <div className="bg-card rounded-xl border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <p className="text-sm">
                   <span className="font-medium">{results.length}</span>{' '}
@@ -254,8 +255,15 @@ export function HspPatientSearchPage() {
                     onClick={() => navigate(`/hsp/pacientes/${p.id}`)}
                     className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-muted/30"
                   >
-                    <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold shrink-0">
-                      {initials(p.name)}
+                    <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm font-semibold shrink-0 overflow-hidden">
+                      {p.hasPhoto ? (
+                        <PatientPhotoImg
+                          patientId={p.id}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                          fallback={initials(p.name)}
+                        />
+                      ) : initials(p.name)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{p.socialName || p.name}</p>

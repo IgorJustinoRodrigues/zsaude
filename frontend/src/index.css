@@ -25,6 +25,29 @@
     --radius: 0.5rem;
   }
 
+  /* Tema escuro — alinhado com slate-900/950 já usado pelo layout
+     (Sidebar/AppShell). Mantém os utilitários `bg-background`,
+     `bg-card`, `border-border`, `text-muted-foreground` consistentes. */
+  .dark {
+    --background: 222 47% 6%;        /* ~slate-950 */
+    --foreground: 210 40% 96%;
+    --card: 222 47% 11%;             /* ~slate-900 */
+    --card-foreground: 210 40% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;        /* ~slate-800 */
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 96%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
+  }
+
   * {
     border-color: hsl(var(--border));
   }

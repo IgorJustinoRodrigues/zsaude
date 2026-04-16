@@ -109,7 +109,7 @@ export function HspPatientQuickFormPage() {
         back="/hsp/pacientes/buscar"
       />
 
-      <div className="bg-white rounded-xl border border-border p-6 space-y-5">
+      <div className="bg-card rounded-xl border border-border p-6 space-y-5">
         <p className="text-sm text-muted-foreground border-l-2 border-primary/40 pl-3">
           Preencha o essencial para identificar o paciente. Após salvar, você será
           levado para a tela do paciente onde pode adicionar endereço, documentos,
@@ -200,7 +200,7 @@ export function HspPatientQuickFormPage() {
 
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
           {submitTried && totalErrors > 0 && (
-            <span className="text-xs text-rose-600 flex items-center gap-1">
+            <span className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
               <AlertCircle size={13} />
               {totalErrors} erro{totalErrors !== 1 ? 's' : ''}
             </span>
@@ -223,7 +223,7 @@ function baseInput(error: string | null | undefined) {
   return cn(
     'text-sm border rounded-lg bg-background px-3 py-2 w-full focus:outline-none focus:ring-2',
     error
-      ? 'border-rose-300 focus:ring-rose-200 focus:border-rose-400'
+      ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-200 dark:focus:ring-rose-900 focus:border-rose-400'
       : 'border-border focus:ring-primary/20 focus:border-primary',
   )
 }

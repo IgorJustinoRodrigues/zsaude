@@ -116,7 +116,7 @@ export function ComboBox({
           'w-full flex items-center justify-between gap-2 text-sm border rounded-lg bg-background px-3 py-2 text-left',
           'focus:outline-none focus:ring-2',
           invalid
-            ? 'border-rose-300 focus:ring-rose-200 focus:border-rose-400'
+            ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-200 dark:focus:ring-rose-900 focus:border-rose-400'
             : 'border-border focus:ring-primary/20 focus:border-primary',
           disabled && 'bg-muted/40 text-muted-foreground cursor-not-allowed',
         )}
@@ -130,7 +130,7 @@ export function ComboBox({
               role="button"
               tabIndex={-1}
               onClick={e => { e.stopPropagation(); onChange(null) }}
-              className="p-0.5 rounded text-muted-foreground hover:text-rose-500 hover:bg-rose-50"
+              className="p-0.5 rounded text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
             >
               <X size={13} />
             </span>

@@ -15,6 +15,7 @@ from app.modules.hsp.schemas import (
     PatientCreate,
     PatientFieldHistoryOut,
     PatientListItem,
+    PatientPhotoOut,
     PatientRead,
     PatientUpdate,
 )
@@ -161,6 +162,20 @@ async def delete_patient(
     return Response(status_code=204)
 
 
+@router.post("/patients/{patient_id}/restore", response_model=PatientRead)
+async def restore_patient(
+    patient_id: UUID,
+    db: DB,
+    reason: str | None = Query(default=None, max_length=500),
+    ctx: WorkContext = requires(permission="hsp.patient.delete"),
+) -> PatientRead:
+    """Reativa um paciente previamente desativado."""
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    patient = await svc.reactivate_patient(patient_id, reason)
+    docs = await svc.list_documents(patient.id)
+    return _patient_to_read(patient, docs)
+
+
 # ── Foto ──────────────────────────────────────────────────────────────────
 
 @router.post("/patients/{patient_id}/photo", response_model=PatientRead, status_code=201)
@@ -206,6 +221,18 @@ async def get_current_photo(
     )
 
 
+@router.get("/patients/{patient_id}/photos", response_model=list[PatientPhotoOut])
+async def list_patient_photos(
+    patient_id: UUID,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient_photo.view"),
+) -> list[PatientPhotoOut]:
+    """Lista todas as fotos já enviadas pro paciente, da mais recente."""
+    svc = PatientService(db, ctx)
+    rows = await svc.list_photos(patient_id)
+    return [PatientPhotoOut.model_validate(p, from_attributes=True) for p in rows]
+
+
 @router.get("/patients/{patient_id}/photos/{photo_id}")
 async def get_specific_photo(
     patient_id: UUID,
@@ -220,6 +247,21 @@ async def get_specific_photo(
         media_type=photo.mime_type,
         headers={"Cache-Control": "private, max-age=3600"},
     )
+
+
+@router.post("/patients/{patient_id}/photos/{photo_id}/restore", response_model=PatientRead)
+async def restore_patient_photo(
+    patient_id: UUID,
+    photo_id: UUID,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient_photo.upload"),
+) -> PatientRead:
+    """Define uma foto antiga como a atual do paciente."""
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    await svc.restore_photo(patient_id, photo_id)
+    patient = await svc.get_patient(patient_id)
+    docs = await svc.list_documents(patient_id)
+    return _patient_to_read(patient, docs)
 
 
 @router.delete("/patients/{patient_id}/photo", status_code=204)

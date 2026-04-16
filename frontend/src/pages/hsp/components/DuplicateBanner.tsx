@@ -16,13 +16,13 @@ export function DuplicateBanner({ match }: Props) {
   const { patient, field } = match
 
   return (
-    <div className="border border-amber-300 bg-amber-50 rounded-lg p-3 flex items-start gap-3">
-      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+    <div className="border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 rounded-lg p-3 flex items-start gap-3">
+      <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-900">
+        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
           {field === 'cpf' ? 'CPF' : 'CNS'} já cadastrado neste município
         </p>
-        <p className="text-xs text-amber-800 mt-0.5">
+        <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
           <span className="font-medium">
             {patient.socialName || patient.name}
           </span>
@@ -34,7 +34,7 @@ export function DuplicateBanner({ match }: Props) {
       <button
         type="button"
         onClick={() => navigate(`/hsp/pacientes/${patient.id}`)}
-        className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 shrink-0"
+        className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 dark:bg-amber-700 text-white rounded-md text-xs font-medium hover:bg-amber-700 dark:hover:bg-amber-600 shrink-0"
       >
         Abrir cadastro
         <ArrowRight size={12} />

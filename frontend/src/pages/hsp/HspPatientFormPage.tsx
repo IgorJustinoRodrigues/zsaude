@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Save, Camera, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
@@ -12,8 +12,9 @@ import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { useDuplicateCheck } from './hooks/useDuplicateCheck'
 import { HttpError } from '../../api/client'
 import {
-  hspApi, toSubmitPayload, type PatientDocumentInput, type PatientFormData,
-  type PatientRead, type PlanoSaudeTipo, type Sex,
+  hspApi, PATIENT_BASE_FIELDS, toSubmitPayload, type PatientCreate,
+  type PatientDocumentInput, type PatientFormData, type PatientRead,
+  type PatientUpdate, type PlanoSaudeTipo, type Sex,
 } from '../../api/hsp'
 import { referenceApi, type RefKind } from '../../api/reference'
 import { ibgeApi, type IbgeEstado, type IbgeMunicipio } from '../../api/ibge'
@@ -115,6 +116,10 @@ export function HspPatientFormPage() {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<PatientFormData>({ ...EMPTY })
   const [documents, setDocuments] = useState<PatientDocumentInput[]>([])
+  // Snapshot do estado carregado — usado pra computar diff no submit (evita
+  // logs falsos de campos não tocados pelo usuário).
+  const initialFormRef = useRef<PatientFormData>({ ...EMPTY })
+  const initialDocumentsRef = useRef<PatientDocumentInput[]>([])
   const [patient, setPatient] = useState<PatientRead | null>(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [refs, setRefs] = useState<RefMap>({})
@@ -235,13 +240,19 @@ export function HspPatientFormPage() {
       // pra não confundir com PatientFormData (que tem documents: array).
       const { documents: _, ...rest } = p
       void _
-      setForm({ ...EMPTY, ...rest, documents: [] })
-      setDocuments(p.documents.map(d => ({
+      const loaded: PatientFormData = { ...EMPTY, ...rest, documents: [] }
+      const loadedDocs: PatientDocumentInput[] = p.documents.map(d => ({
         id: d.id, tipoDocumentoId: d.tipoDocumentoId, tipoCodigo: d.tipoCodigo,
         numero: d.numero, orgaoEmissor: d.orgaoEmissor, ufEmissor: d.ufEmissor,
         paisEmissor: d.paisEmissor, dataEmissao: d.dataEmissao,
         dataValidade: d.dataValidade, observacao: d.observacao,
-      })))
+      }))
+      setForm(loaded)
+      setDocuments(loadedDocs)
+      // Snapshot pra computar diff no submit (objetos clonados pra não
+      // referenciar o state mutável do React).
+      initialFormRef.current = { ...loaded }
+      initialDocumentsRef.current = loadedDocs.map(d => ({ ...d }))
     }).catch(err => {
       if (err instanceof HttpError) toast.error(err.message)
     }).finally(() => { if (alive) setLoading(false) })
@@ -259,12 +270,28 @@ export function HspPatientFormPage() {
     }
     setSaving(true)
     try {
-      // Limpa campos extras (id/active/createdAt/...) que vêm do PatientRead
-      // no modo edição — o backend usa extra="forbid".
-      const payload = toSubmitPayload(form, documents)
-      const saved = isEdit
-        ? await hspApi.update(id!, payload)
-        : await hspApi.create(payload)
+      let saved
+      if (isEdit) {
+        // Envia só os campos modificados — evita logs falsos de "alterou X"
+        // quando o usuário não tocou no campo.
+        const changed = diffFields(form, initialFormRef.current)
+        const docsChanged = !documentsEqual(documents, initialDocumentsRef.current)
+        if (changed.length === 0 && !docsChanged) {
+          toast.info('Nada a salvar.')
+          setSaving(false)
+          return
+        }
+        const patch: PatientUpdate = {}
+        for (const k of changed) {
+          // Use record-style assignment — o cast é seguro pois k ∈ FieldKey.
+          ;(patch as Record<string, unknown>)[k] = form[k]
+        }
+        if (docsChanged) patch.documents = documents
+        saved = await hspApi.update(id!, patch)
+      } else {
+        const payload = toSubmitPayload(form, documents) as PatientCreate
+        saved = await hspApi.create(payload)
+      }
       toast.success(isEdit ? 'Paciente atualizado.' : 'Paciente cadastrado.')
       navigate(`/hsp/pacientes/${saved.id}`)
     } catch (err) {
@@ -337,7 +364,7 @@ export function HspPatientFormPage() {
         actions={
           <div className="flex items-center gap-3">
             {submitTried && totalErrors > 0 && (
-              <span className="text-xs text-rose-600 flex items-center gap-1">
+              <span className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
                 <AlertCircle size={13} />
                 {totalErrors} erro{totalErrors !== 1 ? 's' : ''}
               </span>
@@ -367,7 +394,7 @@ export function HspPatientFormPage() {
             >
               {t}
               {submitTried && errorsByTab[t] > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
                   {errorsByTab[t]}
                 </span>
               )}
@@ -809,7 +836,7 @@ export function HspPatientFormPage() {
             </div>
 
             {showError('gestante') && (
-              <p className="mt-2 text-[11px] text-rose-600 flex items-center gap-1">
+              <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
                 <AlertCircle size={11} /> {showError('gestante')}
               </p>
             )}
@@ -967,13 +994,56 @@ export function HspPatientFormPage() {
   )
 }
 
+// ─── Helpers de diff ──────────────────────────────────────────────────────
+
+const isEmpty = (v: unknown): boolean =>
+  v === null || v === undefined || v === '' ||
+  (Array.isArray(v) && v.length === 0)
+
+const valuesEqual = (a: unknown, b: unknown): boolean => {
+  if (isEmpty(a) && isEmpty(b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false
+    return a.every((x, i) => x === b[i])
+  }
+  return a === b
+}
+
+/** Retorna a lista de campos do form que diferem do snapshot inicial. */
+function diffFields(current: PatientFormData, initial: PatientFormData): FieldKey[] {
+  const out: FieldKey[] = []
+  for (const k of PATIENT_BASE_FIELDS) {
+    if (!valuesEqual(current[k], initial[k])) out.push(k)
+  }
+  return out
+}
+
+/** Compara duas listas de documentos por valor (ordem importa pois reflete UI). */
+function documentsEqual(a: PatientDocumentInput[], b: PatientDocumentInput[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]; const y = b[i]
+    if (x.id !== y.id) return false
+    if (!valuesEqual(x.tipoDocumentoId, y.tipoDocumentoId)) return false
+    if (!valuesEqual(x.tipoCodigo, y.tipoCodigo)) return false
+    if (!valuesEqual(x.numero, y.numero)) return false
+    if (!valuesEqual(x.orgaoEmissor, y.orgaoEmissor)) return false
+    if (!valuesEqual(x.ufEmissor, y.ufEmissor)) return false
+    if (!valuesEqual(x.paisEmissor, y.paisEmissor)) return false
+    if (!valuesEqual(x.dataEmissao, y.dataEmissao)) return false
+    if (!valuesEqual(x.dataValidade, y.dataValidade)) return false
+    if (!valuesEqual(x.observacao, y.observacao)) return false
+  }
+  return true
+}
+
 // ─── Mini-componentes ──────────────────────────────────────────────────────
 
 function Section({ title, subtitle, children }: {
   title?: string; subtitle?: string; children: React.ReactNode
 }) {
   return (
-    <div className="bg-white rounded-xl border border-border p-5">
+    <div className="bg-card rounded-xl border border-border p-5">
       {title && (
         <div className="mb-4">
           <h3 className="text-sm font-semibold">{title}</h3>
@@ -989,7 +1059,7 @@ function baseInput(error: string | null | undefined) {
   return cn(
     'text-sm border rounded-lg bg-background px-3 py-2 w-full focus:outline-none focus:ring-2',
     error
-      ? 'border-rose-300 focus:ring-rose-200 focus:border-rose-400'
+      ? 'border-rose-300 dark:border-rose-800 focus:ring-rose-200 dark:focus:ring-rose-900 focus:border-rose-400'
       : 'border-border focus:ring-primary/20 focus:border-primary',
     'disabled:bg-muted/40 disabled:text-muted-foreground',
   )

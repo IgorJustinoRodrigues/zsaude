@@ -18,6 +18,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.sql import expression
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import get_audit_context
@@ -57,6 +58,25 @@ _TRACKED_FIELDS: tuple[str, ...] = (
     "plano_tipo", "convenio_nome", "convenio_numero_carteirinha", "convenio_validade",
     "unidade_saude_id", "vinculado", "observacoes", "consentimento_lgpd",
 )
+
+
+def _unaccent_ilike(column: expression.ColumnElement, term: str) -> expression.ColumnElement:
+    """Match case+accent-insensitive: unaccent(lower(col)) ILIKE unaccent(lower('%term%'))."""
+    return func.unaccent(func.lower(column)).ilike(
+        func.unaccent(func.lower(f"%{term}%"))
+    )
+
+
+def _is_empty(v: Any) -> bool:
+    """Considera vazio para fins de comparação: None, "", lista vazia."""
+    return v is None or v == "" or v == []
+
+
+def _values_equal(a: Any, b: Any) -> bool:
+    """Compara dois valores tratando vazios equivalentes (None ≡ "" ≡ [])."""
+    if _is_empty(a) and _is_empty(b):
+        return True
+    return a == b
 
 
 def _serialize(value: Any) -> str | None:
@@ -177,15 +197,15 @@ class PatientService:
             sub: list[Any] = []
             if name_term:
                 sub.append(or_(
-                    Patient.name.ilike(f"%{name_term}%"),
-                    Patient.social_name.ilike(f"%{name_term}%"),
+                    _unaccent_ilike(Patient.name, name_term),
+                    _unaccent_ilike(Patient.social_name, name_term),
                 ))
             if birth_date:
                 sub.append(Patient.birth_date == birth_date)
             if mother_term:
-                sub.append(Patient.mother_name.ilike(f"%{mother_term}%"))
+                sub.append(_unaccent_ilike(Patient.mother_name, mother_term))
             if father_term:
-                sub.append(Patient.father_name.ilike(f"%{father_term}%"))
+                sub.append(_unaccent_ilike(Patient.father_name, father_term))
             clauses.append(and_(*sub))
 
         if not clauses:
@@ -212,14 +232,17 @@ class PatientService:
     ) -> tuple[list[Patient], int]:
         filters: list[Any] = []
         if search:
-            term = f"%{search.strip()}%"
+            term = search.strip()
+            like = f"%{term}%"
             filters.append(
                 or_(
-                    Patient.name.ilike(term),
-                    Patient.social_name.ilike(term),
-                    Patient.cpf.ilike(term),
-                    Patient.cns.ilike(term),
-                    Patient.prontuario.ilike(term),
+                    # Texto livre: ignora maiúsculas/minúsculas e acentos.
+                    _unaccent_ilike(Patient.name, term),
+                    _unaccent_ilike(Patient.social_name, term),
+                    # Códigos: ilike puro (sem acento mesmo).
+                    Patient.cpf.ilike(like),
+                    Patient.cns.ilike(like),
+                    Patient.prontuario.ilike(like),
                 )
             )
         if active is not None:
@@ -351,7 +374,9 @@ class PatientService:
             if field not in _TRACKED_FIELDS:
                 continue
             old_val = getattr(patient, field)
-            if old_val == new_val:
+            # Trata None ≡ "" ≡ [] como equivalentes — evita log falso quando
+            # o frontend manda string vazia pra um campo nullable do banco.
+            if _values_equal(old_val, new_val):
                 continue
             changes[field] = (old_val, new_val)
             setattr(patient, field, new_val)
@@ -416,6 +441,32 @@ class PatientService:
             self.db, module="hsp", action="patient_deactivate", severity="warning",
             resource="patient", resource_id=str(patient.id),
             description=f"Desativou paciente {patient.name}",
+            details={"reason": reason or ""},
+        )
+        return patient
+
+    async def reactivate_patient(self, patient_id: UUID, reason: str | None) -> Patient:
+        """Reativa paciente previamente desativado. Idempotente."""
+        patient = await self.get_patient(patient_id)
+        if patient.active:
+            return patient
+        patient.active = True
+        patient.updated_by = self.ctx.user_id
+        await self.db.flush()
+
+        await self._record_history(
+            patient_id=patient.id,
+            field_name="active",
+            old_value="false",
+            new_value="true",
+            change_type=PatientFieldChangeType.UPDATE,
+            reason=reason,
+        )
+
+        await write_audit(
+            self.db, module="hsp", action="patient_reactivate", severity="info",
+            resource="patient", resource_id=str(patient.id),
+            description=f"Reativou paciente {patient.name}",
             details={"reason": reason or ""},
         )
         return patient
@@ -493,6 +544,54 @@ class PatientService:
             description=f"Removeu foto de {patient.name}",
             details={"patientId": str(patient.id)},
         )
+
+    async def list_photos(self, patient_id: UUID) -> list[PatientPhoto]:
+        """Todas as fotos já enviadas — mais recente primeiro."""
+        await self.get_patient(patient_id)
+        return list((await self.db.scalars(
+            select(PatientPhoto)
+            .where(PatientPhoto.patient_id == patient_id)
+            .order_by(desc(PatientPhoto.uploaded_at), desc(PatientPhoto.id))
+        )).all())
+
+    async def restore_photo(self, patient_id: UUID, photo_id: UUID) -> PatientPhoto:
+        """Aponta ``current_photo_id`` para uma foto antiga existente.
+
+        Útil quando o usuário enviou uma foto errada e quer reverter pra
+        anterior sem precisar reenviar. Gera entrada no histórico.
+        """
+        patient = await self.get_patient(patient_id)
+        photo = await self.db.scalar(
+            select(PatientPhoto).where(
+                and_(PatientPhoto.id == photo_id, PatientPhoto.patient_id == patient_id)
+            )
+        )
+        if photo is None:
+            raise HTTPException(status_code=404, detail="Foto não encontrada.")
+        if patient.current_photo_id == photo.id:
+            return photo  # já é a atual
+
+        old_id = patient.current_photo_id
+        patient.current_photo_id = photo.id
+        patient.updated_by = self.ctx.user_id
+        await self.db.flush()
+
+        await self._record_history(
+            patient_id=patient.id,
+            field_name="current_photo_id",
+            old_value=_serialize(old_id),
+            new_value=str(photo.id),
+            change_type=PatientFieldChangeType.PHOTO_UPLOAD,
+            reason="restore",
+        )
+
+        await write_audit(
+            self.db, module="hsp", action="patient_photo_restore", severity="info",
+            resource="patient_photo", resource_id=str(photo.id),
+            description=f"Restaurou foto antiga de {patient.name}",
+            details={"patientId": str(patient.id), "photoId": str(photo.id)},
+        )
+        return photo
 
     async def get_photo(self, patient_id: UUID, photo_id: UUID | None = None) -> PatientPhoto:
         if photo_id is None:
