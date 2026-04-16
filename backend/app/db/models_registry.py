@@ -15,6 +15,31 @@ from app.modules.permissions.models import (  # noqa: F401
     RolePermission,
 )
 from app.modules.sessions.models import UserSession  # noqa: F401
+from app.modules.sigtap.models import (  # noqa: F401
+    SigtapCbo,
+    SigtapCid,
+    SigtapFormaOrganizacao,
+    SigtapGrupoHabilitacao,
+    SigtapHabilitacao,
+    SigtapImport,
+    SigtapImportFile,
+    SigtapModalidade,
+    SigtapProcedure,
+    SigtapProcedureCbo,
+    SigtapProcedureCid,
+    SigtapProcedureCompatibilidade,
+    SigtapProcedureDescription,
+    SigtapProcedureDetalhe,
+    SigtapProcedureHabilitacao,
+    SigtapProcedureLeito,
+    SigtapProcedureModalidade,
+    SigtapProcedureRegistro,
+    SigtapProcedureRegraCond,
+    SigtapProcedureServico,
+    SigtapRegistro,
+    SigtapService,
+    SigtapServiceClassification,
+)
 from app.modules.system.models import SystemSetting  # noqa: F401
 from app.modules.tenants.models import (  # noqa: F401
     Facility,

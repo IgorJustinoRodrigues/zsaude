@@ -70,6 +70,8 @@ import { SysAuditPage } from '../pages/sys/SysAuditPage'
 import { SysRoleListPage } from '../pages/sys/SysRoleListPage'
 import { SysRoleDetailPage } from '../pages/sys/SysRoleDetailPage'
 import { SysRoleFormPage } from '../pages/sys/SysRoleFormPage'
+import { SysImportsPage } from '../pages/sys/SysImportsPage'
+import { SysImportSigtapPage } from '../pages/sys/SysImportSigtapPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -119,6 +121,8 @@ export const router = createBrowserRouter([
               { path: '/sys/perfis',                element: <SysRoleListPage /> },
               { path: '/sys/perfis/novo',           element: <SysRoleFormPage /> },
               { path: '/sys/perfis/:id',            element: <SysRoleDetailPage /> },
+              { path: '/sys/importacoes',           element: <SysImportsPage /> },
+              { path: '/sys/importacoes/sigtap',    element: <SysImportSigtapPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
             ],
