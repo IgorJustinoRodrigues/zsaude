@@ -245,8 +245,19 @@ function ImportDetailCard({ detail, highlight }: { detail: CnesImportDetail; hig
   )
 }
 
+const FILE_LABELS: Record<string, string> = {
+  facilities_sync: 'Unidades cadastradas no sistema',
+  'lfces004.txt': 'Unidades (lfces004)',
+  'lfces018.txt': 'Profissionais (lfces018)',
+  'lfces021.txt': 'Vínculos profissional × unidade (lfces021)',
+  'lfces002.txt': 'Leitos (lfces002)',
+  'lfces032.txt': 'Serviços (lfces032)',
+  'lfces037.txt': 'Equipes (lfces037)',
+  'lfces038.txt': 'Profissionais das equipes (lfces038)',
+  'lfces045.txt': 'Habilitações (lfces045)',
+}
+
 function FileCard({ file }: { file: CnesImportFileItem }) {
-  const ok = !file.errorMessage && file.warnings.length === 0
   const hasWarn = file.warnings.length > 0
   const hasErr = !!file.errorMessage
 
@@ -258,11 +269,13 @@ function FileCard({ file }: { file: CnesImportFileItem }) {
     ? 'bg-emerald-500'
     : 'bg-slate-300'
 
+  const label = FILE_LABELS[file.filename] ?? file.filename
+
   return (
     <details className="border border-border rounded-lg bg-slate-50/30 dark:bg-slate-800/20">
       <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/30 rounded-lg">
         <span className={cn('w-2 h-2 rounded-full shrink-0', dotCls)} />
-        <code className="text-xs font-mono font-medium flex-1">{file.filename}</code>
+        <code className="text-xs font-mono font-medium flex-1">{label}</code>
         <span className="text-xs text-muted-foreground">
           {file.rowsInserted > 0 && <span>{file.rowsInserted.toLocaleString('pt-BR')} novos · </span>}
           {file.rowsUpdated > 0 && <span>{file.rowsUpdated.toLocaleString('pt-BR')} atualizados · </span>}

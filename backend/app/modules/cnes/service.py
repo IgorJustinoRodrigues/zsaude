@@ -26,10 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
+from app.modules.cnes.facility_mapping import map_tipo_unidade
 from app.modules.cnes.parsers import (
     lfces002, lfces004, lfces018, lfces021,
     lfces032, lfces037, lfces038, lfces045,
 )
+from app.modules.tenants.models import Facility, Municipality
 from app.tenant_models.cnes import (
     CnesImport,
     CnesImportFile,
@@ -101,6 +103,9 @@ class CnesImportService:
         self.expected_ibge = expected_ibge  # 7 dígitos (do contexto)
         self.user_id = user_id
         self.user_name = user_name
+        # Contadores do espelhamento CNES → app.facilities. Populado em
+        # `_handle_004` e materializado como entrada sintética no histórico.
+        self._facility_sync: dict[str, int] | None = None
 
     # ─────────────────────────────────────────────────────────────────────
     # Entry point
@@ -185,6 +190,15 @@ class CnesImportService:
 
                 result = await self._process_file(fname, lines, competencia)
                 file_results.append(result)
+
+            # Card sintético com o resumo do espelhamento em app.facilities.
+            if self._facility_sync is not None:
+                sync = self._facility_sync
+                facsync = _FileResult(filename="facilities_sync")
+                facsync.rows_inserted = sync["created"]
+                facsync.rows_updated = sync["updated"]
+                facsync.rows_total = sync["created"] + sync["updated"]
+                file_results.append(facsync)
         except Exception as exc:  # noqa: BLE001
             import_row.status = CnesImportStatus.FAILED
             import_row.error_message = str(exc)[:2000]
@@ -303,6 +317,77 @@ class CnesImportService:
 
         if rows_to_upsert:
             await self._bulk_upsert_units(rows_to_upsert)
+            await self._sync_facilities_from_units(rows_to_upsert, result)
+
+    async def _sync_facilities_from_units(
+        self, units: list[dict[str, Any]], result: _FileResult
+    ) -> None:
+        """Espelha as unidades importadas em `app.facilities`.
+
+        Match por ``(municipality_id, cnes)``. Cadastro manual prévio com o
+        mesmo CNES tem nome/tipo atualizados a partir do dado oficial; nada
+        é arquivado ou removido — apenas upsert.
+        """
+        mun = await self.db.scalar(
+            select(Municipality).where(Municipality.ibge == self.expected_ibge)
+        )
+        if mun is None:
+            result.warn(
+                f"Município IBGE {self.expected_ibge} não encontrado — "
+                "unidades não foram cadastradas em `facilities`."
+            )
+            return
+
+        cnes_set = {u["cnes"] for u in units if u["cnes"]}
+        if not cnes_set:
+            return
+
+        existing = (await self.db.execute(
+            select(Facility).where(
+                Facility.municipality_id == mun.id,
+                Facility.cnes.in_(cnes_set),
+            )
+        )).scalars().all()
+        by_cnes = {f.cnes: f for f in existing}
+
+        created = 0
+        updated = 0
+        for u in units:
+            cnes = u["cnes"]
+            if not cnes:
+                continue
+            name = (u["nome_fantasia"] or u["razao_social"] or "").strip()[:200]
+            if not name:
+                name = f"Unidade CNES {cnes}"
+            short_name = name[:80]
+            ftype = map_tipo_unidade(u["tipo_unidade"])
+
+            fac = by_cnes.get(cnes)
+            if fac is None:
+                self.db.add(Facility(
+                    municipality_id=mun.id,
+                    name=name,
+                    short_name=short_name,
+                    type=ftype,
+                    cnes=cnes,
+                ))
+                created += 1
+            else:
+                changed = False
+                if fac.name != name:
+                    fac.name = name
+                    changed = True
+                if fac.short_name != short_name:
+                    fac.short_name = short_name
+                    changed = True
+                if fac.type != ftype:
+                    fac.type = ftype
+                    changed = True
+                if changed:
+                    updated += 1
+
+        await self.db.flush()
+        self._facility_sync = {"created": created, "updated": updated}
 
     async def _bulk_upsert_units(self, rows: list[dict[str, Any]]) -> None:
         stmt = pg_insert(CnesUnit).values(rows)
