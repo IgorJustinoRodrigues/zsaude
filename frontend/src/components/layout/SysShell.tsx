@@ -8,6 +8,7 @@ import { useUIStore } from '../../store/uiStore'
 import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
+import { AccessibilityMenu } from '../ui/AccessibilityMenu'
 import { BrandName } from '../shared/BrandName'
 
 /**
@@ -100,7 +101,8 @@ export function SysShell() {
             <ChevronRight size={11} className="text-slate-300" />
             <span>Área MASTER</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <AccessibilityMenu />
             <button
               onClick={toggleDarkMode}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"

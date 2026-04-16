@@ -8,6 +8,7 @@ import { SYSTEMS } from '../../mock/users'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
+import { AccessibilityMenu } from '../ui/AccessibilityMenu'
 import type { SystemId } from '../../types'
 
 const MODULE_COLORS: Record<SystemId, string> = {
@@ -171,6 +172,9 @@ export function TopBar({ module }: Props) {
             </div>
           )}
         </div>
+
+        {/* Acessibilidade */}
+        <AccessibilityMenu />
 
         {/* Notifications */}
         <div className="relative z-50">
