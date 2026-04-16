@@ -61,6 +61,10 @@ import { OpsCidSearchPage } from '../pages/ops/OpsCidSearchPage'
 import { OpsProcedureSearchPage } from '../pages/ops/OpsProcedureSearchPage'
 import { OpsCboProcedureSearchPage } from '../pages/ops/OpsCboProcedureSearchPage'
 import { OpsCidProcedureSearchPage } from '../pages/ops/OpsCidProcedureSearchPage'
+import { OpsServicoSearchPage } from '../pages/ops/OpsServicoSearchPage'
+import { OpsHabilitacaoSearchPage } from '../pages/ops/OpsHabilitacaoSearchPage'
+import { OpsCompatibilidadeSearchPage } from '../pages/ops/OpsCompatibilidadeSearchPage'
+import { OpsFormaOrgSearchPage } from '../pages/ops/OpsFormaOrgSearchPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -222,6 +226,10 @@ export const router = createBrowserRouter([
                   { path: '/ops/pesquisas/procedimentos',  element: <OpsProcedureSearchPage /> },
                   { path: '/ops/pesquisas/cbo-procedimentos', element: <OpsCboProcedureSearchPage /> },
                   { path: '/ops/pesquisas/cid-procedimentos', element: <OpsCidProcedureSearchPage /> },
+                  { path: '/ops/pesquisas/servicos',          element: <OpsServicoSearchPage /> },
+                  { path: '/ops/pesquisas/habilitacoes',      element: <OpsHabilitacaoSearchPage /> },
+                  { path: '/ops/pesquisas/compatibilidades',  element: <OpsCompatibilidadeSearchPage /> },
+                  { path: '/ops/pesquisas/formas-organizacao',element: <OpsFormaOrgSearchPage /> },
                 ],
               },
 

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Search, X, ChevronLeft, ChevronRight, Filter, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, Filter, ChevronDown, ChevronUp, ChevronsUpDown, Link2 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
-import { sigtapSearchApi, type ProcedimentoItem } from '../../api/sigtap-search'
+import { sigtapSearchApi, type ProcedimentoItem, type CompatibilidadeItem } from '../../api/sigtap-search'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
 const PAGE_SIZE = 20
+const MODAL_PAGE_SIZE = 15
 
 function useDebounced<T>(value: T, delay = 300): T {
   const [v, setV] = useState(value)
@@ -38,6 +39,8 @@ const complexCls = (c: string) => ({
   '3': 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400',
 }[c] ?? 'bg-slate-100 text-slate-500')
 
+const tipoCompatLabel = (t: string) => ({ P: 'Principal', S: 'Secundário' }[t] ?? t)
+
 export function OpsProcedureSearchPage() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounced(search, 300)
@@ -52,6 +55,8 @@ export function OpsProcedureSearchPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [sortField, setSortField] = useState<'codigo' | 'nome' | 'complexidade' | 'valorTotal'>('codigo')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [descricoes, setDescricoes] = useState<Record<string, { loading: boolean; text: string | null }>>({})
+  const [modalCompatProc, setModalCompatProc] = useState<ProcedimentoItem | null>(null)
 
   useEffect(() => { setPage(1) }, [debouncedSearch, complexidade, sexo, revogado, sortField, sortDir])
 
@@ -83,6 +88,21 @@ export function OpsProcedureSearchPage() {
   }, [debouncedSearch, complexidade, sexo, revogado, sortField, sortDir, page])
 
   useEffect(() => { void reload() }, [reload])
+
+  const handleExpand = useCallback(async (codigo: string) => {
+    const isExpanded = expandedId === codigo
+    setExpandedId(isExpanded ? null : codigo)
+    if (isExpanded) return
+    if (descricoes[codigo]) return
+    setDescricoes(d => ({ ...d, [codigo]: { loading: true, text: null } }))
+    try {
+      const res = await sigtapSearchApi.procedimentoDescricao(codigo)
+      setDescricoes(d => ({ ...d, [codigo]: { loading: false, text: res.descricao || '' } }))
+    } catch (e) {
+      setDescricoes(d => ({ ...d, [codigo]: { loading: false, text: null } }))
+      toast.error('Falha ao carregar descrição', e instanceof HttpError ? e.message : '')
+    }
+  }, [expandedId, descricoes])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const hasFilter = !!complexidade || !!sexo || revogado
@@ -136,9 +156,10 @@ export function OpsProcedureSearchPage() {
           <div className="space-y-2">
             {items.map(p => {
               const expanded = expandedId === p.codigo
+              const desc = descricoes[p.codigo]
               return (
                 <div key={p.codigo} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-                  <button onClick={() => setExpandedId(expanded ? null : p.codigo)}
+                  <button onClick={() => handleExpand(p.codigo)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                     <code className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded shrink-0">{p.codigo}</code>
                     <span className="flex-1 text-sm text-slate-700 dark:text-slate-300 truncate">{p.nome}</span>
@@ -162,6 +183,23 @@ export function OpsProcedureSearchPage() {
                         <Detail label="Competência" value={p.competencia} />
                         <Detail label="Status" value={p.revogado ? 'Revogado' : 'Ativo'} />
                       </div>
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Descrição completa</p>
+                        {desc?.loading ? (
+                          <div className="flex items-center gap-2 text-xs text-slate-400"><InlineSpinner /> Carregando descrição...</div>
+                        ) : desc?.text ? (
+                          <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed">{desc.text}</p>
+                        ) : desc && desc.text === '' ? (
+                          <p className="text-xs text-slate-400 italic">Sem descrição disponível.</p>
+                        ) : desc && desc.text === null ? (
+                          <p className="text-xs text-slate-400 italic">Não foi possível carregar a descrição.</p>
+                        ) : null}
+                      </div>
+                      <div className="mt-4 flex items-center gap-2">
+                        <button onClick={() => setModalCompatProc(p)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                          <Link2 size={12} /> Compatibilidades
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -171,6 +209,83 @@ export function OpsProcedureSearchPage() {
           <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPage={setPage} />
         </>
       )}
+      {modalCompatProc && <CompatibilidadesModal proc={modalCompatProc} onClose={() => setModalCompatProc(null)} />}
+    </div>
+  )
+}
+
+function CompatibilidadesModal({ proc, onClose }: { proc: ProcedimentoItem; onClose: () => void }) {
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounced(search, 300)
+  const [page, setPage] = useState(1)
+  const [items, setItems] = useState<CompatibilidadeItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { setPage(1) }, [debouncedSearch])
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await sigtapSearchApi.compatibilidades({ codigoProcedimento: proc.codigo, search: debouncedSearch || undefined, page, pageSize: MODAL_PAGE_SIZE })
+      setItems(res.items); setTotal(res.total)
+    } catch (e) { toast.error('Falha ao carregar compatibilidades', e instanceof HttpError ? e.message : ''); setItems([]); setTotal(0) }
+    finally { setLoading(false) }
+  }, [proc.codigo, debouncedSearch, page])
+  useEffect(() => { void reload() }, [reload])
+  const totalPages = Math.max(1, Math.ceil(total / MODAL_PAGE_SIZE))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] px-4" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Compatibilidades do procedimento</p>
+              <h2 className="text-base font-semibold mt-0.5"><code className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded text-sm font-mono mr-2">{proc.codigo}</code>{proc.nome}</h2>
+              <p className="text-xs text-slate-500 mt-1">{total.toLocaleString('pt-BR')} compatibilidades</p>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"><X size={16} /></button>
+          </div>
+          <div className="relative mt-3">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Filtrar compatibilidades..." value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-8 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-emerald-400 transition-colors text-slate-800 dark:text-slate-200 placeholder-slate-400" />
+            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><X size={13} /></button>}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? <div className="flex items-center justify-center py-12"><Spinner /></div>
+          : items.length === 0 ? <div className="flex flex-col items-center justify-center py-12 text-slate-400"><Search size={24} className="mb-2 opacity-30" /><p className="text-sm">Nenhuma compatibilidade encontrada</p></div>
+          : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800/80 backdrop-blur-sm">
+                <tr className="border-b border-slate-100 dark:border-slate-800">
+                  <Th>Código</Th><Th>Procedimento Compatível</Th><Th>Reg. Principal</Th><Th>Reg. Secundário</Th><Th>Tipo</Th><Th className="text-right">Qt. Permitida</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {items.map((c, i) => (
+                  <tr key={`${c.codigoProcedimentoSecundario}-${i}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                    <td className="px-4 py-2.5"><code className="text-xs font-mono font-bold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded">{c.codigoProcedimentoSecundario}</code></td>
+                    <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300 max-w-xs truncate">{c.nomeProcedimentoSecundario}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">{c.registroPrincipal}</td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">{c.registroSecundario}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full',
+                        c.tipoCompatibilidade === 'P' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
+                        : c.tipoCompatibilidade === 'S' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400'
+                        : 'bg-slate-100 text-slate-500'
+                      )}>{tipoCompatLabel(c.tipoCompatibilidade)}</span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-xs font-semibold text-slate-600 dark:text-slate-300 tabular-nums">{c.quantidadePermitida}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {total > MODAL_PAGE_SIZE && <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 shrink-0"><Pagination page={page} totalPages={totalPages} total={total} pageSize={MODAL_PAGE_SIZE} onPage={setPage} /></div>}
+      </div>
     </div>
   )
 }
@@ -212,6 +327,10 @@ function FilterGroup({ label, options, value, onChange }: { label: string; optio
     </div>
   )
 }
+
+function Th({ children, className }: { children: React.ReactNode; className?: string }) { return <th className={cn('px-4 py-2.5 text-left text-[11px] font-semibold text-slate-400 uppercase tracking-wider', className)}>{children}</th> }
+function Spinner() { return <svg className="animate-spin w-5 h-5 text-sky-500" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg> }
+function InlineSpinner() { return <svg className="animate-spin w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg> }
 
 function LoadingBox() {
   return <div className="flex items-center justify-center py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl"><svg className="animate-spin w-5 h-5 text-sky-500" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg></div>

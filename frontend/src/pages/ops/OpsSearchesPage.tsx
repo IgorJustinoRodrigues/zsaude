@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, ArrowRight, SearchCheck,
-  Briefcase, Stethoscope, ClipboardList,
+  Briefcase, Stethoscope, ClipboardList, ServerCog, Award, Link2, FolderTree,
 } from 'lucide-react'
 import { normalize } from '../../lib/utils'
 
@@ -58,6 +58,58 @@ const SEARCHES: SearchItem[] = [
     category: 'Cruzamento',
     path: '/ops/pesquisas/cid',
     tags: ['cid', 'doenca', 'diagnostico', 'procedimento', 'autorizacao', 'compatibilidade'],
+  },
+  {
+    id: 'servicos',
+    title: 'Serviços × Procedimentos',
+    description: 'Serviços de saúde e procedimentos disponíveis.',
+    longDescription:
+      'Pesquise um serviço e sua classificação para ver quais procedimentos podem ser realizados — essencial para faturamento.',
+    icon: <ServerCog size={22} />,
+    iconBg: 'bg-teal-50 dark:bg-teal-950/50',
+    iconColor: 'text-teal-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/servicos',
+    tags: ['servico', 'classificacao', 'faturamento', 'procedimento'],
+  },
+  {
+    id: 'habilitacoes',
+    title: 'Habilitações × Procedimentos',
+    description: 'Habilitações SIGTAP e o que permitem faturar.',
+    longDescription:
+      'Pesquise uma habilitação e veja quais procedimentos ela autoriza — útil para validar o que a unidade pode faturar.',
+    icon: <Award size={22} />,
+    iconBg: 'bg-indigo-50 dark:bg-indigo-950/50',
+    iconColor: 'text-indigo-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/habilitacoes',
+    tags: ['habilitacao', 'faturamento', 'procedimento', 'autorizacao'],
+  },
+  {
+    id: 'compatibilidades',
+    title: 'Compatibilidades',
+    description: 'Procedimentos que podem ser cobrados juntos.',
+    longDescription:
+      'Pesquise um procedimento e veja com quais outros ele é compatível — crítico para autorização AIH/APAC e regras do SUS.',
+    icon: <Link2 size={22} />,
+    iconBg: 'bg-orange-50 dark:bg-orange-950/50',
+    iconColor: 'text-orange-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/compatibilidades',
+    tags: ['compatibilidade', 'aih', 'apac', 'autorizacao', 'procedimento'],
+  },
+  {
+    id: 'formas-organizacao',
+    title: 'Formas de Organização',
+    description: 'Estrutura Grupo / Subgrupo / Forma da SIGTAP.',
+    longDescription:
+      'Consulta da hierarquia de organização dos procedimentos SIGTAP — grupo, subgrupo e forma de organização.',
+    icon: <FolderTree size={22} />,
+    iconBg: 'bg-slate-100 dark:bg-slate-800',
+    iconColor: 'text-slate-500',
+    category: 'Tabela',
+    path: '/ops/pesquisas/formas-organizacao',
+    tags: ['forma', 'organizacao', 'grupo', 'subgrupo', 'hierarquia'],
   },
 ]
 

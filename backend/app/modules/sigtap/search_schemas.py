@@ -63,6 +63,7 @@ class ServicoOut(CamelModel):
     descricao: str
     competencia: str
     total_classificacoes: int = 0
+    total_procedimentos: int = 0
 
 
 class ServicoProcedimentoOut(CamelModel):
@@ -117,3 +118,10 @@ class ProcedimentoDescricaoOut(CamelModel):
     codigo_procedimento: str
     descricao: str
     competencia: str
+
+
+class ProcedimentoComCompatOut(CamelModel):
+    codigo: str
+    nome: str
+    complexidade: str
+    total_compatibilidades: int

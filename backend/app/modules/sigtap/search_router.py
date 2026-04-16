@@ -32,6 +32,7 @@ from app.modules.sigtap.search_schemas import (
     FormaOrganizacaoOut,
     HabilitacaoOut,
     HabilitacaoProcedimentoOut,
+    ProcedimentoComCompatOut,
     ProcedimentoDescricaoOut,
     ProcedimentoOut,
     ServicoProcedimentoOut,
@@ -334,12 +335,19 @@ async def search_servicos(
         .scalar_subquery()
         .label("total_classificacoes")
     )
+    proc_count = (
+        select(func.count())
+        .where(SigtapProcedureServico.codigo_servico == SigtapService.codigo)
+        .correlate(SigtapService)
+        .scalar_subquery()
+        .label("total_procedimentos")
+    )
 
     filters = []
     if search:
         filters.append(or_(_unaccent_ilike(SigtapService.codigo, search), _unaccent_ilike(SigtapService.descricao, search)))
 
-    base = select(SigtapService, class_count)
+    base = select(SigtapService, class_count, proc_count)
     if filters:
         base = base.where(*filters)
 
@@ -351,6 +359,8 @@ async def search_servicos(
     order_col = _SERVICO_SORT_COLS.get(sort)
     if sort == "totalClassificacoes":
         order_col = class_count
+    elif sort == "totalProcedimentos":
+        order_col = proc_count
     if order_col is None:
         order_col = SigtapService.codigo
 
@@ -362,6 +372,7 @@ async def search_servicos(
             descricao=r.SigtapService.descricao,
             competencia=r.SigtapService.competencia,
             total_classificacoes=r.total_classificacoes,
+            total_procedimentos=r.total_procedimentos,
         )
         for r in rows
     ]
@@ -520,6 +531,72 @@ async def search_habilitacao_procedimentos(
         for rel, proc in rows
     ]
     return Page(items=items, total=total or 0, page=page, page_size=page_size)
+
+
+# ── Procedimentos COM compatibilidades (listagem) ─────────────────────────
+
+_PROC_COMPAT_SORT_COLS: dict[str, Any] = {
+    "codigo": SigtapProcedure.codigo,
+    "nome": SigtapProcedure.nome,
+    "complexidade": SigtapProcedure.complexidade,
+}
+
+
+@router.get("/procedimentos-com-compatibilidades", response_model=Page[ProcedimentoComCompatOut])
+async def search_procedimentos_com_compatibilidades(
+    db: DB,
+    ctx: CurrentContextDep,
+    search: str | None = None,
+    sort: str = "codigo",
+    dir: str = Query(default="asc", alias="dir"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+) -> Page[ProcedimentoComCompatOut]:
+    pp = PageParams(page=page, page_size=page_size)
+
+    compat_count = (
+        select(func.count())
+        .where(SigtapProcedureCompatibilidade.codigo_procedimento == SigtapProcedure.codigo)
+        .correlate(SigtapProcedure)
+        .scalar_subquery()
+        .label("total_compatibilidades")
+    )
+
+    # Só procedimentos ativos que TÊM ao menos uma compatibilidade.
+    filters = [
+        SigtapProcedure.revogado == False,  # noqa: E712
+        SigtapProcedure.codigo.in_(
+            select(SigtapProcedureCompatibilidade.codigo_procedimento).distinct()
+        ),
+    ]
+    if search:
+        filters.append(or_(
+            _unaccent_ilike(SigtapProcedure.codigo, search),
+            _unaccent_ilike(SigtapProcedure.nome, search),
+        ))
+
+    base = select(SigtapProcedure, compat_count).where(*filters)
+    count_base = select(func.count()).select_from(SigtapProcedure).where(*filters)
+    total = await db.scalar(count_base) or 0
+
+    order_col = _PROC_COMPAT_SORT_COLS.get(sort)
+    if sort == "totalCompatibilidades":
+        order_col = compat_count
+    if order_col is None:
+        order_col = SigtapProcedure.codigo
+
+    rows = (await db.execute(base.order_by(_order(order_col, dir)).offset(pp.offset).limit(pp.limit))).all()
+
+    items = [
+        ProcedimentoComCompatOut(
+            codigo=r.SigtapProcedure.codigo,
+            nome=r.SigtapProcedure.nome,
+            complexidade=r.SigtapProcedure.complexidade,
+            total_compatibilidades=r.total_compatibilidades,
+        )
+        for r in rows
+    ]
+    return Page(items=items, total=total, page=page, page_size=page_size)
 
 
 # ── Compatibilidades ───────────────────────────────────────────────────

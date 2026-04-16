@@ -79,6 +79,7 @@ export interface ServicoItem {
   descricao: string
   competencia: string
   totalClassificacoes: number
+  totalProcedimentos: number
 }
 
 export interface ServicoProcedimentoItem {
@@ -108,6 +109,13 @@ export interface HabilitacaoProcedimentoItem {
   valorSa: number
   valorSp: number
   competencia: string
+}
+
+export interface ProcedimentoComCompatItem {
+  codigo: string
+  nome: string
+  complexidade: string
+  totalCompatibilidades: number
 }
 
 export interface CompatibilidadeItem {
@@ -164,6 +172,9 @@ export const sigtapSearchApi = {
 
   habilitacaoProcedimentos: (params: { codigoHabilitacao: string; search?: string; page?: number; pageSize?: number }) =>
     api.get<PageResponse<HabilitacaoProcedimentoItem>>(`/api/v1/sigtap/search/habilitacao-procedimentos${qs(params)}`, { withContext: true }),
+
+  procedimentosComCompatibilidades: (params: { search?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
+    api.get<PageResponse<ProcedimentoComCompatItem>>(`/api/v1/sigtap/search/procedimentos-com-compatibilidades${qs(params)}`, { withContext: true }),
 
   compatibilidades: (params: { codigoProcedimento: string; search?: string; page?: number; pageSize?: number }) =>
     api.get<PageResponse<CompatibilidadeItem>>(`/api/v1/sigtap/search/compatibilidades${qs(params)}`, { withContext: true }),
