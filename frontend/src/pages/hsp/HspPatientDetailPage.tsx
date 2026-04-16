@@ -49,6 +49,7 @@ export function HspPatientDetailPage() {
       'estados-civis', 'escolaridades', 'religioes',
       'tipos-sanguineos', 'povos-tradicionais', 'parentescos',
       'orientacoes-sexuais', 'identidades-genero',
+      'deficiencias',
     ]
     Promise.all(kinds.map(kind =>
       referenceApi.list(kind, { page: 1, pageSize: 500, active: true })
@@ -134,7 +135,11 @@ export function HspPatientDetailPage() {
     <div>
       <PageHeader
         title={patient.socialName || patient.name}
-        subtitle={`Prontuário ${patient.prontuario}${patient.cpf ? ` · CPF ${formatCPF(patient.cpf)}` : ''}`}
+        subtitle={[
+          patient.socialName ? `Registro: ${patient.name}` : null,
+          `Prontuário ${patient.prontuario}`,
+          patient.cpf ? `CPF ${formatCPF(patient.cpf)}` : null,
+        ].filter(Boolean).join(' · ')}
         back="/hsp/pacientes/buscar"
         actions={
           <div className="flex gap-2">

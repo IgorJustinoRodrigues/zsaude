@@ -261,9 +261,9 @@ export function HspPatientSearchPage() {
                           patientId={p.id}
                           alt={p.name}
                           className="w-full h-full object-cover"
-                          fallback={initials(p.name)}
+                          fallback={initials(p.socialName || p.name)}
                         />
-                      ) : initials(p.name)}
+                      ) : initials(p.socialName || p.name)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{p.socialName || p.name}</p>
