@@ -36,3 +36,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DELETE FROM app.system_settings WHERE key = 'cadsus.base'")
+

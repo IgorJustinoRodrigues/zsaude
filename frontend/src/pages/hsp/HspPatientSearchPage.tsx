@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ArrowRight, UserPlus, AlertCircle } from 'lucide-react'
+import { Search, ArrowRight, UserPlus, AlertCircle, ScanLine, ScanFace } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
+import { DocumentScannerModal } from './components/DocumentScannerModal'
+import { FaceRecognitionModal } from './components/FaceRecognitionModal'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientListItem, type PatientLookupParams } from '../../api/hsp'
@@ -37,6 +39,8 @@ export function HspPatientSearchPage() {
   const [searched, setSearched] = useState(false)
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<PatientListItem[]>([])
+  const [showScanner, setShowScanner] = useState(false)
+  const [showFace, setShowFace] = useState(false)
 
   const reset = () => {
     setSearched(false)
@@ -108,7 +112,51 @@ export function HspPatientSearchPage() {
         title="Buscar paciente"
         subtitle="Procure antes de cadastrar — evite duplicatas"
         back="/hsp"
+        actions={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted"
+              title="Abrir câmera e ler um documento"
+            >
+              <ScanLine size={14} /> Ler documento
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowFace(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted"
+              title="Identificar paciente pelo rosto"
+            >
+              <ScanFace size={14} /> Reconhecer rosto
+            </button>
+          </div>
+        }
       />
+
+      {showScanner && (
+        <DocumentScannerModal
+          onClose={() => setShowScanner(false)}
+          onCapture={dataUrl => {
+            // TODO: chamar IA de extração. Por enquanto só abre a imagem
+            // em nova aba pra o usuário validar a captura.
+            const w = window.open('')
+            w?.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto">`)
+          }}
+        />
+      )}
+
+      {showFace && (
+        <FaceRecognitionModal
+          onClose={() => setShowFace(false)}
+          onCapture={dataUrl => {
+            // TODO: enviar ao backend pra matching via embedding.
+            // Por enquanto, só mostra preview pra validar qualidade.
+            const w = window.open('')
+            w?.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto">`)
+          }}
+        />
+      )}
 
       <div className="bg-card rounded-xl border border-border p-6 space-y-5">
         {/* Tabs de modo */}
