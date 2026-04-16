@@ -44,3 +44,58 @@ class RefLogradouro(Base, _RefMixin):
     __tablename__ = "ref_logradouros"
     codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(50), nullable=False)
+
+
+# ── Refs ampliadas para cadastro completo de paciente ──────────────────────
+
+class RefTipoDocumento(Base, _RefMixin):
+    __tablename__ = "ref_tipos_documento"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefEstadoCivil(Base, _RefMixin):
+    __tablename__ = "ref_estados_civis"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefEscolaridade(Base, _RefMixin):
+    """Escolaridade (tabela e-SUS/SIGTAP; códigos CNS/BPA)."""
+    __tablename__ = "ref_escolaridades"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefReligiao(Base, _RefMixin):
+    __tablename__ = "ref_religioes"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefTipoSanguineo(Base, _RefMixin):
+    __tablename__ = "ref_tipos_sanguineos"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+    descricao: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class RefPovoTradicional(Base, _RefMixin):
+    """Quilombola, ribeirinho, cigano, assentado... (campo e-SUS)."""
+    __tablename__ = "ref_povos_tradicionais"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefDeficiencia(Base, _RefMixin):
+    __tablename__ = "ref_deficiencias"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefParentesco(Base, _RefMixin):
+    __tablename__ = "ref_parentescos"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefOrientacaoSexual(Base, _RefMixin):
+    __tablename__ = "ref_orientacoes_sexuais"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
+
+
+class RefIdentidadeGenero(Base, _RefMixin):
+    __tablename__ = "ref_identidades_genero"
+    codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)

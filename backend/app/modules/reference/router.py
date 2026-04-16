@@ -13,10 +13,20 @@ from app.core.deps import DB, MasterDep
 from app.core.pagination import Page, PageParams
 from app.modules.audit.writer import write_audit
 from app.modules.reference.models import (
+    RefDeficiencia,
+    RefEscolaridade,
+    RefEstadoCivil,
     RefEtnia,
+    RefIdentidadeGenero,
     RefLogradouro,
     RefNacionalidade,
+    RefOrientacaoSexual,
+    RefParentesco,
+    RefPovoTradicional,
     RefRaca,
+    RefReligiao,
+    RefTipoDocumento,
+    RefTipoSanguineo,
 )
 from app.modules.reference.schemas import RefCreate, RefOut, RefUpdate
 
@@ -29,6 +39,16 @@ _TABLES: dict[str, tuple[Any, str]] = {
     "racas": (RefRaca, "ref_raca"),
     "etnias": (RefEtnia, "ref_etnia"),
     "logradouros": (RefLogradouro, "ref_logradouro"),
+    "tipos-documento": (RefTipoDocumento, "ref_tipo_documento"),
+    "estados-civis": (RefEstadoCivil, "ref_estado_civil"),
+    "escolaridades": (RefEscolaridade, "ref_escolaridade"),
+    "religioes": (RefReligiao, "ref_religiao"),
+    "tipos-sanguineos": (RefTipoSanguineo, "ref_tipo_sanguineo"),
+    "povos-tradicionais": (RefPovoTradicional, "ref_povo_tradicional"),
+    "deficiencias": (RefDeficiencia, "ref_deficiencia"),
+    "parentescos": (RefParentesco, "ref_parentesco"),
+    "orientacoes-sexuais": (RefOrientacaoSexual, "ref_orientacao_sexual"),
+    "identidades-genero": (RefIdentidadeGenero, "ref_identidade_genero"),
 }
 
 

@@ -2,7 +2,21 @@
 
 import { api, apiFetch } from './client'
 
-export type RefKind = 'nacionalidades' | 'racas' | 'etnias' | 'logradouros'
+export type RefKind =
+  | 'nacionalidades'
+  | 'racas'
+  | 'etnias'
+  | 'logradouros'
+  | 'tipos-documento'
+  | 'estados-civis'
+  | 'escolaridades'
+  | 'religioes'
+  | 'tipos-sanguineos'
+  | 'povos-tradicionais'
+  | 'deficiencias'
+  | 'parentescos'
+  | 'orientacoes-sexuais'
+  | 'identidades-genero'
 
 export interface RefItem {
   id: string

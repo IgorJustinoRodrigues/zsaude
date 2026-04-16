@@ -31,7 +31,10 @@ import { ProductionPage } from '../pages/cln/ProductionPage'
 import { DgnHomePage } from '../pages/dgn/DgnHomePage'
 
 // HSP – Hospitalar
-// (telas serão adicionadas aqui)
+import { HspHomePage } from '../pages/hsp/HspHomePage'
+import { HspPatientListPage } from '../pages/hsp/HspPatientListPage'
+import { HspPatientFormPage } from '../pages/hsp/HspPatientFormPage'
+import { HspPatientDetailPage } from '../pages/hsp/HspPatientDetailPage'
 
 // PLN – Planos
 import { ConvHomePage } from '../pages/pln/ConvHomePage'
@@ -180,10 +183,16 @@ export const router = createBrowserRouter([
                 ],
               },
 
-              // HSP — Hospitalar (telas ainda não criadas)
+              // HSP — Hospitalar
               {
                 element: <RequireModule moduleId="hsp" />,
-                children: [],
+                children: [
+                  { path: '/hsp',                          element: <HspHomePage /> },
+                  { path: '/hsp/pacientes',                element: <HspPatientListPage /> },
+                  { path: '/hsp/pacientes/novo',           element: <HspPatientFormPage /> },
+                  { path: '/hsp/pacientes/:id',            element: <HspPatientDetailPage /> },
+                  { path: '/hsp/pacientes/:id/editar',     element: <HspPatientFormPage /> },
+                ],
               },
 
               // PLN

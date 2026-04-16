@@ -15,10 +15,20 @@ from app.modules.permissions.models import (  # noqa: F401
     RolePermission,
 )
 from app.modules.reference.models import (  # noqa: F401
+    RefDeficiencia,
+    RefEscolaridade,
+    RefEstadoCivil,
     RefEtnia,
+    RefIdentidadeGenero,
     RefLogradouro,
     RefNacionalidade,
+    RefOrientacaoSexual,
+    RefParentesco,
+    RefPovoTradicional,
     RefRaca,
+    RefReligiao,
+    RefTipoDocumento,
+    RefTipoSanguineo,
 )
 from app.modules.sessions.models import UserSession  # noqa: F401
 from app.modules.sigtap.models import (  # noqa: F401

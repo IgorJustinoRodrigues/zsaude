@@ -45,3 +45,13 @@ P("ops.import.view", "Visualizar histórico de importações")
 # ── DGN (Diagnóstico) ───────────────────────────────────────────────────────
 P("dgn.exam.view", "Visualizar solicitações de exame")
 P("dgn.exam.request", "Solicitar exame")
+
+# ── HSP (Hospitalar) — cadastro de paciente ────────────────────────────────
+P("hsp.patient.view", "Visualizar pacientes")
+P("hsp.patient.create", "Cadastrar paciente")
+P("hsp.patient.edit", "Editar paciente")
+P("hsp.patient.delete", "Desativar paciente")
+P("hsp.patient.export", "Exportar dados de pacientes")
+P("hsp.patient_photo.upload", "Enviar ou remover foto do paciente")
+P("hsp.patient_photo.view", "Visualizar foto do paciente")
+P("hsp.patient_history.view", "Visualizar histórico de alterações do paciente")

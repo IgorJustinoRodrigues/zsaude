@@ -32,6 +32,19 @@ type NavSection = { kind: 'section'; label: string }
 type NavEntry  = NavItem | NavGroup | NavSection
 
 const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
+  hsp: [
+    { kind: 'section', label: 'Cadastros' },
+    {
+      kind: 'group',
+      icon: <Users size={16} />,
+      label: 'Pacientes',
+      collapsedPath: '/hsp/pacientes',
+      children: [
+        { label: 'Listar',    path: '/hsp/pacientes',      icon: <List size={13} /> },
+        { label: 'Cadastrar', path: '/hsp/pacientes/novo', icon: <UserPlus size={13} /> },
+      ],
+    },
+  ],
   ops: [
     { kind: 'section', label: 'Cadastros' },
     {
