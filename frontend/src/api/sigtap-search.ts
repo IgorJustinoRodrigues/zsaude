@@ -1,4 +1,4 @@
-// Consultas SIGTAP — pesquisas de CBOs, CIDs, Procedimentos e cruzamentos.
+// Consultas SIGTAP — pesquisas de CBOs, CIDs, Procedimentos, Serviços, Habilitações e cruzamentos.
 
 import { api } from './client'
 
@@ -74,6 +74,67 @@ export interface CidProcedimentoItem {
   competencia: string
 }
 
+export interface ServicoItem {
+  codigo: string
+  descricao: string
+  competencia: string
+  totalClassificacoes: number
+}
+
+export interface ServicoProcedimentoItem {
+  codigoProcedimento: string
+  nomeProcedimento: string
+  complexidade: string
+  codigoClassificacao: string
+  valorSh: number
+  valorSa: number
+  valorSp: number
+  competencia: string
+}
+
+export interface HabilitacaoItem {
+  codigo: string
+  descricao: string
+  competencia: string
+  totalProcedimentos: number
+}
+
+export interface HabilitacaoProcedimentoItem {
+  codigoProcedimento: string
+  nomeProcedimento: string
+  complexidade: string
+  codigoGrupoHabilitacao: string
+  valorSh: number
+  valorSa: number
+  valorSp: number
+  competencia: string
+}
+
+export interface CompatibilidadeItem {
+  codigoProcedimento: string
+  codigoProcedimentoSecundario: string
+  nomeProcedimentoSecundario: string
+  registroPrincipal: string
+  registroSecundario: string
+  tipoCompatibilidade: string
+  quantidadePermitida: number
+  competencia: string
+}
+
+export interface FormaOrganizacaoItem {
+  codigoGrupo: string
+  codigoSubgrupo: string
+  codigoForma: string
+  descricao: string
+  competencia: string
+}
+
+export interface ProcedimentoDescricaoItem {
+  codigoProcedimento: string
+  descricao: string
+  competencia: string
+}
+
 // ── API ──
 
 export const sigtapSearchApi = {
@@ -91,4 +152,25 @@ export const sigtapSearchApi = {
 
   cidProcedimentos: (params: { codigoCid: string; search?: string; page?: number; pageSize?: number }) =>
     api.get<PageResponse<CidProcedimentoItem>>(`/api/v1/sigtap/search/cid-procedimentos${qs(params)}`, { withContext: true }),
+
+  servicos: (params: { search?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
+    api.get<PageResponse<ServicoItem>>(`/api/v1/sigtap/search/servicos${qs(params)}`, { withContext: true }),
+
+  servicoProcedimentos: (params: { codigoServico: string; codigoClassificacao?: string; search?: string; page?: number; pageSize?: number }) =>
+    api.get<PageResponse<ServicoProcedimentoItem>>(`/api/v1/sigtap/search/servico-procedimentos${qs(params)}`, { withContext: true }),
+
+  habilitacoes: (params: { search?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
+    api.get<PageResponse<HabilitacaoItem>>(`/api/v1/sigtap/search/habilitacoes${qs(params)}`, { withContext: true }),
+
+  habilitacaoProcedimentos: (params: { codigoHabilitacao: string; search?: string; page?: number; pageSize?: number }) =>
+    api.get<PageResponse<HabilitacaoProcedimentoItem>>(`/api/v1/sigtap/search/habilitacao-procedimentos${qs(params)}`, { withContext: true }),
+
+  compatibilidades: (params: { codigoProcedimento: string; search?: string; page?: number; pageSize?: number }) =>
+    api.get<PageResponse<CompatibilidadeItem>>(`/api/v1/sigtap/search/compatibilidades${qs(params)}`, { withContext: true }),
+
+  formasOrganizacao: (params: { search?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
+    api.get<PageResponse<FormaOrganizacaoItem>>(`/api/v1/sigtap/search/formas-organizacao${qs(params)}`, { withContext: true }),
+
+  procedimentoDescricao: (codigo: string) =>
+    api.get<ProcedimentoDescricaoItem>(`/api/v1/sigtap/search/procedimento-descricao/${codigo}`, { withContext: true }),
 }
