@@ -56,7 +56,8 @@ export function SysShell() {
           <SysNavSection label="Plataforma" />
           <SysNavItem to="/sys/importacoes"     icon={<Download size={15} />}>Importações</SysNavItem>
           <SysNavItem to="/sys/dados-referencia" icon={<Database size={15} />}>Dados de referência</SysNavItem>
-          <SysNavItem to="/sys/configuracoes" icon={<Settings size={15} />}>Configurações</SysNavItem>
+          <SysNavItem to="/sys/cadsus"         icon={<Database size={15} />}>Integração CadSUS</SysNavItem>
+          <SysNavItem to="/sys/configuracoes"  icon={<Settings size={15} />}>Configurações</SysNavItem>
           <SysNavItem to="/sys/logs"           icon={<ScrollText size={15} />}>Logs do sistema</SysNavItem>
         </nav>
 

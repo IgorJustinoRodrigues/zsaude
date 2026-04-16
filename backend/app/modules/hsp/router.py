@@ -141,18 +141,28 @@ async def search_cadsus(
         )
         return CadsusSearchResponse(items=items, source="mock")
 
-    # Credenciais por município primeiro, fallback pra env.
+    # Credenciais: município ativo > setting global (cadsus.base) > env var.
     from app.modules.tenants.models import Municipality
-    mun = await db.scalar(select(Municipality).where(Municipality.id == ctx.municipality_id))
-    mun_user = mun.cadsus_user if mun else ""
-    mun_pass = mun.cadsus_password if mun else ""
+    from app.modules.system.service import SettingsService
 
-    user = mun_user or settings.cadsus_user
-    password = mun_pass or settings.cadsus_password
+    mun = await db.scalar(select(Municipality).where(Municipality.id == ctx.municipality_id))
+    user = (mun.cadsus_user if mun else "") or ""
+    password = (mun.cadsus_password if mun else "") or ""
+
+    if not user or not password:
+        base = await SettingsService(db).get("cadsus.base", {}) or {}
+        if isinstance(base, dict):
+            user = user or (base.get("user") or "")
+            password = password or (base.get("password") or "")
+
+    # Último fallback: env (dev/legado).
+    user = user or settings.cadsus_user
+    password = password or settings.cadsus_password
+
     if not user or not password:
         raise HTTPException(
             status_code=503,
-            detail="Integração CadSUS não configurada para este município.",
+            detail="Integração CadSUS não configurada (nem no município nem na base geral).",
         )
 
     try:

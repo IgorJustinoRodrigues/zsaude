@@ -295,6 +295,8 @@ class TenantService:
             center_longitude=float(mun.center_longitude) if mun.center_longitude is not None else None,
             territory=mun.territory,
             enabled_modules=sorted(self._enabled_modules_set(mun)),
+            cadsus_user=mun.cadsus_user or "",
+            cadsus_password_set=bool(mun.cadsus_password),
             neighborhoods=[
                 NeighborhoodOut(
                     id=n.id,
@@ -384,6 +386,19 @@ class TenantService:
             if new_mods != current_mods:
                 changes["enabledModules"] = {"from": current_mods, "to": new_mods}
                 mun.enabled_modules = new_mods
+
+        if "cadsus_user" in fields and payload.cadsus_user != mun.cadsus_user:
+            changes["cadsusUser"] = {"from": mun.cadsus_user or "", "to": payload.cadsus_user or ""}
+            mun.cadsus_user = payload.cadsus_user or ""
+        if "cadsus_password" in fields and payload.cadsus_password is not None:
+            # Não logamos o valor da senha — só indica que foi alterada.
+            had = bool(mun.cadsus_password)
+            mun.cadsus_password = payload.cadsus_password
+            if had != bool(payload.cadsus_password):
+                changes["cadsusPassword"] = {
+                    "from": "(definida)" if had else "(vazia)",
+                    "to": "(definida)" if payload.cadsus_password else "(vazia)",
+                }
 
         await self.session.flush()
 

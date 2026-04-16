@@ -39,6 +39,8 @@ export interface MunicipalityAdminDetail {
   territory: [number, number][] | null
   neighborhoods: NeighborhoodOut[]
   enabledModules: SystemId[]
+  cadsusUser: string
+  cadsusPasswordSet: boolean
 }
 
 export interface MunicipalityCreateInput {
@@ -62,6 +64,9 @@ export interface MunicipalityUpdateInput {
   territory?: [number, number][] | null
   neighborhoods?: NeighborhoodInput[]
   enabledModules?: SystemId[]
+  cadsusUser?: string
+  /** Passar `null` pra limpar, ou string nova pra trocar. Omitir = não mexe. */
+  cadsusPassword?: string | null
 }
 
 // ─── Unidades ────────────────────────────────────────────────────────────────

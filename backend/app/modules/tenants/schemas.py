@@ -116,6 +116,8 @@ class MunicipalityUpdate(CamelModel):
     # Se ``neighborhoods`` vier, substitui toda a lista atual.
     neighborhoods: list[NeighborhoodInput] | None = None
     enabled_modules: list[str] | None = None
+    cadsus_user: str | None = Field(default=None, max_length=100)
+    cadsus_password: str | None = Field(default=None, max_length=200)
 
 
 class MunicipalityDetail(CamelModel):
@@ -133,6 +135,8 @@ class MunicipalityDetail(CamelModel):
     territory: list[list[float]] | None = None
     neighborhoods: list[NeighborhoodOut] = Field(default_factory=list)
     enabled_modules: list[str] = Field(default_factory=list)
+    cadsus_user: str = ""
+    cadsus_password_set: bool = False
 
 
 class FacilityCreate(CamelModel):

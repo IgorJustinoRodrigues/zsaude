@@ -71,6 +71,12 @@ export function SysMunicipalityFormPage() {
   // Módulos habilitados (todos por default em criação)
   const [enabledModules, setEnabledModules] = useState<SystemId[]>(DEFAULT_ENABLED)
 
+  // Credenciais CadSUS (integração DATASUS). Senha nunca vem preenchida
+  // do backend — mostramos apenas se está ou não definida.
+  const [cadsusUser, setCadsusUser] = useState('')
+  const [cadsusPasswordSet, setCadsusPasswordSet] = useState(false)
+  const [cadsusPasswordDraft, setCadsusPasswordDraft] = useState<string | null>(null)
+
   // Modo do mapa
   const [mapMode, setMapMode] = useState<MapMode>('idle')
   /** Alvo do modo — 'mun' = centro/território do município; 'hood:<tempId>' = bairro específico. */
@@ -111,6 +117,9 @@ export function SysMunicipalityFormPage() {
       territory: h.territory,
     })))
     setEnabledModules(m.enabledModules?.length ? m.enabledModules : DEFAULT_ENABLED)
+    setCadsusUser(m.cadsusUser ?? '')
+    setCadsusPasswordSet(!!m.cadsusPasswordSet)
+    setCadsusPasswordDraft(null)
   }
 
   const toggleModule = (id: SystemId) =>
@@ -237,6 +246,9 @@ export function SysMunicipalityFormPage() {
         territory: h.territory && h.territory.length >= 3 ? h.territory : null,
       })),
     enabledModules: enabledModules.slice().sort(),
+    cadsusUser: cadsusUser.trim(),
+    // Só envia cadsusPassword se o user alterou/limpou (draft é string) — senão não mexe.
+    ...(cadsusPasswordDraft !== null ? { cadsusPassword: cadsusPasswordDraft } : {}),
   })
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -537,6 +549,61 @@ export function SysMunicipalityFormPage() {
             Com nenhum módulo habilitado o município deixa de ser selecionável no contexto.
           </p>
         )}
+      </Section>
+
+      {/* ─── Integração CadSUS ─── */}
+      <Section title="Integração CadSUS" subtitle="Credenciais do DATASUS para consulta de pacientes. Se em branco, usa a base geral definida em /sys.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Usuário
+            </label>
+            <input
+              value={cadsusUser}
+              onChange={e => setCadsusUser(e.target.value)}
+              placeholder="CADSUS.SMS.MUNICIPIO.UF"
+              className="mt-1 w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Senha {cadsusPasswordSet && cadsusPasswordDraft === null && (
+                <span className="text-emerald-600 dark:text-emerald-400 ml-1">· definida</span>
+              )}
+            </label>
+            <div className="mt-1 flex gap-2">
+              <input
+                type="password"
+                value={cadsusPasswordDraft ?? ''}
+                onChange={e => setCadsusPasswordDraft(e.target.value)}
+                placeholder={cadsusPasswordSet ? '••••••••  (manter a atual)' : 'Defina a senha'}
+                className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+              />
+              {cadsusPasswordSet && cadsusPasswordDraft === null && (
+                <button
+                  type="button"
+                  onClick={() => setCadsusPasswordDraft('')}
+                  className="px-3 py-2 text-xs border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  title="Limpar senha salva"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            {cadsusPasswordDraft !== null && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                {cadsusPasswordDraft === ''
+                  ? 'A senha será removida ao salvar.'
+                  : 'Nova senha será gravada ao salvar.'}
+                {' '}
+                <button type="button" onClick={() => setCadsusPasswordDraft(null)}
+                  className="underline hover:no-underline">
+                  descartar
+                </button>
+              </p>
+            )}
+          </div>
+        </div>
       </Section>
 
       {/* Ações */}
