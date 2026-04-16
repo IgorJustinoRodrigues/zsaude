@@ -118,6 +118,7 @@ const EMPTY: PatientFormData = {
   situacaoRua: false, frequentaEscola: null, rendaFamiliar: null, beneficiarioBolsaFamilia: false,
   cep: '', logradouroId: null, endereco: '', numero: '', complemento: '',
   bairro: '', municipioIbge: '', uf: '', pais: 'BRA', areaMicroarea: '',
+  latitude: null, longitude: null,
   phone: '', cellphone: '', phoneRecado: '', email: '', idiomaPreferencial: 'pt-BR',
   motherName: '', motherUnknown: false, fatherName: null, fatherUnknown: false,
   responsavelNome: '', responsavelCpf: '', responsavelParentescoId: null,
@@ -714,6 +715,11 @@ export function HspPatientFormPage() {
                 uf={form.uf}
                 cep={form.cep}
                 pais={form.pais}
+                initialLat={form.latitude}
+                initialLon={form.longitude}
+                onLocationFound={(lat, lon) => {
+                  setForm(p => ({ ...p, latitude: lat, longitude: lon }))
+                }}
               />
             </div>
           </Section>

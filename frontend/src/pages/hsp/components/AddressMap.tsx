@@ -16,6 +16,13 @@ interface Props {
   autoSearch?: boolean
   /** Altura do mapa (default 280px). */
   height?: string
+  /** Coordenadas já conhecidas (do banco) — usa em vez de geocodar. */
+  initialLat?: number | null
+  initialLon?: number | null
+  /** Disparado quando uma busca encontra coords novas. */
+  onLocationFound?: (lat: number, lon: number) => void
+  /** Esconde barra de status + botão "Localizar". Só mostra o mapa. */
+  viewOnly?: boolean
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -32,9 +39,14 @@ type Status = 'idle' | 'loading' | 'found' | 'notfound'
  * pública e dá previsibilidade ao usuário.
  */
 export function AddressMap(props: Props) {
-  const [point, setPoint] = useState<LatLng | null>(null)
+  // Se já temos coords salvas, começa exibindo elas (sem geocodar).
+  const initialPoint: LatLng | null =
+    props.initialLat != null && props.initialLon != null
+      ? [props.initialLat, props.initialLon]
+      : null
+  const [point, setPoint] = useState<LatLng | null>(initialPoint)
   const [resolved, setResolved] = useState<string | null>(null)
-  const [status, setStatus] = useState<Status>('idle')
+  const [status, setStatus] = useState<Status>(initialPoint ? 'found' : 'idle')
 
   // Mínimo necessário pra fazer sentido a busca.
   const canSearch =
@@ -56,61 +68,68 @@ export function AddressMap(props: Props) {
       setPoint([result.lat, result.lon])
       setResolved(result.display_name)
       setStatus('found')
+      props.onLocationFound?.(result.lat, result.lon)
     } else {
       setPoint(null)
       setResolved(null)
       setStatus('notfound')
     }
+  // onLocationFound é estável por callback do parent — não inclui pra evitar re-render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSearch, props.cidade, props.uf, props.cep, props.pais, props.endereco, props.numero])
 
   // Busca automática (uma vez) — só quando autoSearch + canSearch.
-  // setState dentro do effect é intencional: side-effect one-shot async.
   useEffect(() => {
     if (props.autoSearch && canSearch && status === 'idle') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void handleSearch()
     }
   }, [props.autoSearch, canSearch, status, handleSearch])
 
+  // viewOnly: nunca mostra barra. autoSearch+found: também esconde
+  // (depois que localizou, deixa o mapa limpo).
+  const showStatusBar = !props.viewOnly && !(props.autoSearch && status === 'found')
+
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0 flex-1">
-          <MapPin size={12} className="shrink-0" />
-          {status === 'loading' && (
-            <span className="flex items-center gap-1.5">
-              <Loader2 size={11} className="animate-spin" /> Localizando endereço...
-            </span>
-          )}
-          {status === 'found' && resolved && (
-            <span className="truncate" title={resolved}>{resolved}</span>
-          )}
-          {status === 'notfound' && (
-            <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
-              <AlertCircle size={11} /> Endereço não encontrado nos dados públicos.
-            </span>
-          )}
-          {status === 'idle' && (
-            <span>
-              {canSearch
-                ? 'Clique em Localizar para buscar no mapa.'
-                : 'Preencha cidade + UF (ou CEP) para localizar.'}
-            </span>
+      {showStatusBar && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0 flex-1">
+            <MapPin size={12} className="shrink-0" />
+            {status === 'loading' && (
+              <span className="flex items-center gap-1.5">
+                <Loader2 size={11} className="animate-spin" /> Localizando endereço...
+              </span>
+            )}
+            {status === 'found' && resolved && (
+              <span className="truncate" title={resolved}>{resolved}</span>
+            )}
+            {status === 'notfound' && (
+              <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                <AlertCircle size={11} /> Endereço não encontrado nos dados públicos.
+              </span>
+            )}
+            {status === 'idle' && (
+              <span>
+                {canSearch
+                  ? 'Clique em Localizar para buscar no mapa.'
+                  : 'Preencha cidade + UF (ou CEP) para localizar.'}
+              </span>
+            )}
+          </div>
+
+          {!props.autoSearch && (
+            <button
+              type="button"
+              onClick={handleSearch}
+              disabled={!canSearch || status === 'loading'}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              <Search size={12} />
+              {point ? 'Buscar de novo' : 'Localizar'}
+            </button>
           )}
         </div>
-
-        {!props.autoSearch && (
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={!canSearch || status === 'loading'}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          >
-            <Search size={12} />
-            {point ? 'Buscar de novo' : 'Localizar'}
-          </button>
-        )}
-      </div>
+      )}
 
       <LocationMap
         point={point}

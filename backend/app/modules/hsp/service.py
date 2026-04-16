@@ -46,7 +46,7 @@ _TRACKED_FIELDS: tuple[str, ...] = (
     "cbo_id", "ocupacao_livre",
     "situacao_rua", "frequenta_escola", "renda_familiar", "beneficiario_bolsa_familia",
     "cep", "logradouro_id", "endereco", "numero", "complemento", "bairro",
-    "municipio_ibge", "uf", "pais", "area_microarea",
+    "municipio_ibge", "uf", "pais", "area_microarea", "latitude", "longitude",
     "phone", "cellphone", "phone_recado", "email", "idioma_preferencial",
     "mother_name", "mother_unknown", "father_name", "father_unknown",
     "responsavel_nome", "responsavel_cpf", "responsavel_parentesco_id",

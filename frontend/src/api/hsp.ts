@@ -57,6 +57,8 @@ export interface PatientBaseFields {
   uf: string
   pais: string
   areaMicroarea: string
+  latitude: number | null
+  longitude: number | null
 
   // Contato
   phone: string
@@ -145,7 +147,7 @@ export const PATIENT_BASE_FIELDS: readonly (keyof PatientBaseFields)[] = [
   'religiaoId', 'povoTradicionalId', 'cboId', 'ocupacaoLivre',
   'situacaoRua', 'frequentaEscola', 'rendaFamiliar', 'beneficiarioBolsaFamilia',
   'cep', 'logradouroId', 'endereco', 'numero', 'complemento', 'bairro',
-  'municipioIbge', 'uf', 'pais', 'areaMicroarea',
+  'municipioIbge', 'uf', 'pais', 'areaMicroarea', 'latitude', 'longitude',
   'phone', 'cellphone', 'phoneRecado', 'email', 'idiomaPreferencial',
   'motherName', 'motherUnknown', 'fatherName', 'fatherUnknown',
   'responsavelNome', 'responsavelCpf', 'responsavelParentescoId',

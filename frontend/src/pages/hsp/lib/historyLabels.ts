@@ -51,6 +51,8 @@ export const FIELD_LABELS: Record<string, string> = {
   uf: 'UF',
   pais: 'País',
   area_microarea: 'Área/Microárea',
+  latitude: 'Latitude',
+  longitude: 'Longitude',
 
   // Contato
   phone: 'Telefone fixo',

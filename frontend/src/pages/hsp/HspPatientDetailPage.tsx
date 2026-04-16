@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Edit, History, User2, Trash2, FileText, X, RotateCcw, AlertTriangle } from 'lucide-react'
+import { Edit, History, User2, Trash2, FileText, X, RotateCcw, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientFieldHistoryItem, type PatientRead } from '../../api/hsp'
@@ -29,6 +29,7 @@ export function HspPatientDetailPage() {
   const [previewPhoto, setPreviewPhoto] = useState<{ patientId: string; photoId: string } | null>(null)
   const [refs, setRefs] = useState<RefMap>({})
   const [municipioName, setMunicipioName] = useState<string>('')
+  const [mapExpanded, setMapExpanded] = useState(false)
 
   const reload = useCallback(async () => {
     if (!id) return
@@ -267,34 +268,8 @@ export function HspPatientDetailPage() {
               ['CNS', patient.cns ? cnsMask.format(patient.cns) : null],
             ]),
           },
-          {
-            title: 'Endereço',
-            rows: nonEmpty([
-              ['CEP', patient.cep ? cepMask.format(patient.cep) : null],
-              ['Endereço', enderecoLinha],
-              ['Bairro', patient.bairro || null],
-              ['Cidade/UF', municipioName
-                ? `${municipioName}/${patient.uf}`
-                : (patient.municipioIbge ? `${patient.municipioIbge}/${patient.uf}` : null)],
-            ]),
-          },
-          {
-            title: 'Filiação',
-            rows: nonEmpty([
-              ['Mãe', patient.motherUnknown ? 'Desconhecida' : (patient.motherName || null)],
-              ['Pai', patient.fatherUnknown ? 'Desconhecido' : (patient.fatherName || null)],
-              ['Responsável', patient.responsavelNome || null],
-              ['CPF do responsável', patient.responsavelCpf ? formatCPF(patient.responsavelCpf) : null],
-            ]),
-          },
-          {
-            title: 'Contato de emergência',
-            rows: nonEmpty([
-              ['Contato', patient.contatoEmergenciaNome || null],
-              ['Telefone', patient.contatoEmergenciaTelefone
-                ? formatPhone(patient.contatoEmergenciaTelefone) : null],
-            ]),
-          },
+          // Ordem pensada pra prática diária: identificação, clínico (crítico),
+          // convênio, contato de emergência, filiação, documentos.
           {
             title: 'Clínico',
             rows: nonEmpty([
@@ -312,6 +287,36 @@ export function HspPatientDetailPage() {
               ['Nome', patient.convenioNome || null],
               ['Carteirinha', patient.convenioNumeroCarteirinha || null],
               ['Validade', patient.convenioValidade ? formatDate(patient.convenioValidade) : null],
+            ]),
+          },
+          {
+            title: 'Contato de emergência',
+            rows: nonEmpty([
+              ['Contato', patient.contatoEmergenciaNome || null],
+              ['Telefone', patient.contatoEmergenciaTelefone
+                ? formatPhone(patient.contatoEmergenciaTelefone) : null],
+              ['Parentesco', resolveRefName(refs['parentescos'], patient.contatoEmergenciaParentescoId)],
+            ]),
+          },
+          {
+            title: 'Filiação',
+            rows: nonEmpty([
+              ['Mãe', patient.motherUnknown ? 'Desconhecida' : (patient.motherName || null)],
+              ['Pai', patient.fatherUnknown ? 'Desconhecido' : (patient.fatherName || null)],
+              ['Responsável', patient.responsavelNome || null],
+              ['CPF do responsável', patient.responsavelCpf ? formatCPF(patient.responsavelCpf) : null],
+              ['Parentesco do responsável', resolveRefName(refs['parentescos'], patient.responsavelParentescoId)],
+            ]),
+          },
+          {
+            title: 'Endereço',
+            rows: nonEmpty([
+              ['CEP', patient.cep ? cepMask.format(patient.cep) : null],
+              ['Endereço', enderecoLinha],
+              ['Bairro', patient.bairro || null],
+              ['Cidade/UF', municipioName
+                ? `${municipioName}/${patient.uf}`
+                : (patient.municipioIbge ? `${patient.municipioIbge}/${patient.uf}` : null)],
             ]),
           },
         ].filter(s => s.rows.length > 0)
@@ -343,39 +348,31 @@ export function HspPatientDetailPage() {
 
         return (
           <div className="space-y-5">
-            {/* Endereço — full-width com mini mapa lateral */}
-            {enderecoSection && (
-              <div className="bg-card rounded-xl border border-border p-5">
-                <h3 className="text-sm font-semibold mb-3">Endereço</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <dl className="space-y-2 md:col-span-1">
-                    {enderecoSection.rows.map(([k, v]) => (
-                      <div key={k} className="flex flex-col">
-                        <dt className="text-xs text-muted-foreground">{k}</dt>
-                        <dd className="text-sm">{v}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <div className="md:col-span-2">
-                    <AddressMap
-                      autoSearch
-                      height="220px"
-                      endereco={patient.endereco}
-                      numero={patient.numero}
-                      bairro={patient.bairro}
-                      cidade={municipioName}
-                      uf={patient.uf}
-                      cep={patient.cep}
-                      pais={patient.pais}
-                    />
-                  </div>
+            {/* ─── Alerta clínico (alergias) — destaque máximo no topo ─── */}
+            {patient.temAlergia && (
+              <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 rounded-xl p-4 flex items-start gap-3">
+                <AlertTriangle size={18} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-rose-900 dark:text-rose-200">
+                    Paciente alérgico
+                  </p>
+                  {patient.alergias && (
+                    <p className="text-sm text-rose-800 dark:text-rose-300 mt-1 whitespace-pre-wrap">
+                      {patient.alergias}
+                    </p>
+                  )}
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* ─── Cards principais — 1/2/3 colunas conforme largura ─── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {otherSections.map(s => (
+                <DataCard key={s.title} title={s.title} rows={s.rows} />
+              ))}
+
               {hasDocuments && (
-                <div className="bg-card rounded-xl border border-border p-5 md:row-span-2">
+                <div className="bg-card rounded-xl border border-border p-5">
                   <h3 className="text-sm font-semibold mb-3">
                     Documentos
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
@@ -401,18 +398,70 @@ export function HspPatientDetailPage() {
                   </ul>
                 </div>
               )}
-
-              {otherSections.map(s => (
-                <DataCard key={s.title} title={s.title} rows={s.rows} />
-              ))}
-
-              {hasObservacoes && (
-                <div className="bg-card rounded-xl border border-border p-5 md:col-span-2">
-                  <h3 className="text-sm font-semibold mb-2">Observações</h3>
-                  <p className="text-sm whitespace-pre-wrap">{patient.observacoes}</p>
-                </div>
-              )}
             </div>
+
+            {/* ─── Endereço — full-width com mini mapa expansível ─── */}
+            {enderecoSection && (() => {
+              const hasCoords = patient.latitude != null && patient.longitude != null
+              return (
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h3 className="text-sm font-semibold mb-3">Endereço</h3>
+                  <div className={cn(
+                    'gap-4',
+                    mapExpanded ? 'flex flex-col' : 'flex flex-col sm:flex-row',
+                  )}>
+                    <dl className={cn(
+                      'grid gap-2 flex-1',
+                      mapExpanded ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-1',
+                    )}>
+                      {enderecoSection.rows.map(([k, v]) => (
+                        <div key={k} className="flex flex-col">
+                          <dt className="text-xs text-muted-foreground">{k}</dt>
+                          <dd className="text-sm">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    {hasCoords && (
+                      <div className={cn(
+                        'relative shrink-0',
+                        mapExpanded ? 'w-full' : 'w-full sm:w-56',
+                      )}>
+                        <AddressMap
+                          viewOnly
+                          height={mapExpanded ? '380px' : '160px'}
+                          endereco={patient.endereco}
+                          numero={patient.numero}
+                          bairro={patient.bairro}
+                          cidade={municipioName}
+                          uf={patient.uf}
+                          cep={patient.cep}
+                          pais={patient.pais}
+                          initialLat={patient.latitude}
+                          initialLon={patient.longitude}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setMapExpanded(v => !v)}
+                          title={mapExpanded ? 'Reduzir mapa' : 'Expandir mapa'}
+                          className="absolute top-2 right-2 z-[1000] p-1.5 rounded-md bg-card/95 border border-border shadow-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {mapExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ─── Observações — full-width no fim ─── */}
+            {hasObservacoes && (
+              <div className="bg-card rounded-xl border border-border p-5">
+                <h3 className="text-sm font-semibold mb-2">Observações</h3>
+                <p className="text-sm whitespace-pre-wrap">{patient.observacoes}</p>
+              </div>
+            )}
           </div>
         )
       })()}
@@ -531,6 +580,12 @@ type Row = [string, string | null] | null
 /** Filtra pares cuja segunda posição é vazia, e remove `null` da lista. */
 function nonEmpty(rows: Row[]): Array<[string, string]> {
   return rows.filter((r): r is [string, string] => r !== null && r[1] !== null && r[1] !== '')
+}
+
+/** Pega `descricao` do item da ref pelo `id`. Retorna null se não achar. */
+function resolveRefName(items: RefMap[string] | undefined, id: string | null): string | null {
+  if (!id || !items) return null
+  return items.find(r => r.id === id)?.descricao ?? null
 }
 
 function PhotoThumb({ patientId, photoId, label, onOpen }: {

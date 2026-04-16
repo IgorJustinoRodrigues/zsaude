@@ -99,6 +99,10 @@ class Patient(TenantBase):
     pais: Mapped[str] = mapped_column(String(3), nullable=False, server_default="BRA")  # ISO alpha-3
     area_microarea: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
 
+    # Coordenadas do endereço (geocoding via OSM Nominatim ou ajuste manual).
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
+
     # ── Contato ────────────────────────────────────────────────────────
     phone: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
     cellphone: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")

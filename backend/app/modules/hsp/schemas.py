@@ -58,6 +58,8 @@ class PatientBase(CamelModel):
     uf: str = Field(default="", max_length=2)
     pais: str = Field(default="BRA", max_length=3)
     area_microarea: str = Field(default="", max_length=20)
+    latitude: float | None = None
+    longitude: float | None = None
 
     # Contato
     phone: str = Field(default="", max_length=20)

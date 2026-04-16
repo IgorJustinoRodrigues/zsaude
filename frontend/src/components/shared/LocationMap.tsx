@@ -150,6 +150,7 @@ export function LocationMap({
         />
 
         <AutoFit points={allPoints} fitKey={fitKey} />
+        <InvalidateOnResize />
 
         {/* Marcador principal — draggable em qualquer modo ≠ polígono */}
         {point && mode !== 'polygon' && (
@@ -243,6 +244,31 @@ function AutoFit({ points, fitKey }: { points: LatLng[]; fitKey?: unknown }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitKey, points.length === 0 ? 'empty' : points.map(p => p.join(',')).join('|')])
 
+  return null
+}
+
+// ─── Invalidate on resize ───────────────────────────────────────────────────
+// Leaflet não recalcula tiles quando o container muda de tamanho (ex.: o
+// parent troca height de 160px pra 380px). Sem isso, o mapa fica "bugado"
+// — área cinza preenchendo o espaço novo. ResizeObserver dispara o
+// `invalidateSize()` em qualquer mudança.
+
+function InvalidateOnResize() {
+  const map = useMap()
+  useEffect(() => {
+    const container = map.getContainer()
+    let raf = 0
+    const obs = new ResizeObserver(() => {
+      // rAF evita disparar várias vezes durante a animação CSS de transição.
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => map.invalidateSize())
+    })
+    obs.observe(container)
+    return () => {
+      cancelAnimationFrame(raf)
+      obs.disconnect()
+    }
+  }, [map])
   return null
 }
 
