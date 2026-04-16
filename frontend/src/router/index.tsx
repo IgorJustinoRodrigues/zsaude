@@ -56,6 +56,11 @@ import { OpsSearchesPage } from '../pages/ops/OpsSearchesPage'
 import { OpsUserAccessPermsPage } from '../pages/ops/OpsUserAccessPermsPage'
 import { OpsImportsPage } from '../pages/ops/OpsImportsPage'
 import { OpsImportCnesPage } from '../pages/ops/OpsImportCnesPage'
+import { OpsCboSearchPage } from '../pages/ops/OpsCboSearchPage'
+import { OpsCidSearchPage } from '../pages/ops/OpsCidSearchPage'
+import { OpsProcedureSearchPage } from '../pages/ops/OpsProcedureSearchPage'
+import { OpsCboProcedureSearchPage } from '../pages/ops/OpsCboProcedureSearchPage'
+import { OpsCidProcedureSearchPage } from '../pages/ops/OpsCidProcedureSearchPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -212,6 +217,11 @@ export const router = createBrowserRouter([
                   { path: '/ops/relatorios/ocorrencias',   element: <OpsOccurrencesReportPage /> },
                   { path: '/ops/relatorios/atividade',     element: <OpsActivityReportPage /> },
                   { path: '/ops/pesquisas',                element: <OpsSearchesPage /> },
+                  { path: '/ops/pesquisas/cbo',            element: <OpsCboSearchPage /> },
+                  { path: '/ops/pesquisas/cid',            element: <OpsCidSearchPage /> },
+                  { path: '/ops/pesquisas/procedimentos',  element: <OpsProcedureSearchPage /> },
+                  { path: '/ops/pesquisas/cbo-procedimentos', element: <OpsCboProcedureSearchPage /> },
+                  { path: '/ops/pesquisas/cid-procedimentos', element: <OpsCidProcedureSearchPage /> },
                 ],
               },
 
