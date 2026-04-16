@@ -9,7 +9,7 @@ import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { friendlyFieldName, friendlyValue, type RefMap } from './lib/historyLabels'
 import { toast } from '../../store/toastStore'
 import { promptDialog } from '../../store/dialogStore'
-import { formatCPF, formatDate, formatDateTime, formatPhone, calcAge, initials, cn } from '../../lib/utils'
+import { formatCPF, formatDate, formatDateTime, formatPhone, calcAge, birthdayHint, initials, cn } from '../../lib/utils'
 import { cepMask, cnsMask } from '../../lib/masks'
 
 const TABS = ['Dados', 'Histórico'] as const
@@ -187,9 +187,9 @@ export function HspPatientDetailPage() {
               cacheKey={patient.currentPhotoId ?? undefined}
               alt="Foto"
               className="w-full h-full object-cover"
-              fallback={initials(patient.name)}
+              fallback={initials(patient.socialName || patient.name)}
             />
-          ) : initials(patient.name)}
+          ) : initials(patient.socialName || patient.name)}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
           {nonEmpty([
@@ -204,12 +204,19 @@ export function HspPatientDetailPage() {
             ['Telefone', patient.phone ? formatPhone(patient.phone) : null],
             ['E-mail', patient.email || null],
             ['Plano', patient.planoTipo !== 'SUS' ? patient.planoTipo : null],
-          ]).map(([k, v]) => (
-            <div key={k}>
-              <p className="text-xs text-muted-foreground">{k}</p>
-              <p className="text-sm font-medium mt-0.5">{v}</p>
-            </div>
-          ))}
+          ]).map(([k, v]) => {
+            const bdHint = k === 'Nascimento' && patient.birthDate
+              ? birthdayHint(patient.birthDate) : null
+            return (
+              <div key={k}>
+                <p className="text-xs text-muted-foreground">{k}</p>
+                <p className="text-sm font-medium mt-0.5">{v}</p>
+                {bdHint && (
+                  <p className="text-[11px] text-primary mt-0.5 capitalize">{bdHint}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
