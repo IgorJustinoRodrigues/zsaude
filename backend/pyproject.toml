@@ -24,6 +24,19 @@ dependencies = [
     "uuid-utils>=0.10.0",
     "openai>=1.50.0",
     "tenacity>=9.0.0",
+    # Reconhecimento facial (F2a): InsightFace + ONNX + pgvector. Tudo local,
+    # sem dependência de LLM pago. numpy fica em <2.0 porque a 0.7.3 do
+    # insightface ainda não é compatível com numpy 2.
+    #
+    # ml_dtypes pinado >=0.5 porque onnx>=1.19 usa `float4_e2m1fn` (adicionado
+    # só na 0.5). onnx<1.19 não aceita numpy 1.x com todos recursos. Manter
+    # o par onnx+ml_dtypes casado evita ImportError no boot.
+    "insightface>=0.7.3",
+    "onnx>=1.16,<1.19",
+    "onnxruntime>=1.18.0",
+    "opencv-python-headless>=4.10.0",
+    "numpy<2.0",
+    "pgvector>=0.3.0",
 ]
 
 [dependency-groups]

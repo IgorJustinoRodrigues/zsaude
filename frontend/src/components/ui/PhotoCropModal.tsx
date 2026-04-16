@@ -1,8 +1,7 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
-import { Camera, Upload, X, Check, RotateCcw, SwitchCamera } from 'lucide-react'
-import { cn } from '../../lib/utils'
+import { Upload, X, Check, RotateCcw } from 'lucide-react'
 
 interface Props {
   onConfirm: (dataUrl: string) => void
@@ -10,7 +9,6 @@ interface Props {
 }
 
 type Mode = 'select' | 'crop'
-type Source = 'file' | 'camera'
 
 function centerAspectCrop(w: number, h: number): Crop {
   return centerCrop(
@@ -44,66 +42,13 @@ async function getCroppedDataUrl(
 }
 
 export function PhotoCropModal({ onConfirm, onClose }: Props) {
-  const [mode,       setMode]       = useState<Mode>('select')
-  const [source,     setSource]     = useState<Source>('file')
+  const [mode,           setMode]           = useState<Mode>('select')
   const [imgSrc,         setImgSrc]         = useState<string | null>(null)
   const [crop,           setCrop]           = useState<Crop>()
   const [completedCrop,  setCompletedCrop]  = useState<PixelCrop>()
-  const [facingMode,     setFacingMode]     = useState<'user' | 'environment'>('user')
-  const [camError,   setCamError]   = useState<string | null>(null)
 
-  const imgRef     = useRef<HTMLImageElement>(null)
-  const fileRef    = useRef<HTMLInputElement>(null)
-  const videoRef   = useRef<HTMLVideoElement>(null)
-  const streamRef  = useRef<MediaStream | null>(null)
-
-  // ── Câmera ────────────────────────────────────────────────────────────────
-
-  const startCamera = useCallback(async (facing: 'user' | 'environment') => {
-    setCamError(null)
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop())
-      streamRef.current = null
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
-      })
-      streamRef.current = stream
-      if (videoRef.current) videoRef.current.srcObject = stream
-    } catch {
-      setCamError('Não foi possível acessar a câmera. Verifique as permissões do navegador.')
-    }
-  }, [])
-
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach(t => t.stop())
-    streamRef.current = null
-  }, [])
-
-  useEffect(() => {
-    if (source === 'camera' && mode === 'select') startCamera(facingMode)
-    else stopCamera()
-    return stopCamera
-  }, [source, mode, facingMode, startCamera, stopCamera])
-
-  const capturePhoto = () => {
-    const video = videoRef.current
-    if (!video) return
-    const canvas = document.createElement('canvas')
-    canvas.width  = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d')!.drawImage(video, 0, 0)
-    stopCamera()
-    setImgSrc(canvas.toDataURL('image/jpeg'))
-    setMode('crop')
-  }
-
-  const flipCamera = () => {
-    const next = facingMode === 'user' ? 'environment' : 'user'
-    setFacingMode(next)
-    startCamera(next)
-  }
+  const imgRef  = useRef<HTMLImageElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   // ── Arquivo ───────────────────────────────────────────────────────────────
 
@@ -137,7 +82,6 @@ export function PhotoCropModal({ onConfirm, onClose }: Props) {
     setCrop(undefined)
     setCompletedCrop(undefined)
     setMode('select')
-    if (source === 'camera') startCamera(facingMode)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -165,33 +109,11 @@ export function PhotoCropModal({ onConfirm, onClose }: Props) {
           </button>
         </div>
 
-        {/* Seleção de fonte */}
-        {mode === 'select' && (
-          <div className="flex border-b border-slate-100 dark:border-slate-800">
-            {(['file', 'camera'] as const).map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSource(s)}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors',
-                  source === s
-                    ? 'text-sky-600 dark:text-sky-400 border-b-2 border-sky-500'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
-                )}
-              >
-                {s === 'file' ? <Upload size={15} /> : <Camera size={15} />}
-                {s === 'file' ? 'Arquivo' : 'Câmera'}
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Conteúdo */}
         <div className="p-5">
 
           {/* Selecionar arquivo */}
-          {mode === 'select' && source === 'file' && (
+          {mode === 'select' && (
             <div
               onClick={() => fileRef.current?.click()}
               className="flex flex-col items-center justify-center gap-3 h-52 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer hover:border-sky-400 dark:hover:border-sky-500 hover:bg-sky-50/50 dark:hover:bg-sky-950/20 transition-colors"
@@ -204,47 +126,6 @@ export function PhotoCropModal({ onConfirm, onClose }: Props) {
                 <p className="text-xs text-slate-400 mt-1">PNG, JPG, WEBP — até 10 MB</p>
               </div>
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-            </div>
-          )}
-
-          {/* Câmera */}
-          {mode === 'select' && source === 'camera' && (
-            <div className="relative">
-              {camError ? (
-                <div className="flex flex-col items-center justify-center gap-2 h-52 rounded-xl bg-slate-100 dark:bg-slate-800 text-center px-4">
-                  <Camera size={28} className="text-slate-300 dark:text-slate-600" />
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{camError}</p>
-                </div>
-              ) : (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full rounded-xl bg-black"
-                    style={{ maxHeight: 260, objectFit: 'cover' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={flipCamera}
-                    className="absolute top-2 right-2 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
-                    title="Virar câmera"
-                  >
-                    <SwitchCamera size={16} />
-                  </button>
-                </>
-              )}
-
-              <button
-                type="button"
-                onClick={capturePhoto}
-                disabled={!!camError}
-                className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Camera size={15} />
-                Tirar foto
-              </button>
             </div>
           )}
 

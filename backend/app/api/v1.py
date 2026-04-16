@@ -13,6 +13,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.cnes.router import router as cnes_router
 from app.modules.dgn.router import router as dgn_router
 from app.modules.hsp.router import router as hsp_router
+from app.modules.hsp.face_router import router as hsp_face_router
 from app.modules.permissions.admin_router import (
     access_router as roles_admin_access_router,
     router as roles_admin_router,
@@ -45,6 +46,7 @@ api_v1.include_router(reference_router)
 api_v1.include_router(audit_router)
 api_v1.include_router(dgn_router)
 api_v1.include_router(hsp_router)
+api_v1.include_router(hsp_face_router)
 api_v1.include_router(cnes_router)
 api_v1.include_router(sigtap_router)
 api_v1.include_router(sigtap_search_router)

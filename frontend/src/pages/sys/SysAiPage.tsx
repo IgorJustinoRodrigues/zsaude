@@ -19,16 +19,43 @@ import { cn } from '../../lib/utils'
 const CAPABILITIES: Capability[] = ['chat', 'chat_vision', 'embed_text', 'embed_image', 'transcribe']
 const SDK_KINDS: SdkKind[] = ['openai', 'openrouter', 'anthropic', 'ollama']
 
+// Labels amigáveis pra capabilities (o slug técnico vai pro backend).
+const CAPABILITY_LABELS: Record<string, string> = {
+  chat: 'Conversa (texto)',
+  chat_vision: 'Conversa com imagem',
+  embed_text: 'Vetorização de texto',
+  embed_image: 'Vetorização de imagem',
+  transcribe: 'Transcrição de áudio',
+}
+
+const capLabel = (c: string) => CAPABILITY_LABELS[c] ?? c
+
+const SCOPE_LABELS: Record<string, string> = {
+  global: 'Padrão do sistema',
+  municipality: 'Todo o município',
+  module: 'Um módulo do município',
+}
+const scopeLabel = (s: string) => SCOPE_LABELS[s] ?? s
+
+// Formata centavos de USD como "$1.23" (ou "$0.002500" quando precisa de precisão).
+function formatUSD(cents: number, digits = 2): string {
+  const value = cents / 100
+  if (value > 0 && value < 0.01 && digits <= 2) {
+    return `$${value.toFixed(4)}`
+  }
+  return `$${value.toFixed(digits)}`
+}
+
 type Tab = 'keys' | 'routes' | 'quotas' | 'usage' | 'providers' | 'models' | 'prompts'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode; group: 'scope' | 'catalog' }[] = [
-  { id: 'keys',      label: 'Chaves',    icon: <KeyRound size={14} />,  group: 'scope' },
-  { id: 'routes',    label: 'Rotas',     icon: <RouteIcon size={14} />, group: 'scope' },
-  { id: 'quotas',    label: 'Quotas',    icon: <Gauge size={14} />,     group: 'scope' },
-  { id: 'usage',     label: 'Consumo',   icon: <BarChart3 size={14} />, group: 'scope' },
-  { id: 'providers', label: 'Provedores',icon: <Server size={14} />,    group: 'catalog' },
-  { id: 'models',    label: 'Modelos',   icon: <Cpu size={14} />,       group: 'catalog' },
-  { id: 'prompts',   label: 'Prompts',   icon: <ScrollText size={14} />,group: 'catalog' },
+  { id: 'keys',      label: 'Chaves de API',    icon: <KeyRound size={14} />,  group: 'scope' },
+  { id: 'routes',    label: 'Roteamento',       icon: <RouteIcon size={14} />, group: 'scope' },
+  { id: 'quotas',    label: 'Limites de uso',   icon: <Gauge size={14} />,     group: 'scope' },
+  { id: 'usage',     label: 'Consumo',          icon: <BarChart3 size={14} />, group: 'scope' },
+  { id: 'providers', label: 'Provedores',       icon: <Server size={14} />,    group: 'catalog' },
+  { id: 'models',    label: 'Modelos',          icon: <Cpu size={14} />,       group: 'catalog' },
+  { id: 'prompts',   label: 'Instruções (prompts)', icon: <ScrollText size={14} />,group: 'catalog' },
 ]
 
 // ─── Página ──────────────────────────────────────────────────────────────────
@@ -54,17 +81,22 @@ export function SysAiPage() {
           <Sparkles size={18} />
         </div>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Gateway de IA</h1>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Integração de IA</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Catálogo, chaves, rotas e quotas. Config global é o padrão de todos os municípios — personalize apenas quando necessário.
+            Aqui você define como a IA funciona no sistema: qual provedor usar, que
+            chave de acesso, quais limites de gasto. A configuração padrão vale
+            para <strong>todos os municípios</strong>. Você só personaliza quando um
+            município específico precisar de algo diferente.
           </p>
         </div>
       </header>
 
       {/* Seletor de escopo — só aparece nas tabs que aceitam escopo */}
       {scopeSupports(tab) && (
-        <div className="mb-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 flex items-center gap-3">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Escopo:</span>
+        <div className="mb-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Você está configurando:
+          </span>
           <button
             onClick={() => setScopeMunId(null)}
             className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border',
@@ -72,17 +104,17 @@ export function SysAiPage() {
                 ? 'bg-violet-600 border-violet-600 text-white'
                 : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800')}
           >
-            <Globe size={13} /> Global (padrão)
+            <Globe size={13} /> Para todos os municípios
           </button>
           <div className="h-5 w-px bg-slate-200 dark:bg-slate-700" />
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 min-w-[220px]">
             <MapPin size={13} className="text-slate-400" />
             <select
               value={scopeMunId ?? ''}
               onChange={e => setScopeMunId(e.target.value || null)}
               className="flex-1 max-w-xs text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
             >
-              <option value="">Personalizar um município...</option>
+              <option value="">Só para um município específico...</option>
               {municipalities.map(m => (
                 <option key={m.id} value={m.id}>{m.name}/{m.state}</option>
               ))}
@@ -90,7 +122,7 @@ export function SysAiPage() {
           </div>
           {scopeMunId && (
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
-              personalização
+              configuração específica
             </span>
           )}
         </div>
@@ -175,8 +207,8 @@ function KeysTab({ scopeMunId }: { scopeMunId: string | null }) {
     <div className="space-y-3">
       <InfoBar>
         {scopeMunId
-          ? 'Chaves configuradas aqui substituem a global apenas para este município.'
-          : 'Chaves globais são o padrão usado por todos os municípios. Cifradas com Fernet em repouso.'}
+          ? 'Esta chave será usada apenas por este município. Se não cadastrar aqui, ele continua usando a chave padrão configurada para todos.'
+          : 'Esta é a chave principal que todo o sistema vai usar. Ela fica criptografada no banco — ninguém consegue ver ela depois de salvar, só os últimos 4 dígitos.'}
       </InfoBar>
 
       {loading ? <Spinner /> : (
@@ -192,33 +224,33 @@ function KeysTab({ scopeMunId }: { scopeMunId: string | null }) {
                   </div>
                   {k?.configured ? (
                     <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
-                      <CheckCircle2 size={11} /> configurada
+                      <CheckCircle2 size={11} /> ativa
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
-                      <XCircle size={11} /> sem chave
+                      <XCircle size={11} /> não configurada
                     </span>
                   )}
                 </div>
                 {k?.configured && (
-                  <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5 font-mono">
-                    <div>...{k.keyLast4}</div>
-                    <div className="text-[10px]">fp: {k.keyFingerprint}</div>
-                    {k.baseUrlOverride && <div className="text-[10px] break-all">url: {k.baseUrlOverride}</div>}
+                  <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
+                    <div>Termina em: <span className="font-mono">...{k.keyLast4}</span></div>
+                    <div className="text-[10px] font-mono">identificador: {k.keyFingerprint}</div>
+                    {k.baseUrlOverride && <div className="text-[10px] font-mono break-all">URL: {k.baseUrlOverride}</div>}
                   </div>
                 )}
                 <div className="flex gap-2 mt-auto">
                   <button onClick={() => setEditing(p)}
                     className="flex-1 px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-800">
-                    {k?.configured ? 'Atualizar' : 'Configurar'}
+                    {k?.configured ? 'Trocar chave' : 'Cadastrar chave'}
                   </button>
                   {k?.configured && (
                     <>
-                      <button onClick={() => handleTest(p.id, p.slug)} title="Testar"
+                      <button onClick={() => handleTest(p.id, p.slug)} title="Testar se está funcionando"
                         className="px-2.5 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-800">
                         <Zap size={12} />
                       </button>
-                      <button onClick={() => handleDelete(p.id)} title="Remover"
+                      <button onClick={() => handleDelete(p.id)} title="Remover chave"
                         className="px-2.5 py-1.5 text-xs border border-rose-200 dark:border-rose-800 text-rose-600 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40">
                         <Trash2 size={12} />
                       </button>
@@ -228,7 +260,7 @@ function KeysTab({ scopeMunId }: { scopeMunId: string | null }) {
               </div>
             )
           })}
-          {providers.length === 0 && <div className="col-span-2 py-6 text-center text-sm text-slate-500">Nenhum provedor ativo no catálogo.</div>}
+          {providers.length === 0 && <div className="col-span-2 py-6 text-center text-sm text-slate-500">Nenhum provedor de IA cadastrado no catálogo.</div>}
         </div>
       )}
 
@@ -258,7 +290,7 @@ function KeyEditor({
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
-    if (!current && !apiKey) { toast.error('Informe a chave.'); return }
+    if (!current && !apiKey) { toast.error('Cole a chave antes de salvar.'); return }
     setSaving(true)
     try {
       await sysAiApi.putKey({
@@ -274,34 +306,45 @@ function KeyEditor({
   }
 
   return (
-    <Modal title={`${provider.displayName} — chave ${scopeMunId ? 'municipal' : 'global'}`} onClose={onClose}>
+    <Modal title={`${provider.displayName} — ${scopeMunId ? 'chave específica do município' : 'chave padrão do sistema'}`} onClose={onClose}>
       <div className="space-y-4">
         <div>
           <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            API key
-            {current && !apiKey && <span className="text-emerald-600 ml-2">· mantém a atual (...{current.keyLast4})</span>}
+            Chave de API
+            {current && !apiKey && <span className="text-emerald-600 ml-2">· mantendo a atual (termina em {current.keyLast4})</span>}
           </label>
           <div className="mt-1 flex gap-1">
             <input type={show ? 'text' : 'password'} value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              placeholder={current ? '••••••••  (preencher só pra rotacionar)' : 'sk-...'}
+              placeholder={current ? '••••••••  (cole uma nova só se quiser trocar)' : 'Cole sua chave aqui (ex: sk-...)'}
               className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" />
             <button type="button" onClick={() => setShow(!show)}
-              className="px-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+              className="px-3 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+              title={show ? 'Ocultar' : 'Mostrar'}>
               {show ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            A chave é criptografada antes de ser salva. Depois você só consegue
+            ver os últimos 4 caracteres.
+          </p>
         </div>
-        <LabeledInput label="Base URL override (opcional)" value={baseUrl} onChange={setBaseUrl}
-          placeholder={provider.baseUrlDefault || 'default do provider'} mono />
+        <LabeledInput
+          label="Endereço do servidor (opcional)"
+          value={baseUrl} onChange={setBaseUrl}
+          placeholder={provider.baseUrlDefault || 'Deixe em branco para usar o padrão'}
+          mono
+        />
         {provider.sdkKind === 'ollama' && (
           <p className="text-[11px] text-amber-600 dark:text-amber-400 -mt-2">
-            Ollama costuma rodar em http://localhost:11434. Configure aqui a URL acessível pelo backend.
+            O Ollama roda localmente. Informe a URL onde o backend consegue
+            acessar — normalmente http://localhost:11434 ou o endereço
+            interno da sua rede.
           </p>
         )}
         <label className="inline-flex items-center gap-2 text-sm">
           <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />
-          Ativa
+          Chave habilitada
         </label>
       </div>
       <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
@@ -339,8 +382,8 @@ function RoutesTab({ scopeMunId }: { scopeMunId: string | null }) {
     <div className="space-y-3">
       <InfoBar>
         {scopeMunId
-          ? 'Rotas deste município têm prioridade sobre as globais. Múltiplas linhas com prioridades crescentes formam a cadeia de failover.'
-          : 'Rotas globais são o roteamento padrão (capability → modelo). Prioridade menor = tentada primeiro.'}
+          ? 'Estas rotas se aplicam apenas a este município. Se ele não tiver uma rota própria para algum tipo de tarefa, usa a padrão do sistema.'
+          : 'Aqui você decide qual modelo de IA vai atender cada tipo de tarefa (conversa, leitura de imagem, embeddings). Pode cadastrar mais de uma opção para cada — se a primeira falhar, o sistema tenta a próxima automaticamente.'}
       </InfoBar>
 
       <div className="flex justify-end">
@@ -354,12 +397,12 @@ function RoutesTab({ scopeMunId }: { scopeMunId: string | null }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-500">
               <tr>
-                <th className="text-left px-3 py-2">Escopo</th>
-                <th className="text-left px-3 py-2">Capability</th>
+                <th className="text-left px-3 py-2">Alcance</th>
+                <th className="text-left px-3 py-2">Tarefa</th>
                 <th className="text-left px-3 py-2">Módulo</th>
-                <th className="text-left px-3 py-2">Provider</th>
+                <th className="text-left px-3 py-2">Provedor</th>
                 <th className="text-left px-3 py-2">Modelo</th>
-                <th className="text-right px-3 py-2">Priority</th>
+                <th className="text-right px-3 py-2" title="Menor = tentada primeiro">Ordem</th>
                 <th className="text-center px-3 py-2">Ativa</th>
                 <th className="w-12"></th>
               </tr>
@@ -367,21 +410,21 @@ function RoutesTab({ scopeMunId }: { scopeMunId: string | null }) {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {routes.map(r => (
                 <tr key={r.id}>
-                  <td className="px-3 py-2 text-xs">{r.scope}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{r.capability}</td>
+                  <td className="px-3 py-2 text-xs">{scopeLabel(r.scope)}</td>
+                  <td className="px-3 py-2 text-xs">{capLabel(r.capability)}</td>
                   <td className="px-3 py-2 text-xs">{r.moduleCode || '—'}</td>
                   <td className="px-3 py-2 text-xs">{r.providerSlug}</td>
                   <td className="px-3 py-2 font-mono text-xs">{r.modelSlug}</td>
                   <td className="px-3 py-2 text-right font-mono text-xs">{r.priority}</td>
                   <td className="px-3 py-2 text-center">{r.active ? <CheckCircle2 size={14} className="inline text-emerald-500" /> : <XCircle size={14} className="inline text-rose-500" />}</td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => handleDelete(r)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 size={13} /></button>
+                    <button onClick={() => handleDelete(r)} className="p-1 text-slate-400 hover:text-rose-600" title="Remover"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               ))}
               {routes.length === 0 && (
                 <tr><td colSpan={8} className="py-6 text-center text-slate-400 text-sm">
-                  {scopeMunId ? 'Sem rotas personalizadas. Município usa as globais.' : 'Nenhuma rota global.'}
+                  {scopeMunId ? 'Este município ainda não tem rotas próprias — está usando as padrão do sistema.' : 'Nenhuma rota padrão cadastrada ainda.'}
                 </td></tr>
               )}
             </tbody>
@@ -434,27 +477,41 @@ function RouteEditor({
     <Modal title="Nova rota" onClose={onClose}>
       <div className="space-y-4">
         {scopeMunId ? (
-          <LabeledSelect label="Escopo" value={mode} onChange={v => setMode(v as typeof mode)}
+          <LabeledSelect label="Alcance desta rota" value={mode} onChange={v => setMode(v as typeof mode)}
             options={[
-              { value: 'municipality', label: 'Município inteiro' },
-              { value: 'module', label: 'Por módulo no município' },
+              { value: 'municipality', label: 'Todo o município' },
+              { value: 'module', label: 'Apenas um módulo deste município' },
             ]} />
         ) : (
-          <div className="text-xs text-slate-500">Escopo: <strong>Global</strong> (selecione um município no topo pra personalizar).</div>
+          <div className="text-xs text-slate-500">
+            Alcance: <strong>Padrão do sistema</strong> (vale para todos os municípios).
+            Se quiser configurar só para um município, escolha ele no topo da página.
+          </div>
         )}
         {mode === 'module' && (
           <LabeledSelect label="Módulo" value={moduleCode} onChange={setModuleCode}
-            options={['hsp','cln','dgn','ops','fsc','pln'].map(m => ({ value: m, label: m }))} />
+            options={[
+              { value: 'hsp', label: 'HSP — Hospitalar' },
+              { value: 'cln', label: 'CLN — Clínica' },
+              { value: 'dgn', label: 'DGN — Diagnóstico' },
+              { value: 'ops', label: 'OPS — Operações' },
+              { value: 'fsc', label: 'FSC — Fiscal' },
+              { value: 'pln', label: 'PLN — Planos' },
+            ]} />
         )}
-        <LabeledSelect label="Capability" value={capability} onChange={setCapability}
-          options={CAPABILITIES.map(c => ({ value: c, label: c }))} />
-        <LabeledSelect label="Modelo" value={modelId} onChange={setModelId}
+        <LabeledSelect label="Tipo de tarefa" value={capability} onChange={setCapability}
+          options={CAPABILITIES.map(c => ({ value: c, label: capLabel(c) }))} />
+        <LabeledSelect label="Modelo que vai atender" value={modelId} onChange={setModelId}
           options={models.map(m => ({ value: m.id, label: `${m.providerSlug} · ${m.slug}` }))} />
         <div className="grid grid-cols-2 gap-3">
-          <LabeledNumber label="Priority (menor = tenta primeiro)" value={priority} onChange={setPriority} />
+          <LabeledNumber
+            label="Ordem de tentativa"
+            hint="0 = tenta primeiro. Cadastre outra rota com número maior para usar como reserva."
+            value={priority} onChange={setPriority}
+          />
           <label className="inline-flex items-center gap-2 text-sm self-end pb-2">
             <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />
-            Ativa
+            Rota ativa
           </label>
         </div>
       </div>
@@ -513,30 +570,58 @@ function QuotasTab({ scopeMunId }: { scopeMunId: string | null }) {
 
   if (loading) return <Spinner />
 
+  // UI trabalha em USD (o usuário digita "$12.50"); convertemos pra cents
+  // no momento do save.
+  const maxCostUsd = maxCost / 100
+
   return (
     <div className="space-y-4">
       <InfoBar warn>
-        0 = sem limite. Na F1 os valores são apenas registrados; aplicação real (rate-limit Valkey) entra na F2.
+        Use <strong>0</strong> quando não quiser aplicar limite naquele item.
+        Nesta primeira versão os valores ficam registrados mas o bloqueio
+        automático ainda não está ativo — serve como referência para
+        monitorar o consumo.
       </InfoBar>
 
       <div className="grid grid-cols-2 gap-4">
-        <LabeledNumber label="Tokens/mês (0 = ilimitado)" value={maxTokens} onChange={setMaxTokens} />
-        <LabeledNumber label="Custo máximo (¢/mês)" value={maxCost} onChange={setMaxCost} />
-        <LabeledNumber label="Requisições/mês" value={maxRequests} onChange={setMaxRequests} />
-        <LabeledNumber label="Tokens por usuário/mês" value={maxPerUser} onChange={setMaxPerUser} />
+        <LabeledNumber
+          label="Tokens por mês"
+          hint="Limite total de tokens (entrada + saída). 0 = sem limite."
+          value={maxTokens} onChange={setMaxTokens}
+        />
+        <LabeledNumber
+          label="Gasto máximo por mês (USD)"
+          hint="Limite em dólares. Use decimais — ex: 25.50"
+          value={maxCostUsd} step={0.01}
+          onChange={v => setMaxCost(Math.round(v * 100))}
+        />
+        <LabeledNumber
+          label="Chamadas por mês"
+          hint="Número máximo de chamadas à IA. 0 = sem limite."
+          value={maxRequests} onChange={setMaxRequests}
+        />
+        <LabeledNumber
+          label="Tokens por usuário/mês"
+          hint="Limite individual de cada usuário. 0 = sem limite."
+          value={maxPerUser} onChange={setMaxPerUser}
+        />
       </div>
       <label className="inline-flex items-center gap-2 text-sm">
         <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />
-        Quota ativa
+        Limites habilitados
       </label>
 
       <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-800">
         {quota ? (
-          <button onClick={handleDelete} className="text-xs text-rose-600 hover:underline">Remover quota</button>
+          <button onClick={handleDelete} className="text-xs text-rose-600 hover:underline">
+            Remover limites
+          </button>
         ) : <span />}
         <button onClick={handleSave} disabled={saving}
           className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm hover:bg-violet-700 disabled:opacity-60">
-          {saving ? <><Loader2 size={13} className="animate-spin" /> Salvando...</> : <><Save size={14} /> {quota ? 'Atualizar' : 'Criar'} quota</>}
+          {saving
+            ? <><Loader2 size={13} className="animate-spin" /> Salvando...</>
+            : <><Save size={14} /> {quota ? 'Atualizar limites' : 'Salvar limites'}</>}
         </button>
       </div>
     </div>
@@ -570,19 +655,19 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
     <div className="space-y-4">
       <InfoBar>
         {scopeMunId
-          ? 'Consumo apenas deste município.'
-          : 'Consumo consolidado de todos os municípios + chamadas globais.'}
+          ? 'Lista de chamadas à IA feitas apenas por este município.'
+          : 'Tudo que foi consumido no sistema — somando todos os municípios e as chamadas que caíram na configuração padrão.'}
       </InfoBar>
 
       {loading && <Spinner />}
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Requisições" value={String(summary.requests)} />
+          <StatCard label="Chamadas" value={String(summary.requests)} />
           <StatCard label="Sucesso" value={String(summary.successCount)} accent="emerald" />
           <StatCard label="Falhas" value={String(summary.failureCount)} accent={summary.failureCount > 0 ? 'rose' : undefined} />
-          <StatCard label="Tokens" value={`${summary.tokensIn + summary.tokensOut}`} />
-          <StatCard label="Custo (¢)" value={String(summary.totalCostCents)} accent="violet" />
+          <StatCard label="Tokens usados" value={(summary.tokensIn + summary.tokensOut).toLocaleString('pt-BR')} />
+          <StatCard label="Custo total" value={formatUSD(summary.totalCostCents)} accent="violet" />
         </div>
       )}
 
@@ -596,26 +681,26 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-500">
             <tr>
-              <th className="text-left px-3 py-2">Quando</th>
-              <th className="text-left px-3 py-2">Operation</th>
+              <th className="text-left px-3 py-2">Data e hora</th>
+              <th className="text-left px-3 py-2">Tarefa</th>
               <th className="text-left px-3 py-2">Módulo</th>
               <th className="text-left px-3 py-2">Modelo</th>
               <th className="text-right px-3 py-2">Tokens</th>
-              <th className="text-right px-3 py-2">¢</th>
-              <th className="text-right px-3 py-2">ms</th>
-              <th className="text-center px-3 py-2">OK</th>
+              <th className="text-right px-3 py-2">Custo</th>
+              <th className="text-right px-3 py-2" title="Tempo de resposta">Tempo</th>
+              <th className="text-center px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
             {(list?.items ?? []).map(l => (
               <tr key={l.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">{new Date(l.at).toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap">{new Date(l.at).toLocaleString('pt-BR')}</td>
                 <td className="px-3 py-2 font-mono text-xs">{l.operationSlug}</td>
                 <td className="px-3 py-2 text-xs">{l.moduleCode}</td>
                 <td className="px-3 py-2 text-xs">{l.providerSlug}/{l.modelSlug}</td>
-                <td className="px-3 py-2 text-right font-mono text-xs">{l.tokensIn + l.tokensOut}</td>
-                <td className="px-3 py-2 text-right font-mono text-xs">{l.totalCostCents}</td>
-                <td className="px-3 py-2 text-right font-mono text-xs">{l.latencyMs}</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{(l.tokensIn + l.tokensOut).toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{formatUSD(l.totalCostCents)}</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{(l.latencyMs / 1000).toFixed(2)}s</td>
                 <td className="px-3 py-2 text-center">
                   {l.success
                     ? <CheckCircle2 size={13} className="inline text-emerald-500" />
@@ -623,7 +708,7 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
                 </td>
               </tr>
             ))}
-            {(list?.items ?? []).length === 0 && <tr><td colSpan={8} className="py-6 text-center text-sm text-slate-400">Nenhum consumo ainda.</td></tr>}
+            {(list?.items ?? []).length === 0 && <tr><td colSpan={8} className="py-6 text-center text-sm text-slate-400">Nenhuma chamada à IA registrada ainda.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -667,9 +752,15 @@ function ProvidersTab() {
 
   return (
     <div className="space-y-3">
+      <InfoBar>
+        Provedores são as empresas ou serviços que disponibilizam IA (OpenAI,
+        OpenRouter, Ollama, etc). Só liste aqui os que sua organização vai
+        usar — para cada um você cadastra uma chave depois.
+      </InfoBar>
+
       <div className="flex justify-between items-center">
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {items.length} provedor{items.length !== 1 ? 'es' : ''}
+          {items.length} {items.length === 1 ? 'provedor cadastrado' : 'provedores cadastrados'}
         </p>
         <button onClick={() => setCreating(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-lg text-sm hover:bg-violet-700">
           <Plus size={13} /> Novo provedor
@@ -681,11 +772,11 @@ function ProvidersTab() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-500">
               <tr>
-                <th className="text-left px-3 py-2">Slug</th>
+                <th className="text-left px-3 py-2" title="Identificador técnico">Identificador</th>
                 <th className="text-left px-3 py-2">Nome</th>
-                <th className="text-left px-3 py-2">SDK</th>
-                <th className="text-left px-3 py-2">Base URL</th>
-                <th className="text-left px-3 py-2">Capabilities</th>
+                <th className="text-left px-3 py-2" title="Tipo de API/SDK">Tecnologia</th>
+                <th className="text-left px-3 py-2">Endereço padrão</th>
+                <th className="text-left px-3 py-2">Tarefas suportadas</th>
                 <th className="text-center px-3 py-2">Ativo</th>
                 <th className="w-20"></th>
               </tr>
@@ -700,7 +791,9 @@ function ProvidersTab() {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {p.capabilities.map(c => (
-                        <span key={c} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{c}</span>
+                        <span key={c} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title={c}>
+                          {capLabel(c)}
+                        </span>
                       ))}
                     </div>
                   </td>
@@ -708,8 +801,8 @@ function ProvidersTab() {
                     {p.active ? <CheckCircle2 size={14} className="inline text-emerald-500" /> : <XCircle size={14} className="inline text-rose-500" />}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => setEditing(p)} className="p-1 text-slate-400 hover:text-violet-600"><Pencil size={13} /></button>
-                    <button onClick={() => handleDelete(p)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 size={13} /></button>
+                    <button onClick={() => setEditing(p)} className="p-1 text-slate-400 hover:text-violet-600" title="Editar"><Pencil size={13} /></button>
+                    <button onClick={() => handleDelete(p)} className="p-1 text-slate-400 hover:text-rose-600" title="Remover"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               ))}
@@ -759,36 +852,57 @@ function ProviderEditor({
   }
 
   return (
-    <Modal title={initial ? `Editar ${initial.slug}` : 'Novo provedor'} onClose={onClose}>
+    <Modal title={initial ? `Editar provedor: ${initial.slug}` : 'Novo provedor'} onClose={onClose}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <LabeledInput label="Slug" value={form.slug} onChange={v => setForm(f => ({ ...f, slug: v }))}
-            placeholder="openai, openrouter, ollama..." readOnly={!!initial} />
-          <LabeledSelect label="SDK" value={form.sdkKind}
+          <LabeledInput
+            label="Identificador"
+            hint="Nome curto em minúsculas, sem espaços (ex: openai, groq, local-lab)."
+            value={form.slug} onChange={v => setForm(f => ({ ...f, slug: v }))}
+            placeholder="openai" readOnly={!!initial} mono
+          />
+          <LabeledSelect
+            label="Tecnologia da API"
+            value={form.sdkKind}
             onChange={v => setForm(f => ({ ...f, sdkKind: v as SdkKind }))}
-            options={SDK_KINDS.map(v => ({ value: v, label: v }))} />
+            options={SDK_KINDS.map(v => ({ value: v, label: v }))}
+          />
         </div>
-        <LabeledInput label="Nome exibido" value={form.displayName}
-          onChange={v => setForm(f => ({ ...f, displayName: v }))} />
-        <LabeledInput label="Base URL padrão (opcional)" value={form.baseUrlDefault ?? ''}
+        <LabeledInput
+          label="Nome para exibir"
+          hint="Como aparece para os usuários (ex: OpenAI, Anthropic via OpenRouter)."
+          value={form.displayName}
+          onChange={v => setForm(f => ({ ...f, displayName: v }))}
+        />
+        <LabeledInput
+          label="Endereço padrão (opcional)"
+          hint="Só preencha se o provedor tem URL customizada. Ex: Ollama roda em http://localhost:11434."
+          value={form.baseUrlDefault ?? ''}
           onChange={v => setForm(f => ({ ...f, baseUrlDefault: v }))} mono
-          placeholder="https://api.openai.com/v1 ou http://localhost:11434" />
+          placeholder="https://api.openai.com/v1"
+        />
         <div>
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Capabilities</label>
-          <div className="mt-1 flex flex-wrap gap-1.5">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Tarefas que este provedor consegue atender
+          </label>
+          <p className="text-[11px] text-slate-500 mt-0.5 mb-2">
+            Marque só as que os modelos deste provedor suportam — evita tentar
+            usar vision num modelo só de texto, por exemplo.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
             {CAPABILITIES.map(c => (
               <button key={c} type="button" onClick={() => toggleCap(c)}
                 className={cn('text-xs px-2 py-1 rounded border',
                   form.capabilities.includes(c)
                     ? 'bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950/40 dark:border-violet-700'
                     : 'border-slate-200 dark:border-slate-700 text-slate-500')}
-              >{c}</button>
+              >{capLabel(c)}</button>
             ))}
           </div>
         </div>
         <label className="inline-flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active ?? true} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-          Ativo
+          Provedor habilitado
         </label>
       </div>
       <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
@@ -828,8 +942,15 @@ function ModelsTab() {
 
   return (
     <div className="space-y-3">
+      <InfoBar>
+        Modelos são as "versões" disponíveis de cada provedor (GPT-4o, Claude
+        Sonnet, Llama 3.2 etc). Preços em USD por milhão de tokens — ficam
+        congelados no histórico de consumo para não bagunçar relatórios
+        antigos quando o provedor mudar o valor.
+      </InfoBar>
+
       <div className="flex justify-between items-center gap-3">
-        <input placeholder="Filtrar por slug ou nome..." value={filter}
+        <input placeholder="Buscar por nome..." value={filter}
           onChange={e => setFilter(e.target.value)}
           className="flex-1 text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 bg-white dark:bg-slate-900" />
         <button onClick={() => setCreating(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 text-white rounded-lg text-sm hover:bg-violet-700 whitespace-nowrap">
@@ -842,13 +963,13 @@ function ModelsTab() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-500">
               <tr>
-                <th className="text-left px-3 py-2">Provider</th>
-                <th className="text-left px-3 py-2">Slug</th>
+                <th className="text-left px-3 py-2">Provedor</th>
+                <th className="text-left px-3 py-2">Identificador</th>
                 <th className="text-left px-3 py-2">Nome</th>
-                <th className="text-left px-3 py-2">Capabilities</th>
-                <th className="text-right px-3 py-2">In ¢/Mtok</th>
-                <th className="text-right px-3 py-2">Out ¢/Mtok</th>
-                <th className="text-right px-3 py-2">Context</th>
+                <th className="text-left px-3 py-2">Tarefas</th>
+                <th className="text-right px-3 py-2" title="Preço por 1 milhão de tokens de entrada">Entrada (USD/1M)</th>
+                <th className="text-right px-3 py-2" title="Preço por 1 milhão de tokens de saída">Saída (USD/1M)</th>
+                <th className="text-right px-3 py-2" title="Tamanho máximo de contexto">Contexto</th>
                 <th className="text-center px-3 py-2">Ativo</th>
                 <th className="w-16"></th>
               </tr>
@@ -862,19 +983,23 @@ function ModelsTab() {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       {m.capabilities.map(c => (
-                        <span key={c} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">{c}</span>
+                        <span key={c} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300" title={c}>
+                          {capLabel(c)}
+                        </span>
                       ))}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">{m.inputCostPerMtok}</td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">{m.outputCostPerMtok}</td>
-                  <td className="px-3 py-2 text-right font-mono text-xs">{m.maxContext ?? '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{formatUSD(m.inputCostPerMtok)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{formatUSD(m.outputCostPerMtok)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">
+                    {m.maxContext ? `${m.maxContext.toLocaleString('pt-BR')} tokens` : '—'}
+                  </td>
                   <td className="px-3 py-2 text-center">
                     {m.active ? <CheckCircle2 size={14} className="inline text-emerald-500" /> : <XCircle size={14} className="inline text-rose-500" />}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => setEditing(m)} className="p-1 text-slate-400 hover:text-violet-600"><Pencil size={13} /></button>
-                    <button onClick={() => handleDelete(m)} className="p-1 text-slate-400 hover:text-rose-600"><Trash2 size={13} /></button>
+                    <button onClick={() => setEditing(m)} className="p-1 text-slate-400 hover:text-violet-600" title="Editar"><Pencil size={13} /></button>
+                    <button onClick={() => handleDelete(m)} className="p-1 text-slate-400 hover:text-rose-600" title="Remover"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               ))}
@@ -928,20 +1053,35 @@ function ModelEditor({
     finally { setSaving(false) }
   }
 
+  // UI em USD, salva em centavos.
+  const inCostUsd = form.inputCostPerMtok / 100
+  const outCostUsd = form.outputCostPerMtok / 100
+
   return (
-    <Modal title={initial ? `Editar ${initial.slug}` : 'Novo modelo'} onClose={onClose}>
+    <Modal title={initial ? `Editar modelo: ${initial.slug}` : 'Novo modelo'} onClose={onClose}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <LabeledSelect label="Provider" value={form.providerId}
+          <LabeledSelect label="Provedor" value={form.providerId}
             onChange={v => setForm(f => ({ ...f, providerId: v }))}
             options={providers.map(p => ({ value: p.id, label: p.slug }))} />
-          <LabeledInput label="Slug" value={form.slug}
-            onChange={v => setForm(f => ({ ...f, slug: v }))} placeholder="gpt-4o-mini..." />
+          <LabeledInput
+            label="Identificador do modelo"
+            hint="Valor exato exigido pela API do provedor (ex: gpt-4o-mini)."
+            value={form.slug}
+            onChange={v => setForm(f => ({ ...f, slug: v }))}
+            placeholder="gpt-4o-mini" mono
+          />
         </div>
-        <LabeledInput label="Nome exibido" value={form.displayName}
-          onChange={v => setForm(f => ({ ...f, displayName: v }))} />
+        <LabeledInput
+          label="Nome para exibir"
+          hint="Como aparece nas listas. Ex: GPT-4o mini"
+          value={form.displayName}
+          onChange={v => setForm(f => ({ ...f, displayName: v }))}
+        />
         <div>
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Capabilities</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Tarefas que este modelo consegue fazer
+          </label>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {CAPABILITIES.map(c => (
               <button key={c} type="button" onClick={() => toggleCap(c)}
@@ -949,21 +1089,33 @@ function ModelEditor({
                   form.capabilities.includes(c)
                     ? 'bg-violet-100 border-violet-300 text-violet-700 dark:bg-violet-950/40 dark:border-violet-700'
                     : 'border-slate-200 dark:border-slate-700 text-slate-500')}
-              >{c}</button>
+              >{capLabel(c)}</button>
             ))}
           </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <LabeledNumber label="In (¢/Mtok)" value={form.inputCostPerMtok}
-            onChange={v => setForm(f => ({ ...f, inputCostPerMtok: v }))} />
-          <LabeledNumber label="Out (¢/Mtok)" value={form.outputCostPerMtok}
-            onChange={v => setForm(f => ({ ...f, outputCostPerMtok: v }))} />
-          <LabeledNumber label="Max context" value={form.maxContext ?? 0}
-            onChange={v => setForm(f => ({ ...f, maxContext: v || null }))} />
+          <LabeledNumber
+            label="Preço entrada (USD/1M)"
+            hint="Quanto custam 1 milhão de tokens de entrada."
+            value={inCostUsd} step={0.01}
+            onChange={v => setForm(f => ({ ...f, inputCostPerMtok: Math.round(v * 100) }))}
+          />
+          <LabeledNumber
+            label="Preço saída (USD/1M)"
+            hint="Quanto custam 1 milhão de tokens de resposta."
+            value={outCostUsd} step={0.01}
+            onChange={v => setForm(f => ({ ...f, outputCostPerMtok: Math.round(v * 100) }))}
+          />
+          <LabeledNumber
+            label="Contexto máximo (tokens)"
+            hint="Ex: 128000 para GPT-4o. Deixe 0 se não souber."
+            value={form.maxContext ?? 0}
+            onChange={v => setForm(f => ({ ...f, maxContext: v || null }))}
+          />
         </div>
         <label className="inline-flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active ?? true} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-          Ativo
+          Modelo habilitado
         </label>
       </div>
       <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
@@ -988,7 +1140,9 @@ function PromptsTab() {
   return (
     <div className="space-y-3">
       <InfoBar warn>
-        Na F1 o prompt real vive no código Python das operations. O que você edita aqui é o registro auditável; entra em vigor quando o carregamento dinâmico for plugado (F3).
+        Cada instrução (prompt) diz como a IA deve executar uma tarefa.
+        Por enquanto, as instruções reais ficam no código — esta tela serve
+        apenas para registrar e auditar versões.
       </InfoBar>
 
       {loading ? <Spinner /> : (
@@ -999,16 +1153,18 @@ function PromptsTab() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{p.slug}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">v{p.version}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">versão {p.version}</span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{p.description || '—'}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{p.description || 'Sem descrição.'}</p>
                 </div>
-                <button onClick={() => setEditing(p)} className="p-1 text-slate-400 hover:text-violet-600"><Edit3 size={14} /></button>
+                <button onClick={() => setEditing(p)} className="p-1 text-slate-400 hover:text-violet-600" title="Editar">
+                  <Edit3 size={14} />
+                </button>
               </div>
               <pre className="mt-3 text-[11px] bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3 rounded max-h-40 overflow-auto whitespace-pre-wrap">{p.body}</pre>
             </div>
           ))}
-          {items.length === 0 && <div className="py-6 text-center text-slate-400 text-sm">Nenhum prompt.</div>}
+          {items.length === 0 && <div className="py-6 text-center text-slate-400 text-sm">Nenhuma instrução cadastrada.</div>}
         </div>
       )}
 
@@ -1039,12 +1195,18 @@ function PromptEditor({
   }
 
   return (
-    <Modal title={`${initial.slug} v${initial.version}`} onClose={onClose}>
+    <Modal title={`${initial.slug} · versão ${initial.version}`} onClose={onClose}>
       <div className="space-y-3">
-        <LabeledInput label="Descrição" value={form.description ?? ''}
-          onChange={v => setForm(f => ({ ...f, description: v }))} />
+        <LabeledInput
+          label="Descrição curta"
+          hint="Explica pra que serve essa instrução."
+          value={form.description ?? ''}
+          onChange={v => setForm(f => ({ ...f, description: v }))}
+        />
         <div>
-          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Body</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Texto da instrução
+          </label>
           <textarea value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
             className="mt-1 w-full text-xs font-mono border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
             rows={14} />
@@ -1123,24 +1285,35 @@ function ModalFooter({ onClose, onSave, saving }: { onClose: () => void; onSave:
 }
 
 function LabeledInput({
-  label, value, onChange, placeholder, readOnly, mono,
-}: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; readOnly?: boolean; mono?: boolean }) {
+  label, value, onChange, placeholder, readOnly, mono, hint,
+}: {
+  label: string; value: string; onChange: (v: string) => void
+  placeholder?: string; readOnly?: boolean; mono?: boolean; hint?: string
+}) {
   return (
     <div>
       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} readOnly={readOnly}
         className={cn('mt-1 w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500',
           mono && 'font-mono', readOnly && 'opacity-70 cursor-not-allowed')} />
+      {hint && <p className="text-[11px] text-slate-500 mt-1">{hint}</p>}
     </div>
   )
 }
 
-function LabeledNumber({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function LabeledNumber({
+  label, value, onChange, hint, step,
+}: {
+  label: string; value: number; onChange: (v: number) => void
+  hint?: string; step?: number
+}) {
   return (
     <div>
       <label className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
-      <input type="number" value={value} onChange={e => onChange(Number(e.target.value) || 0)}
+      <input type="number" value={value} step={step}
+        onChange={e => onChange(Number(e.target.value) || 0)}
         className="mt-1 w-full text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" />
+      {hint && <p className="text-[11px] text-slate-500 mt-1">{hint}</p>}
     </div>
   )
 }

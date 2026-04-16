@@ -2,7 +2,9 @@ name: zsaude-backend
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Imagem oficial do pgvector, baseada em Postgres 17.
+    # Necessária para a extensão `vector` usada no reconhecimento facial.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-zsaude}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zsaude_dev_password}
@@ -47,6 +49,10 @@ services:
       - "8008:8000"
     env_file:
       - .env
+    volumes:
+      # Cache persistente dos modelos do InsightFace (~320 MB na primeira
+      # execução). Sem este volume, cada rebuild baixa tudo de novo.
+      - insightface_models:/home/app/.insightface
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,3 +68,4 @@ services:
 volumes:
   postgres_data:
   valkey_data:
+  insightface_models:

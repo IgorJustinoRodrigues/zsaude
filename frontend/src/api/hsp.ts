@@ -201,6 +201,9 @@ export interface PatientRead extends PatientBaseFields {
   createdAt: string
   updatedAt: string
   documents: PatientDocument[]
+  // Presente apenas na resposta de POST /patients/{id}/photo. Indica se o
+  // rosto foi identificado e cadastrado no reconhecimento facial.
+  faceEnrollmentStatus?: 'ok' | 'no_face' | 'low_quality' | 'error' | 'disabled' | null
 }
 
 export interface PatientListItem {

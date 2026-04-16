@@ -270,10 +270,14 @@ async def upload_patient_photo(
         raise HTTPException(status_code=415, detail="Formato não suportado. Use JPEG, PNG ou WEBP.")
 
     svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
-    await svc.set_photo(patient_id, content=raw, mime_type=mime, width=width, height=height)
+    photo = await svc.set_photo(patient_id, content=raw, mime_type=mime, width=width, height=height)
     patient = await svc.get_patient(patient_id)
     docs = await svc.list_documents(patient_id)
-    return _patient_to_read(patient, docs)
+    read = _patient_to_read(patient, docs)
+    # Status do enrollment facial automático vai num campo transiente
+    # pra UI poder mostrar aviso quando não houver rosto detectado.
+    read.face_enrollment_status = getattr(photo, "face_status", None)
+    return read
 
 
 @router.get("/patients/{patient_id}/photo")

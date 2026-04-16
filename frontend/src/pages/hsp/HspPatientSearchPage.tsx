@@ -6,10 +6,12 @@ import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import { DocumentScannerModal } from './components/DocumentScannerModal'
 import { FaceRecognitionModal } from './components/FaceRecognitionModal'
+import { FaceMatchResults } from './components/FaceMatchResults'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientListItem, type PatientLookupParams } from '../../api/hsp'
 import { aiApi } from '../../api/ai'
+import type { MatchCandidate } from '../../api/face'
 import { toast } from '../../store/toastStore'
 import { cnsMask, cpfMask } from '../../lib/masks'
 import { validateCns, validateCpf } from '../../lib/validators'
@@ -43,6 +45,9 @@ export function HspPatientSearchPage() {
   const [showScanner, setShowScanner] = useState(false)
   const [showFace, setShowFace] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  // Candidatos retornados pelo reconhecimento facial (quando usuário usa
+  // "Reconhecer rosto" e há match). null = sem busca; [] = nenhum achado.
+  const [faceMatches, setFaceMatches] = useState<MatchCandidate[] | null>(null)
 
   const reset = () => {
     setSearched(false)
@@ -186,12 +191,12 @@ export function HspPatientSearchPage() {
 
       {showFace && (
         <FaceRecognitionModal
+          mode="match"
           onClose={() => setShowFace(false)}
-          onCapture={dataUrl => {
-            // TODO: enviar ao backend pra matching via embedding.
-            // Por enquanto, só mostra preview pra validar qualidade.
-            const w = window.open('')
-            w?.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto">`)
+          onMatched={candidates => {
+            // Modal já se fecha sozinho; aqui só renderizamos os candidatos
+            // na página pra médico conferir e clicar.
+            setFaceMatches(candidates)
           }}
         />
       )}
@@ -301,6 +306,16 @@ export function HspPatientSearchPage() {
           </button>
         </div>
       </div>
+
+      {/* Candidatos do reconhecimento facial (se houve busca por rosto) */}
+      {faceMatches !== null && (
+        <div className="mt-6">
+          <FaceMatchResults
+            candidates={faceMatches}
+            onDismiss={() => setFaceMatches(null)}
+          />
+        </div>
+      )}
 
       {/* Resultados */}
       {searched && !loading && (

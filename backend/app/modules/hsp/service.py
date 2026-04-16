@@ -503,6 +503,19 @@ class PatientService:
         patient.updated_by = self.ctx.user_id
         await self.db.flush()
 
+        # Enrollment facial (custo zero — InsightFace local). Não bloqueia
+        # o upload se falhar; status vai pro audit detail e o caller decide
+        # se mostra aviso ao usuário.
+        from app.modules.hsp import face_service
+        face_status = await face_service.enroll_from_photo(
+            self.db,
+            patient_id=patient.id,
+            photo_bytes=content,
+            photo_id=photo.id,
+        )
+        # Anexa status ao photo em memória pra o router enviar à UI.
+        photo.face_status = face_status  # type: ignore[attr-defined]
+
         await self._record_history(
             patient_id=patient.id,
             field_name="current_photo_id",
@@ -516,7 +529,12 @@ class PatientService:
             self.db, module="hsp", action="patient_photo_upload", severity="info",
             resource="patient_photo", resource_id=str(photo.id),
             description=f"Nova foto para {patient.name}",
-            details={"patientId": str(patient.id), "size": len(content), "mime": mime_type},
+            details={
+                "patientId": str(patient.id),
+                "size": len(content),
+                "mime": mime_type,
+                "faceEnrollment": face_status,
+            },
         )
         return photo
 

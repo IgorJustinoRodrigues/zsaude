@@ -26,3 +26,4 @@ from app.tenant_models.cnes import (  # noqa: F401
     CnesUnitQualification,
     CnesUnitService,
 )
+from app.tenant_models.face import PatientFaceEmbedding  # noqa: F401

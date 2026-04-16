@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Save, Camera, Trash2, Loader2, AlertCircle } from 'lucide-react'
+import { Save, Camera, Trash2, Loader2, AlertCircle, ScanFace } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
+import { FaceRecognitionModal } from './components/FaceRecognitionModal'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
@@ -149,6 +150,7 @@ export function HspPatientFormPage() {
   const initialDocumentsRef = useRef<PatientDocumentInput[]>([])
   const [patient, setPatient] = useState<PatientRead | null>(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [showFaceCapture, setShowFaceCapture] = useState(false)
   const [refs, setRefs] = useState<RefMap>({})
 
   const [touched, setTouched] = useState<Set<FieldKey>>(new Set())
@@ -340,7 +342,18 @@ export function HspPatientFormPage() {
       const file = new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })
       const updated = await hspApi.uploadPhoto(patient.id, file)
       setPatient(updated)
-      toast.success('Foto atualizada.')
+      const status = updated.faceEnrollmentStatus
+      if (status === 'ok') {
+        toast.success('Foto atualizada', 'Rosto cadastrado no reconhecimento facial.')
+      } else if (status === 'no_face') {
+        toast.warning('Foto atualizada',
+          'Não detectamos rosto nesta imagem — ela não será usada no reconhecimento facial.')
+      } else if (status === 'low_quality') {
+        toast.warning('Foto atualizada',
+          'Qualidade do rosto abaixo do ideal. Tente uma foto com mais luz.')
+      } else {
+        toast.success('Foto atualizada.')
+      }
     } catch (err) {
       if (err instanceof HttpError) toast.error(err.message)
       else toast.error('Falha no upload.')
@@ -992,11 +1005,18 @@ export function HspPatientFormPage() {
                   ? 'Você pode enviar uma nova foto a qualquer momento. A foto anterior fica registrada no histórico.'
                   : 'Salve o paciente primeiro para habilitar o envio de foto.'}
               </p>
-              <div className="flex gap-2 mt-4">
+              <div className="flex gap-2 mt-4 flex-wrap">
                 <button type="button" disabled={!isEdit}
                   onClick={() => setShowPhotoModal(true)}
-                  className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-50">
+                  className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm disabled:opacity-50"
+                  title="Escolher uma imagem do dispositivo">
                   <Camera size={14} /> Enviar foto
+                </button>
+                <button type="button" disabled={!isEdit}
+                  onClick={() => setShowFaceCapture(true)}
+                  className="flex items-center gap-2 px-3 py-2 border border-primary text-primary rounded-lg text-sm hover:bg-primary/10 disabled:opacity-50"
+                  title="Usar a câmera — localiza o rosto, recorta automaticamente e já indexa pro reconhecimento">
+                  <ScanFace size={14} /> Tirar com câmera
                 </button>
                 {isEdit && patient?.hasPhoto && (
                   <button type="button" onClick={handlePhotoRemove}
@@ -1005,10 +1025,25 @@ export function HspPatientFormPage() {
                   </button>
                 )}
               </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Ao tirar pela câmera, o sistema procura o rosto, recorta
+                a imagem no melhor enquadramento e já cadastra no
+                reconhecimento facial.
+              </p>
             </div>
           </div>
           {showPhotoModal && (
             <PhotoCropModal onConfirm={handlePhotoConfirm} onClose={() => setShowPhotoModal(false)} />
+          )}
+          {showFaceCapture && (
+            <FaceRecognitionModal
+              mode="enroll"
+              onClose={() => setShowFaceCapture(false)}
+              onCapture={dataUrl => {
+                setShowFaceCapture(false)
+                void handlePhotoConfirm(dataUrl)
+              }}
+            />
           )}
         </Section>
       )}

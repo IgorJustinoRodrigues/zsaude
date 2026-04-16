@@ -55,6 +55,8 @@ P("hsp.patient.export", "Exportar dados de pacientes")
 P("hsp.patient_photo.upload", "Enviar ou remover foto do paciente")
 P("hsp.patient_photo.view", "Visualizar foto do paciente")
 P("hsp.patient_history.view", "Visualizar histórico de alterações do paciente")
+P("hsp.patient.face_match", "Identificar paciente por reconhecimento facial")
+P("hsp.face.reindex", "Reindexar embeddings faciais do município (MASTER)")
 
 # ── Gateway de IA ───────────────────────────────────────────────────────────
 P("ai.operations.use", "Usar operações de IA (consumidor)")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field
@@ -185,6 +186,11 @@ class PatientRead(PatientBase):
     created_at: datetime
     updated_at: datetime
     documents: list[DocumentOut] = Field(default_factory=list)
+    # Presente apenas na resposta do POST /patients/{id}/photo (enrollment
+    # facial automático). Nos outros endpoints volta None.
+    face_enrollment_status: Literal[
+        "ok", "no_face", "low_quality", "error", "disabled"
+    ] | None = None
 
 
 class PatientPhotoOut(CamelModel):
@@ -197,6 +203,9 @@ class PatientPhotoOut(CamelModel):
     uploaded_by: UUID | None = None
     uploaded_by_name: str
     uploaded_at: datetime
+    # Status do enrollment facial feito automaticamente no upload.
+    # Presente só no POST /photo; GET/lista devolve None.
+    face_status: Literal["ok", "no_face", "low_quality", "error", "disabled"] | None = None
 
 
 class PatientFieldHistoryOut(CamelModel):

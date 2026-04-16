@@ -419,12 +419,71 @@ Para personalizar um município: no seletor de escopo, escolher o município →
 configurar chave e/ou rotas próprias → sistema usa as do município quando
 disponíveis, caindo em global automaticamente quando não.
 
+## Reconhecimento facial (F2a) — fora do gateway
+
+O reconhecimento facial **não passa pelo gateway de IA** porque roda
+100% local com [InsightFace](https://github.com/deepinsight/insightface)
+(ArcFace `buffalo_l`, 512-dim). Zero custo de API, foto nunca sai do
+backend auto-hospedado. Documentação completa no próprio módulo; aqui só
+o essencial:
+
+### Pipeline
+1. **Upload de foto** em `PatientService.set_photo` (`hsp/service.py`)
+   dispara `face_service.enroll_from_photo` após o flush. Embedding é
+   gerado pelo InsightFace e salvo em `patient_face_embeddings` (tenant)
+   via UPSERT (1 embedding ativo por paciente).
+2. **Match**: `POST /hsp/patients/match-face` recebe JPEG multipart,
+   gera embedding da imagem recebida, faz `ORDER BY embedding <=> :q` em
+   pgvector e retorna top-5 candidatos com score de similaridade.
+
+### Componentes
+- `app/services/face/engine.py` — singleton `FaceAnalysis` com
+  ThreadPoolExecutor (2 workers) + `warm()` em background no lifespan.
+  Modelos cacheados em volume `/home/app/.insightface` (~320 MB).
+- `app/modules/hsp/face_service.py` — enroll, match, reindex_all,
+  delete_embedding.
+- `app/modules/hsp/face_router.py` — `POST /hsp/patients/match-face`,
+  `DELETE /hsp/patients/{id}/face-embedding`, `POST /hsp/admin/face/reindex`.
+- `app/tenant_models/face.py` — `PatientFaceEmbedding` com
+  `pgvector.sqlalchemy.Vector(512)` + UNIQUE patient_id + índice HNSW.
+- `scripts/face_reindex.py` — backfill CLI
+  (`python -m scripts.face_reindex --ibge 5208707 [--force]`).
+
+### Infra
+- Imagem Postgres: `pgvector/pgvector:pg17`
+- Dockerfile adiciona `libgl1 libglib2.0-0` e build tools pra onnx.
+- Extensão `vector` criada via migration `0023_pgvector_extension` no
+  schema `public` (disponível via search_path dos tenants).
+- Tabela tenant criada via `t0007_face_embeddings`.
+
+### Config (system_settings)
+- `hsp.face.match_threshold` — default `0.40` (cosine similarity mínima
+  para retornar candidato).
+- `hsp.face.min_detection_score` — default `0.50` (score mínimo do
+  detector para aceitar enroll/match).
+
+### Modo stub (testes)
+`ZSAUDE_FACE_STUB=1` gera embeddings determinísticos a partir do hash da
+imagem — mesma imagem → mesmo vetor. Sem download de modelo; útil em CI.
+
+### Permissões
+- `hsp.patient.face_match` — chamar `/match-face`.
+- `hsp.face.reindex` — endpoint admin (requer MASTER).
+
+### LGPD
+- Opt-out via `DELETE /hsp/patients/{id}/face-embedding`.
+- Foto trafega cifrada (HTTPS) entre o browser autenticado e o backend;
+  o embedding é um vetor irreversível (não reconstrói a foto).
+- Todo match entra no audit log (`HSP` / `face_match`) com quem fez,
+  quantos candidatos e melhor score — sem gravar o embedding em si.
+
 ## Fases futuras
 
-- **F2:** quotas reais com Valkey sliding counter, dashboards com gráficos,
-  provider Anthropic nativo, face matching (pgvector + migration tenant)
+- **F2b:** quotas reais com Valkey sliding counter, dashboards com
+  gráficos, provider Anthropic nativo, partições automáticas de
+  `ai_usage_logs`.
 - **F3:** streaming SSE pra operações longas, prompt A/B via versioning,
-  PII redaction opcional em prompts, export CSV do consumo
+  PII redaction opcional em prompts, export CSV do consumo.
 
 ## Referências
 

@@ -15,7 +15,15 @@ import { useCameraPreferenceStore } from '../../../store/cameraPreferenceStore'
 
 interface Props {
   onClose: () => void
-  onCapture: (dataUrl: string) => void
+  /**
+   * - ``match``: captura → envia ao backend pra reconhecer paciente.
+   *   Callback ``onMatched`` recebe os candidatos.
+   * - ``enroll``: apenas captura dataUrl (pra outros usos, ex: fluxo de
+   *   cadastro de foto). Callback ``onCapture`` recebe o dataUrl.
+   */
+  mode?: 'match' | 'enroll'
+  onCapture?: (dataUrl: string) => void
+  onMatched?: (candidates: import('../../../api/face').MatchCandidate[]) => void
 }
 
 type Phase =
@@ -24,6 +32,7 @@ type Phase =
   | 'loading-camera'
   | 'scanning'
   | 'captured'
+  | 'matching'
   | 'error'
 
 // Modelo público do Google — leve (1MB) e rápido pra rostos próximos.
@@ -69,7 +78,9 @@ async function loadDetector(): Promise<FaceDetectorInstance> {
 
 // ─── Componente ──────────────────────────────────────────────────────────
 
-export function FaceRecognitionModal({ onClose, onCapture }: Props) {
+export function FaceRecognitionModal({
+  onClose, onCapture, onMatched, mode = 'match',
+}: Props) {
   const [phase, setPhase] = useState<Phase>('loading-libs')
   const [error, setError] = useState<string | null>(null)
   const [captured, setCaptured] = useState<string | null>(null)
@@ -85,6 +96,9 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
   const rafRef = useRef<number | null>(null)
   const stableRef = useRef(0)
   const detectorRef = useRef<FaceDetectorInstance | null>(null)
+  // Último bbox válido do detector — usado pra recortar a captura no modo
+  // enroll (queremos a foto centrada no rosto, não o frame inteiro).
+  const lastBoxRef = useRef<{ originX: number; originY: number; width: number; height: number } | null>(null)
 
   // ── Setup: carrega detector + abre câmera ───────────────────────────
   useEffect(() => {
@@ -216,6 +230,9 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
               setHint('Ilumine melhor o rosto')
               drawFace(ctx, d, 'warn')
             } else {
+              // Guarda o bbox pro crop acontecer exatamente onde o rosto
+              // estava quando a captura disparar.
+              lastBoxRef.current = box
               // Começa a contar o tempo estável. Se já começou antes, usa o
               // timestamp salvo pra manter o progresso contínuo.
               if (stableRef.current === 0) stableRef.current = now
@@ -254,17 +271,65 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
     const video = videoRef.current
     if (!video || video.videoWidth === 0) return
 
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+
+    // Canvas com o frame completo.
     const frame = document.createElement('canvas')
-    frame.width = video.videoWidth
-    frame.height = video.videoHeight
+    frame.width = vw
+    frame.height = vh
     frame.getContext('2d')!.drawImage(video, 0, 0)
-    const dataUrl = frame.toDataURL('image/jpeg', 0.92)
+
+    let dataUrl: string
+    const box = lastBoxRef.current
+
+    if (mode === 'enroll' && box) {
+      // Foto de perfil — recorta em quadrado ao redor do rosto com margem
+      // generosa (cabeça inteira + ombros), sem exagerar. Esse recorte
+      // fecha o foco no paciente e vira o thumbnail do prontuário.
+      const pad = 0.45  // 45% de margem relativa ao tamanho do rosto
+      const padX = box.width * pad
+      const padY = box.height * pad
+      // Centraliza um quadrado de lado = maior dimensão (largura ou altura
+      // do rosto + padding), tudo computado ao redor do centro da face.
+      const cx = box.originX + box.width / 2
+      const cy = box.originY + box.height / 2
+      let side = Math.max(box.width + padX * 2, box.height + padY * 2)
+      // Não pode ser maior que o próprio frame — se for, já sai quadrado
+      // garantido pelo min(vw, vh).
+      side = Math.min(side, Math.min(vw, vh))
+      let sx = cx - side / 2
+      let sy = cy - side / 2
+      // Se o quadrado extrapolar as bordas, empurra pra dentro mantendo o
+      // lado (NÃO corta o lado — isso é o que distorcia antes).
+      if (sx < 0) sx = 0
+      if (sy < 0) sy = 0
+      if (sx + side > vw) sx = vw - side
+      if (sy + side > vh) sy = vh - side
+      const sw = side
+      const sh = side
+
+      // Saída fixa em 640×640 — bom pro backend indexar e pro thumbnail
+      // ficar nítido sem inflar muito o upload. A imagem fica no
+      // orientation original; o preview em <img> aplica scaleX(-1) pra
+      // mostrar como selfie mas o arquivo real não é espelhado.
+      const out = document.createElement('canvas')
+      out.width = 640
+      out.height = 640
+      const octx = out.getContext('2d')!
+      octx.drawImage(frame, sx, sy, sw, sh, 0, 0, out.width, out.height)
+      dataUrl = out.toDataURL('image/jpeg', 0.92)
+    } else {
+      // Modo match: mantém frame inteiro (backend espera enxergar mais
+      // contexto pra comparar).
+      dataUrl = frame.toDataURL('image/jpeg', 0.92)
+    }
 
     setCaptured(dataUrl)
     setPhase('captured')
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
-  }, [])
+  }, [mode])
 
   const handleRetake = () => {
     setCaptured(null)
@@ -272,10 +337,27 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
     setRestartTick(t => t + 1)
   }
 
-  const handleUse = () => {
+  const handleUse = async () => {
     if (!captured) return
-    onCapture(captured)
-    onClose()
+    if (mode === 'enroll') {
+      onCapture?.(captured)
+      onClose()
+      return
+    }
+    // mode === 'match': envia ao backend, espera candidatos.
+    setPhase('matching')
+    try {
+      const { faceApi, dataUrlToBlob } = await import('../../../api/face')
+      const blob = dataUrlToBlob(captured)
+      const resp = await faceApi.match(blob)
+      onMatched?.(resp.candidates)
+      onClose()
+    } catch (err) {
+      console.error('[FaceRecognition] match failed:', err)
+      const msg = err instanceof Error ? err.message : 'Erro ao consultar o servidor.'
+      setError(msg)
+      setPhase('error')
+    }
   }
 
   const handlePickCamera = (deviceId: string) => {
@@ -368,6 +450,19 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
               className="w-full h-full object-contain bg-black"
               style={{ transform: 'scaleX(-1)' }} />
           )}
+
+          {phase === 'matching' && captured && (
+            <>
+              <img src={captured} alt="Rosto capturado"
+                className="w-full h-full object-contain bg-black opacity-40"
+                style={{ transform: 'scaleX(-1)' }} />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+                <Loader2 size={28} className="animate-spin" />
+                <p className="text-sm font-medium">Procurando paciente...</p>
+                <p className="text-xs text-white/70">Comparando com a base do município</p>
+              </div>
+            </>
+          )}
         </div>
 
         <footer className="px-5 py-3 border-t border-border flex items-center justify-between gap-2 bg-muted/30">
@@ -398,11 +493,13 @@ export function FaceRecognitionModal({ onClose, onCapture }: Props) {
               </button>
               <button type="button" onClick={handleUse}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 ml-auto">
-                <Check size={14} /> Usar esta foto
+                {mode === 'match'
+                  ? <><ScanFace size={14} /> Identificar paciente</>
+                  : <><Check size={14} /> Usar esta foto</>}
               </button>
             </>
           )}
-          {(phase === 'loading-libs' || phase === 'loading-camera' || phase === 'picking-camera' || phase === 'error') && (
+          {(phase === 'loading-libs' || phase === 'loading-camera' || phase === 'picking-camera' || phase === 'matching' || phase === 'error') && (
             <button type="button" onClick={onClose}
               className="px-4 py-1.5 text-sm border border-border rounded-lg hover:bg-muted ml-auto">
               Cancelar

@@ -57,6 +57,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))
+    # Aquece o modelo de reconhecimento facial em background — evita que o
+    # primeiro match real pague o preço de carregar ~320MB. Idempotente e
+    # não propaga erro (fica pro primeiro match real tentar de novo).
+    import asyncio
+
+    from app.services.face import warm as warm_face
+
+    asyncio.create_task(warm_face())
+
     try:
         yield
     finally:

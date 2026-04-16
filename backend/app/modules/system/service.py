@@ -94,3 +94,13 @@ def get_str_sync(key: str, default: str = "") -> str:
     if v is None:
         return default
     return str(v)
+
+
+def get_float_sync(key: str, default: float) -> float:
+    v = _CACHE.get(key)
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
