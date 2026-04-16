@@ -89,6 +89,19 @@ Regras:
   1. **Aplicação**: dependency `current_context` filtra via SQLAlchemy.
   2. **Banco**: Row-Level Security via `SET LOCAL app.current_municipality_id` / `app.current_facility_id` por transação.
 
+## Módulos operacionais
+
+- Registrados em `app/core/modules.py` (constante `OPERATIONAL_MODULES`). Fonte única — o frontend espelha em `frontend/src/mock/users.ts` (array `SYSTEMS`) e `types/index.ts` (`SystemId`).
+- Atuais: `cln` (Clínica), `dgn` (Diagnóstico), `hsp` (Hospitalar), `pln` (Planos), `fsc` (Fiscal), `ops` (Operações), `ind` (Indicadores), `cha` (Chamadas), `esu` (Integra Esus).
+- Cada município tem um subconjunto habilitado em `app.municipalities.enabled_modules` (JSONB). Null = todos habilitados (default para linhas legadas).
+- No `options_for` e `select`, os módulos disponíveis = `enabled_modules` ∩ (root ? todos : permissões do usuário). **MASTER respeita o gate** — se a cidade não habilitou um módulo, ninguém o usa ali.
+
+## MASTER (super-usuário)
+
+- `User.level == MASTER` recebe `ResolvedPermissions(is_root=True)` — passa em qualquer `requires(...)`.
+- **Ignora vínculos**: `options_for` lista todos os municípios + todas as unidades sem consultar `MunicipalityAccess`/`FacilityAccess`; `select` aceita qualquer par (município, unidade) e emite o token de contexto com role sintético `"MASTER"`.
+- Ainda assim, a lista final de módulos passa pelo filtro `enabled_modules` do município.
+
 ## Segurança
 
 - Senhas: Argon2id + pepper HMAC-SHA256 em `PASSWORD_PEPPER`.

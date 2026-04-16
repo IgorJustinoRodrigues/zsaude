@@ -28,7 +28,7 @@ const STATUS_META: Record<string, { label: string; dot: string; badge: string }>
   Bloqueado:{ label: 'Bloqueado', dot: 'bg-red-500',     badge: 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
 }
 
-const ALL_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
+const ALL_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
 
 type SortField = 'name' | 'primaryRole' | 'status' | 'createdAt'
 type SortDir   = 'asc' | 'desc'

@@ -7,6 +7,7 @@ import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LogOut, ChevronRight, Sun, Moon,
   HelpCircle, ChevronDown, User, Building2, Shield, LayoutGrid,
+  TrendingUp, BellRing, Link2,
 } from 'lucide-react'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
@@ -20,6 +21,9 @@ const ICONS: Record<SystemId, React.ReactNode> = {
   pln: <ShieldCheck size={22} />,
   fsc: <ClipboardCheck size={22} />,
   ops: <Truck size={22} />,
+  ind: <TrendingUp size={22} />,
+  cha: <BellRing size={22} />,
+  esu: <Link2 size={22} />,
 }
 
 const ICON_SM: Record<SystemId, React.ReactNode> = {
@@ -29,6 +33,9 @@ const ICON_SM: Record<SystemId, React.ReactNode> = {
   pln: <ShieldCheck size={12} />,
   fsc: <ClipboardCheck size={12} />,
   ops: <Truck size={12} />,
+  ind: <TrendingUp size={12} />,
+  cha: <BellRing size={12} />,
+  esu: <Link2 size={12} />,
 }
 
 export function SystemSelectPage() {

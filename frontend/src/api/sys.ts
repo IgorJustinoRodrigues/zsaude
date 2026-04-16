@@ -1,6 +1,7 @@
 // Endpoints MASTER: municípios, unidades, configs, audit logs.
 
 import { api } from './client'
+import type { SystemId } from '../types'
 import type { PageResponse } from './users'
 
 // ─── Municípios ───────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export interface MunicipalityAdminDetail {
   centerLongitude: number | null
   territory: [number, number][] | null
   neighborhoods: NeighborhoodOut[]
+  enabledModules: SystemId[]
 }
 
 export interface MunicipalityCreateInput {
@@ -48,6 +50,7 @@ export interface MunicipalityCreateInput {
   centerLongitude?: number | null
   territory?: [number, number][] | null
   neighborhoods?: NeighborhoodInput[]
+  enabledModules?: SystemId[]
 }
 
 export interface MunicipalityUpdateInput {
@@ -58,6 +61,7 @@ export interface MunicipalityUpdateInput {
   centerLongitude?: number | null
   territory?: [number, number][] | null
   neighborhoods?: NeighborhoodInput[]
+  enabledModules?: SystemId[]
 }
 
 // ─── Unidades ────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 import { LocationMap, type MapLayer } from '../../components/shared/LocationMap'
+import { SYSTEMS } from '../../mock/users'
 
 export function SysMunicipalityViewPage() {
   const navigate = useNavigate()
@@ -151,6 +152,34 @@ export function SysMunicipalityViewPage() {
           height="360px"
           fitKey={mun.id}
         />
+      </div>
+
+      {/* Módulos habilitados */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-sm font-semibold">Módulos habilitados ({mun.enabledModules?.length ?? 0})</h2>
+        </div>
+        <div className="p-4 flex flex-wrap gap-2">
+          {SYSTEMS.map(sys => {
+            const on = mun.enabledModules?.includes(sys.id) ?? false
+            return (
+              <span
+                key={sys.id}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border',
+                  on
+                    ? 'border-transparent text-white'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-400 line-through',
+                )}
+                style={on ? { backgroundColor: sys.color } : undefined}
+                title={sys.description}
+              >
+                <span className="font-mono text-[10px] opacity-80">{sys.abbrev}</span>
+                {sys.name}
+              </span>
+            )
+          })}
+        </div>
       </div>
 
       {/* Bairros */}

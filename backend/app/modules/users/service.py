@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.modules import OPERATIONAL_MODULES
 from app.core.pagination import Page
 from app.core.security import generate_opaque_token, hash_password
 from app.modules.tenants.models import Facility, Municipality
@@ -26,8 +27,8 @@ from app.modules.users.schemas import (
     UserUpdateMe,
 )
 
-# Módulos válidos (deve espelhar o backend/modelos)
-VALID_MODULES = {"cln", "dgn", "hsp", "pln", "fsc", "ops"}
+# Módulos válidos — alias de `OPERATIONAL_MODULES` pra legibilidade local.
+VALID_MODULES = OPERATIONAL_MODULES
 
 # Comprimento mínimo de senha gerada por admin (mix de letras/números/símbolos)
 PROVISIONAL_PASSWORD_LEN = 12
@@ -153,11 +154,10 @@ class UserService:
             # Módulos agregados via CTE (considera herança do role).
             modules_by_user = await self.repo.bulk_modules_by_user(ids)
             # MASTER vê todos os módulos operacionais (super-usuário).
-            _OPERATIONAL = {"cln", "dgn", "hsp", "pln", "fsc", "ops"}
             for u in rows:
                 mods_set = modules_by_user.get(u.id, set())
                 if u.level == UserLevel.MASTER:
-                    mods_set = set(_OPERATIONAL)
+                    mods_set = set(OPERATIONAL_MODULES)
                 muns, facs, _ = counts_by_user[u.id]
                 counts_by_user[u.id] = (muns, facs, mods_set)
 
@@ -191,8 +191,6 @@ class UserService:
         user = await self.get_or_404(user_id)
         fac_rows = await self.repo.list_facility_accesses(user_id)
 
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
-
         # Cache local de roles por id (evita N queries repetidas).
         role_ids = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
         roles_by_id: dict[UUID, Role] = {}
@@ -219,9 +217,9 @@ class UserService:
 
             resolved = await perm_svc.resolve(user.id, fa.id)
             if resolved.is_root:
-                mods = sorted(_OPERATIONAL)
+                mods = sorted(OPERATIONAL_MODULES)
             else:
-                mods = sorted(resolved.modules() & _OPERATIONAL)
+                mods = sorted(resolved.modules() & OPERATIONAL_MODULES)
 
             by_mun[key]["facilities"].append(
                 FacilityAccessDetail(

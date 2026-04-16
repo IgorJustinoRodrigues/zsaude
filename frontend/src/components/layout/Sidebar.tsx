@@ -4,7 +4,7 @@ import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
-  BarChart2, SearchCheck, Upload,
+  BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -20,6 +20,9 @@ const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React
   pln: { label: 'Planos',      abbrev: 'PLN', icon: <ShieldCheck size={18} />,    color: '#10b981' },
   fsc: { label: 'Fiscal',      abbrev: 'FSC', icon: <ClipboardCheck size={18} />, color: '#f97316' },
   ops: { label: 'Operações',   abbrev: 'OPS', icon: <Truck size={18} />,          color: '#6b7280' },
+  ind: { label: 'Indicadores', abbrev: 'IND', icon: <TrendingUp size={18} />,     color: '#ec4899' },
+  cha: { label: 'Chamadas',    abbrev: 'CHA', icon: <BellRing size={18} />,       color: '#14b8a6' },
+  esu: { label: 'Integra Esus',abbrev: 'ESU', icon: <Link2 size={18} />,          color: '#6366f1' },
 }
 
 type SubItem   = { label: string; path: string; icon: React.ReactNode }

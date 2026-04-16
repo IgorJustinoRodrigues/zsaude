@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.modules import OPERATIONAL_MODULES
 from app.core.security import create_context_token
 from app.db.tenant_schemas import ensure_municipality_schema, schema_for_municipality
 from app.modules.tenants.models import (
@@ -44,14 +45,39 @@ class TenantService:
         self.session = session
         self.repo = TenantRepository(session)
 
+    # ── Helpers internos ──────────────────────────────────────────────
+
+    @staticmethod
+    def _enabled_modules_set(mun: Municipality) -> frozenset[str]:
+        """Conjunto de módulos habilitados, com default "todos" para
+        municípios legados sem configuração."""
+        if not mun.enabled_modules:
+            return OPERATIONAL_MODULES
+        return frozenset(m for m in mun.enabled_modules if m in OPERATIONAL_MODULES)
+
+    async def _is_master(self, user_id: UUID) -> bool:
+        from app.modules.users.models import User, UserLevel
+        level = await self.session.scalar(select(User.level).where(User.id == user_id))
+        return level == UserLevel.MASTER
+
     async def options_for(self, user_id: UUID) -> WorkContextOptions:
         from app.modules.permissions.models import Role
         from app.modules.permissions.service import PermissionService
 
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
         perm_svc = PermissionService(self.session)
 
-        muns = await self.repo.list_municipalities_for_user(user_id)
+        is_master = await self._is_master(user_id)
+
+        if is_master:
+            # MASTER enxerga todos os municípios + todas as unidades,
+            # independentemente de MunicipalityAccess/FacilityAccess.
+            muns = list((await self.session.scalars(
+                select(Municipality)
+                .where(Municipality.archived.is_(False))
+                .order_by(Municipality.name)
+            )).all())
+        else:
+            muns = await self.repo.list_municipalities_for_user(user_id)
         out: list[MunicipalityWithFacilities] = []
 
         # Cache roles por id (options costuma ter vários acessos ao mesmo role).
@@ -66,20 +92,39 @@ class TenantService:
             return r.name if r else ""
 
         for mun in muns:
-            rows = await self.repo.list_facilities_for_user(user_id, mun.id)
+            enabled = self._enabled_modules_set(mun)
             facilities: list[FacilityWithAccess] = []
-            for fac, access in rows:
-                resolved = await perm_svc.resolve(user_id, access.id)
-                mods = sorted(
-                    _OPERATIONAL if resolved.is_root else resolved.modules() & _OPERATIONAL
-                )
-                facilities.append(
-                    FacilityWithAccess(
-                        facility=FacilityRead.model_validate(fac),
-                        role=await role_name(access.role_id),
-                        modules=mods,
+
+            if is_master:
+                # MASTER vê todas as unidades do município. Role sintético.
+                fac_rows = list((await self.session.scalars(
+                    select(Facility)
+                    .where(Facility.municipality_id == mun.id, Facility.archived.is_(False))
+                    .order_by(Facility.name)
+                )).all())
+                for fac in fac_rows:
+                    mods = sorted(OPERATIONAL_MODULES & enabled)
+                    facilities.append(
+                        FacilityWithAccess(
+                            facility=FacilityRead.model_validate(fac),
+                            role="MASTER",
+                            modules=mods,
+                        )
                     )
-                )
+            else:
+                rows = await self.repo.list_facilities_for_user(user_id, mun.id)
+                for fac, access in rows:
+                    resolved = await perm_svc.resolve(user_id, access.id)
+                    available = OPERATIONAL_MODULES if resolved.is_root else resolved.modules() & OPERATIONAL_MODULES
+                    mods = sorted(available & enabled)
+                    facilities.append(
+                        FacilityWithAccess(
+                            facility=FacilityRead.model_validate(fac),
+                            role=await role_name(access.role_id),
+                            modules=mods,
+                        )
+                    )
+
             out.append(
                 MunicipalityWithFacilities(
                     municipality=MunicipalityRead.model_validate(mun),
@@ -89,28 +134,42 @@ class TenantService:
         return WorkContextOptions(municipalities=out)
 
     async def select(self, user_id: UUID, payload: WorkContextSelect) -> WorkContextIssued:
-        from app.modules.permissions.service import PermissionService
+        from app.modules.permissions.service import PermissionService, ResolvedPermissions
 
         mun = await self.repo.get_municipality(payload.municipality_id)
         if mun is None:
             raise NotFoundError("Município não encontrado.")
 
-        row = await self.repo.get_facility_access(user_id, payload.facility_id)
-        if row is None:
-            raise ForbiddenError("Você não tem acesso a esta unidade.")
+        is_master = await self._is_master(user_id)
 
-        facility, access = row
-        if facility.municipality_id != mun.id:
-            raise ForbiddenError("Unidade não pertence ao município informado.")
-
-        # Resolve permissões (fonte única). Módulos derivam das permissões.
-        resolved = await PermissionService(self.session).resolve(user_id, access.id)
-
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
-        if resolved.is_root:
-            modules = sorted(_OPERATIONAL)
+        if is_master:
+            facility = await self.session.scalar(
+                select(Facility).where(Facility.id == payload.facility_id)
+            )
+            if facility is None:
+                raise NotFoundError("Unidade não encontrada.")
+            if facility.municipality_id != mun.id:
+                raise ForbiddenError("Unidade não pertence ao município informado.")
+            # MASTER: permissões root, role sintético.
+            resolved = ResolvedPermissions(codes=frozenset(), is_root=True)
+            role_name = "MASTER"
         else:
-            modules = sorted(resolved.modules() & _OPERATIONAL)
+            row = await self.repo.get_facility_access(user_id, payload.facility_id)
+            if row is None:
+                raise ForbiddenError("Você não tem acesso a esta unidade.")
+            facility, access = row
+            if facility.municipality_id != mun.id:
+                raise ForbiddenError("Unidade não pertence ao município informado.")
+            resolved = await PermissionService(self.session).resolve(user_id, access.id)
+            from app.modules.permissions.models import Role
+            role = await self.session.get(Role, access.role_id)
+            role_name = role.name if role else ""
+
+        enabled = self._enabled_modules_set(mun)
+        if resolved.is_root:
+            modules = sorted(OPERATIONAL_MODULES & enabled)
+        else:
+            modules = sorted(resolved.modules() & OPERATIONAL_MODULES & enabled)
 
         if payload.module:
             if payload.module not in modules:
@@ -118,12 +177,6 @@ class TenantService:
                     f"Módulo {payload.module} não disponível nesta unidade para você."
                 )
             modules = [payload.module]
-
-        # Nome do perfil (derivado do role).
-        from app.modules.permissions.models import Role
-
-        role = await self.session.get(Role, access.role_id)
-        role_name = role.name if role else ""
 
         token = create_context_token(
             user_id=str(user_id),
@@ -154,10 +207,19 @@ class TenantService:
         permissions: list[str],
     ) -> WorkContextCurrent:
         mun = await self.repo.get_municipality(municipality_id)
-        row = await self.repo.get_facility_access(user_id, facility_id)
-        if mun is None or row is None:
+        if mun is None:
             raise NotFoundError("Contexto não encontrado.")
-        facility, _ = row
+
+        if await self._is_master(user_id):
+            facility = await self.session.scalar(
+                select(Facility).where(Facility.id == facility_id)
+            )
+        else:
+            row = await self.repo.get_facility_access(user_id, facility_id)
+            facility = row[0] if row else None
+        if facility is None:
+            raise NotFoundError("Contexto não encontrado.")
+
         return WorkContextCurrent(
             municipality=MunicipalityRead.model_validate(mun),
             facility=FacilityRead.model_validate(facility),
@@ -197,6 +259,7 @@ class TenantService:
             center_latitude=float(mun.center_latitude) if mun.center_latitude is not None else None,
             center_longitude=float(mun.center_longitude) if mun.center_longitude is not None else None,
             territory=mun.territory,
+            enabled_modules=sorted(self._enabled_modules_set(mun)),
             neighborhoods=[
                 NeighborhoodOut(
                     id=n.id,
@@ -213,6 +276,12 @@ class TenantService:
     async def create_municipality(self, payload: MunicipalityCreate) -> MunicipalityDetail:
         if await self.session.scalar(select(Municipality).where(Municipality.ibge == payload.ibge)):
             raise ConflictError("IBGE já cadastrado.")
+        requested = payload.enabled_modules
+        enabled = (
+            sorted(set(requested) & OPERATIONAL_MODULES)
+            if requested is not None
+            else sorted(OPERATIONAL_MODULES)
+        )
         mun = Municipality(
             name=payload.name,
             state=payload.state.upper(),
@@ -221,6 +290,7 @@ class TenantService:
             center_latitude=payload.center_latitude,
             center_longitude=payload.center_longitude,
             territory=payload.territory,
+            enabled_modules=enabled,
         )
         self.session.add(mun)
         await self.session.flush()
@@ -261,6 +331,12 @@ class TenantService:
         if "territory" in fields and payload.territory != mun.territory:
             changes["territory"] = {"from": "desenhado" if mun.territory else None, "to": "desenhado" if payload.territory else None}
             mun.territory = payload.territory
+        if "enabled_modules" in fields:
+            new_mods = sorted(set(payload.enabled_modules or []) & OPERATIONAL_MODULES)
+            current_mods = sorted(self._enabled_modules_set(mun))
+            if new_mods != current_mods:
+                changes["enabledModules"] = {"from": current_mods, "to": new_mods}
+                mun.enabled_modules = new_mods
 
         await self.session.flush()
 

@@ -13,6 +13,7 @@ import type { SystemId } from '../../types'
 const MODULE_COLORS: Record<SystemId, string> = {
   cln: '#0ea5e9', dgn: '#8b5cf6', hsp: '#f59e0b',
   pln: '#10b981', fsc: '#f97316', ops: '#6b7280',
+  ind: '#ec4899', cha: '#14b8a6', esu: '#6366f1',
 }
 
 interface Props { module: SystemId | null }

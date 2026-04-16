@@ -100,6 +100,8 @@ class MunicipalityCreate(CamelModel):
     center_longitude: float | None = Field(default=None, ge=-180, le=180)
     territory: list[list[float]] | None = None
     neighborhoods: list[NeighborhoodInput] = Field(default_factory=list)
+    # Módulos operacionais habilitados. Se omitido, usa o conjunto completo.
+    enabled_modules: list[str] | None = None
 
 
 class MunicipalityUpdate(CamelModel):
@@ -113,6 +115,7 @@ class MunicipalityUpdate(CamelModel):
     territory: list[list[float]] | None = None
     # Se ``neighborhoods`` vier, substitui toda a lista atual.
     neighborhoods: list[NeighborhoodInput] | None = None
+    enabled_modules: list[str] | None = None
 
 
 class MunicipalityDetail(CamelModel):
@@ -129,6 +132,7 @@ class MunicipalityDetail(CamelModel):
     center_longitude: float | None = None
     territory: list[list[float]] | None = None
     neighborhoods: list[NeighborhoodOut] = Field(default_factory=list)
+    enabled_modules: list[str] = Field(default_factory=list)
 
 
 class FacilityCreate(CamelModel):

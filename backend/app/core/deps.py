@@ -234,7 +234,7 @@ CurrentContextDep = Annotated[WorkContext, Depends(current_context)]
 # Módulos "operacionais" — os que aparecem no switcher de módulo da UI.
 # Outros módulos (sys, users, roles, audit) existem no catálogo mas não são
 # selecionáveis como contexto de trabalho.
-_OPERATIONAL_MODULES: frozenset[str] = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+from app.core.modules import OPERATIONAL_MODULES as _OPERATIONAL_MODULES  # noqa: E402
 
 
 # ─── Guards ──────────────────────────────────────────────────────────────

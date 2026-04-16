@@ -8,7 +8,11 @@ import { ibgeApi, type IbgeEstado, type IbgeMunicipio } from '../../api/ibge'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { LocationMap, type LatLng, type MapMode, type MapLayer } from '../../components/shared/LocationMap'
+import { SYSTEMS } from '../../mock/users'
+import type { SystemId } from '../../types'
 import { cn } from '../../lib/utils'
+
+const DEFAULT_ENABLED: SystemId[] = SYSTEMS.map(s => s.id)
 
 // ─── Tipos internos ────────────────────────────────────────────────────────
 
@@ -64,6 +68,9 @@ export function SysMunicipalityFormPage() {
   const [hoods, setHoods] = useState<HoodDraft[]>([])
   const [editingHoodId, setEditingHoodId] = useState<string | null>(null)
 
+  // Módulos habilitados (todos por default em criação)
+  const [enabledModules, setEnabledModules] = useState<SystemId[]>(DEFAULT_ENABLED)
+
   // Modo do mapa
   const [mapMode, setMapMode] = useState<MapMode>('idle')
   /** Alvo do modo — 'mun' = centro/território do município; 'hood:<tempId>' = bairro específico. */
@@ -103,7 +110,11 @@ export function SysMunicipalityFormPage() {
       longitude: h.longitude,
       territory: h.territory,
     })))
+    setEnabledModules(m.enabledModules?.length ? m.enabledModules : DEFAULT_ENABLED)
   }
+
+  const toggleModule = (id: SystemId) =>
+    setEnabledModules(mods => mods.includes(id) ? mods.filter(m => m !== id) : [...mods, id])
 
   // ── Modo edit: carrega detail ──────────────────────────────────────────
   useEffect(() => {
@@ -225,6 +236,7 @@ export function SysMunicipalityFormPage() {
         longitude: h.longitude,
         territory: h.territory && h.territory.length >= 3 ? h.territory : null,
       })),
+    enabledModules: enabledModules.slice().sort(),
   })
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -480,6 +492,51 @@ export function SysMunicipalityFormPage() {
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
           <Plus size={13} /> Adicionar bairro
         </button>
+      </Section>
+
+      {/* 5. Módulos habilitados */}
+      <Section
+        title="5. Módulos habilitados"
+        subtitle="Somente os módulos marcados aparecerão no seletor de contexto deste município — inclusive para MASTER."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {SYSTEMS.map(sys => {
+            const on = enabledModules.includes(sys.id)
+            return (
+              <label
+                key={sys.id}
+                className={cn(
+                  'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
+                  on
+                    ? 'border-violet-300 bg-violet-50/40 dark:bg-violet-950/20 dark:border-violet-700'
+                    : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => toggleModule(sys.id)}
+                  className="mt-0.5 w-4 h-4 accent-violet-600"
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sys.color }} />
+                      {sys.name}
+                      <code className="text-[10px] text-slate-400 ml-1">{sys.abbrev}</code>
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-snug mt-0.5">{sys.description}</p>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+        {enabledModules.length === 0 && (
+          <p className="text-xs text-red-500 mt-2">
+            Com nenhum módulo habilitado o município deixa de ser selecionável no contexto.
+          </p>
+        )}
       </Section>
 
       {/* Ações */}

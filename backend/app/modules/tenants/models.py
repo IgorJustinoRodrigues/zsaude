@@ -43,6 +43,9 @@ class Municipality(Base, TimestampedMixin):
     center_longitude: Mapped[float | None] = mapped_column(Numeric(10, 7), nullable=True)
     # Polígono do território: lista de [lat, lng]. None = sem desenho.
     territory: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Módulos operacionais habilitados neste município (lista de códigos).
+    # None = nunca configurado (tratado como "todos habilitados" no serviço).
+    enabled_modules: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (UniqueConstraint("name", "state", name="uq_municipality_name_state"),)
 

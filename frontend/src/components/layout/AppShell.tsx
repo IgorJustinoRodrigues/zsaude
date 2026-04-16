@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { Toaster } from '../ui/Toaster'
 
-const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
+const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
 
 export function AppShell() {
   const { sidebarCollapsed } = useUIStore()
