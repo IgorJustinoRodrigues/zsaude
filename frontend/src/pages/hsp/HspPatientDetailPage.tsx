@@ -9,7 +9,8 @@ import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { friendlyFieldName, friendlyValue, type RefMap } from './lib/historyLabels'
 import { toast } from '../../store/toastStore'
 import { promptDialog } from '../../store/dialogStore'
-import { formatCPF, formatDate, formatDateTime, calcAge, initials, cn } from '../../lib/utils'
+import { formatCPF, formatDate, formatDateTime, formatPhone, calcAge, initials, cn } from '../../lib/utils'
+import { cepMask, cnsMask } from '../../lib/masks'
 
 const TABS = ['Dados', 'Histórico'] as const
 type Tab = typeof TABS[number]
@@ -193,9 +194,9 @@ export function HspPatientDetailPage() {
             ['Sexo', patient.sex === 'F' ? 'Feminino'
               : patient.sex === 'M' ? 'Masculino'
               : patient.sex === 'I' ? 'Intersexo' : null],
-            ['CNS', patient.cns],
-            ['Celular', patient.cellphone || null],
-            ['Telefone', patient.phone || null],
+            ['CNS', patient.cns ? cnsMask.format(patient.cns) : null],
+            ['Celular', patient.cellphone ? formatPhone(patient.cellphone) : null],
+            ['Telefone', patient.phone ? formatPhone(patient.phone) : null],
             ['E-mail', patient.email || null],
             ['Plano', patient.planoTipo !== 'SUS' ? patient.planoTipo : null],
           ]).map(([k, v]) => (
@@ -236,13 +237,13 @@ export function HspPatientDetailPage() {
             rows: nonEmpty([
               ['Nome social', patient.socialName || null],
               ['CPF', patient.cpf ? formatCPF(patient.cpf) : null],
-              ['CNS', patient.cns || null],
+              ['CNS', patient.cns ? cnsMask.format(patient.cns) : null],
             ]),
           },
           {
             title: 'Endereço',
             rows: nonEmpty([
-              ['CEP', patient.cep || null],
+              ['CEP', patient.cep ? cepMask.format(patient.cep) : null],
               ['Endereço', enderecoLinha],
               ['Bairro', patient.bairro || null],
               ['Município/UF', patient.municipioIbge ? `${patient.municipioIbge}/${patient.uf}` : null],
@@ -254,13 +255,15 @@ export function HspPatientDetailPage() {
               ['Mãe', patient.motherUnknown ? 'Desconhecida' : (patient.motherName || null)],
               ['Pai', patient.fatherUnknown ? 'Desconhecido' : (patient.fatherName || null)],
               ['Responsável', patient.responsavelNome || null],
+              ['CPF do responsável', patient.responsavelCpf ? formatCPF(patient.responsavelCpf) : null],
             ]),
           },
           {
             title: 'Contato de emergência',
             rows: nonEmpty([
               ['Contato', patient.contatoEmergenciaNome || null],
-              ['Telefone', patient.contatoEmergenciaTelefone || null],
+              ['Telefone', patient.contatoEmergenciaTelefone
+                ? formatPhone(patient.contatoEmergenciaTelefone) : null],
             ]),
           },
           {

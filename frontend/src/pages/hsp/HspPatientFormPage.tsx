@@ -6,6 +6,7 @@ import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
+import { AddressMap } from './components/AddressMap'
 import { DocumentList } from './components/DocumentList'
 import { DuplicateBanner } from './components/DuplicateBanner'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
@@ -70,6 +71,30 @@ const FIELDS_BY_TAB: Record<Tab, FieldKey[]> = {
   'Foto': [],
   'Observações': ['observacoes', 'consentimentoLgpd'],
 }
+
+// ISO alpha-3 dos países mais usados como endereço residencial no Brasil.
+// Pra países fora desta lista, o usuário pode digitar o código manualmente
+// no select escolhendo "Outro".
+const PAISES: { code: string; nome: string }[] = [
+  { code: 'BRA', nome: 'Brasil' },
+  { code: 'ARG', nome: 'Argentina' },
+  { code: 'URY', nome: 'Uruguai' },
+  { code: 'PRY', nome: 'Paraguai' },
+  { code: 'BOL', nome: 'Bolívia' },
+  { code: 'PER', nome: 'Peru' },
+  { code: 'COL', nome: 'Colômbia' },
+  { code: 'VEN', nome: 'Venezuela' },
+  { code: 'CHL', nome: 'Chile' },
+  { code: 'USA', nome: 'Estados Unidos' },
+  { code: 'PRT', nome: 'Portugal' },
+  { code: 'ESP', nome: 'Espanha' },
+  { code: 'ITA', nome: 'Itália' },
+  { code: 'FRA', nome: 'França' },
+  { code: 'DEU', nome: 'Alemanha' },
+  { code: 'GBR', nome: 'Reino Unido' },
+  { code: 'JPN', nome: 'Japão' },
+  { code: 'CHN', nome: 'China' },
+]
 
 const REF_KINDS = [
   'tipos-documento', 'estados-civis', 'escolaridades', 'religioes',
@@ -600,14 +625,13 @@ export function HspPatientFormPage() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
               <div className="md:col-span-3">
                 <FormField label={`CEP${cepLoading ? ' (buscando...)' : ''}`}
-                  error={showError('cep')}
-                  hint="Tab para buscar">
+                  error={showError('cep')}>
                   <div className="relative">
                     <MaskedInput value={form.cep} onChange={v => setField('cep', v)}
                       onBlur={handleCepBlur}
                       mask={cepMask}
                       invalid={!!showError('cep')}
-                      placeholder="00000-000"
+                      placeholder="00000-000 (Tab busca)"
                     />
                     {cepLoading && (
                       <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -669,40 +693,49 @@ export function HspPatientFormPage() {
                 </FormField>
               </div>
               <div className="md:col-span-3">
-                <FormField label="País" hint="ISO (3 letras)">
-                  <input value={form.pais} maxLength={3}
-                    onChange={e => setField('pais', e.target.value.toUpperCase())}
-                    className={cn(baseInput(null), 'uppercase')} />
+                <FormField label="País">
+                  <ComboBox
+                    value={form.pais || null}
+                    options={PAISES.map(p => ({ value: p.code, label: p.nome, hint: p.code, searchText: p.code }))}
+                    onChange={v => setField('pais', v ?? 'BRA')}
+                    required
+                  />
                 </FormField>
               </div>
+            </div>
+
+            {/* Mapa do endereço — geocoda via OSM Nominatim */}
+            <div className="mt-5">
+              <AddressMap
+                endereco={form.endereco}
+                numero={form.numero}
+                bairro={form.bairro}
+                cidade={municipiosResidencia.find(m => String(m.id) === form.municipioIbge)?.nome ?? ''}
+                uf={form.uf}
+                cep={form.cep}
+                pais={form.pais}
+              />
             </div>
           </Section>
 
           <Section title="Contato">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-              <div className="md:col-span-3">
+              <div className="md:col-span-4">
                 <FormField label="Celular" error={showError('cellphone')}>
                   <MaskedInput value={form.cellphone} onChange={v => setField('cellphone', v)}
                     mask={phoneMask} invalid={!!showError('cellphone')} placeholder="(00) 00000-0000" />
                 </FormField>
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-4">
                 <FormField label="Telefone fixo" error={showError('phone')}>
                   <MaskedInput value={form.phone} onChange={v => setField('phone', v)}
                     mask={phoneMask} invalid={!!showError('phone')} placeholder="(00) 0000-0000" />
                 </FormField>
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-4">
                 <FormField label="Recado" error={showError('phoneRecado')}>
                   <MaskedInput value={form.phoneRecado} onChange={v => setField('phoneRecado', v)}
                     mask={phoneMask} invalid={!!showError('phoneRecado')} placeholder="(00) 00000-0000" />
-                </FormField>
-              </div>
-              <div className="md:col-span-3">
-                <FormField label="Idioma">
-                  <input value={form.idiomaPreferencial} maxLength={10}
-                    onChange={e => setField('idiomaPreferencial', e.target.value)}
-                    className={baseInput(null)} />
                 </FormField>
               </div>
               <div className="md:col-span-12">

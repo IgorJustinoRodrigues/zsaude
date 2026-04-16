@@ -114,6 +114,8 @@ const REF_BY_FIELD: Record<string, string> = {
   contato_emergencia_parentesco_id: 'parentescos',
   tipo_sanguineo_id: 'tipos-sanguineos',
   logradouro_id: 'logradouros',
+  // Campos multi-valor (lista CSV de UUIDs) também resolvem aqui.
+  deficiencias: 'deficiencias',
 }
 
 // ─── Enums com descrição humana ────────────────────────────────────────────

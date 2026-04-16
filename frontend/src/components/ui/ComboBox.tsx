@@ -140,7 +140,7 @@ export function ComboBox({
       </button>
 
       {open && (
-        <div className="absolute z-30 mt-1 w-full bg-white dark:bg-slate-900 border border-border rounded-lg shadow-lg overflow-hidden max-h-72 flex flex-col">
+        <div className="absolute z-[1100] mt-1 w-full bg-white dark:bg-slate-900 border border-border rounded-lg shadow-lg overflow-hidden max-h-72 flex flex-col">
           <div className="relative border-b border-border">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
