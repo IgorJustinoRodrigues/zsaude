@@ -23,9 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import get_audit_context
 from app.core.deps import WorkContext
 from app.modules.audit.writer import write_audit
-from app.modules.hsp.schemas import PatientCreate, PatientUpdate
+from app.modules.hsp.schemas import DocumentInput, PatientCreate, PatientUpdate
 from app.tenant_models.patients import (
     Patient,
+    PatientDocument,
     PatientFieldChangeType,
     PatientFieldHistory,
     PatientPhoto,
@@ -37,9 +38,6 @@ from app.tenant_models.patients import (
 
 _TRACKED_FIELDS: tuple[str, ...] = (
     "prontuario", "name", "social_name", "cpf", "cns",
-    "rg", "rg_orgao_emissor", "rg_uf", "rg_data_emissao",
-    "tipo_documento_id", "numero_documento",
-    "passaporte", "pais_passaporte", "nis_pis", "titulo_eleitor", "cadunico",
     "birth_date", "sex", "naturalidade_ibge", "naturalidade_uf", "pais_nascimento",
     "identidade_genero_id", "orientacao_sexual_id",
     "nacionalidade_id", "raca_id", "etnia_id", "estado_civil_id",
@@ -182,18 +180,21 @@ class PatientService:
 
     # ── Create ─────────────────────────────────────────────────────
     async def create_patient(self, payload: PatientCreate) -> Patient:
-        cpf = _validate_cpf(payload.cpf)
-
-        existing = await self.db.scalar(select(Patient).where(Patient.cpf == cpf))
-        if existing is not None:
-            raise HTTPException(status_code=409, detail="CPF já cadastrado neste município.")
+        # CPF é opcional no cadastro simplificado. Quando vier, valida +
+        # checa duplicata; quando ausente, segue.
+        cpf: str | None = None
+        if payload.cpf:
+            cpf = _validate_cpf(payload.cpf)
+            existing = await self.db.scalar(select(Patient).where(Patient.cpf == cpf))
+            if existing is not None:
+                raise HTTPException(status_code=409, detail="CPF já cadastrado neste município.")
 
         prontuario = payload.prontuario or await self._next_prontuario()
         dup_pront = await self.db.scalar(select(Patient).where(Patient.prontuario == prontuario))
         if dup_pront is not None:
             raise HTTPException(status_code=409, detail="Prontuário já em uso.")
 
-        data = payload.model_dump(exclude={"prontuario", "cpf"})
+        data = payload.model_dump(exclude={"prontuario", "cpf", "documents"})
         # Converte UUIDs em list[UUID] (deficiencias) pra list[str] no JSONB
         if "deficiencias" in data and data["deficiencias"]:
             data["deficiencias"] = [str(u) for u in data["deficiencias"]]
@@ -207,13 +208,16 @@ class PatientService:
         self.db.add(patient)
         await self.db.flush()
 
-        # Registra a criação como um único log (change_type=create) com
-        # detalhes em new_value (JSON-ish).
+        # Documentos enviados na criação.
+        for doc in payload.documents:
+            await self._add_document(patient.id, doc, log=True)
+
+        # Registra a criação como um único log (change_type=create).
         await self._record_history(
             patient_id=patient.id,
             field_name="__create__",
             old_value=None,
-            new_value=f"prontuario={prontuario}, cpf={cpf}",
+            new_value=f"prontuario={prontuario}, cpf={cpf or '-'}",
             change_type=PatientFieldChangeType.CREATE,
             reason=None,
         )
@@ -226,7 +230,7 @@ class PatientService:
             resource="patient",
             resource_id=str(patient.id),
             description=f"Criou paciente {patient.name} (prontuário {prontuario})",
-            details={"prontuario": prontuario, "cpf": cpf},
+            details={"prontuario": prontuario, "cpf": cpf or "", "documents": len(payload.documents)},
         )
 
         return patient
@@ -241,17 +245,21 @@ class PatientService:
     # ── Update (com diff) ──────────────────────────────────────────
     async def update_patient(self, patient_id: UUID, payload: PatientUpdate) -> Patient:
         patient = await self.get_patient(patient_id)
-        data = payload.model_dump(exclude_unset=True, exclude={"reason"})
+        data = payload.model_dump(exclude_unset=True, exclude={"reason", "documents"})
         reason = payload.reason
+        documents_payload = payload.documents  # None = manter; lista = reconciliar
 
-        if "cpf" in data and data["cpf"] and data["cpf"] != patient.cpf:
-            cpf = _validate_cpf(data["cpf"])
-            dup = await self.db.scalar(
-                select(Patient).where(and_(Patient.cpf == cpf, Patient.id != patient_id))
-            )
-            if dup is not None:
-                raise HTTPException(status_code=409, detail="CPF já cadastrado neste município.")
-            data["cpf"] = cpf
+        if "cpf" in data:
+            # CPF é opcional — permite limpar (None/"") ou trocar.
+            raw_cpf = (data["cpf"] or "").strip() or None
+            if raw_cpf and raw_cpf != patient.cpf:
+                raw_cpf = _validate_cpf(raw_cpf)
+                dup = await self.db.scalar(
+                    select(Patient).where(and_(Patient.cpf == raw_cpf, Patient.id != patient_id))
+                )
+                if dup is not None:
+                    raise HTTPException(status_code=409, detail="CPF já cadastrado neste município.")
+            data["cpf"] = raw_cpf
 
         if "prontuario" in data and data["prontuario"] and data["prontuario"] != patient.prontuario:
             dup = await self.db.scalar(
@@ -276,34 +284,41 @@ class PatientService:
             changes[field] = (old_val, new_val)
             setattr(patient, field, new_val)
 
-        if not changes:
-            return patient
+        if changes:
+            patient.updated_by = self.ctx.user_id
+            patient.data_ultima_revisao_cadastro = datetime.now(UTC)
+            await self.db.flush()
 
-        patient.updated_by = self.ctx.user_id
-        patient.data_ultima_revisao_cadastro = datetime.now(UTC)
-        await self.db.flush()
+            for field, (old_val, new_val) in changes.items():
+                await self._record_history(
+                    patient_id=patient.id,
+                    field_name=field,
+                    old_value=_serialize(old_val),
+                    new_value=_serialize(new_val),
+                    change_type=PatientFieldChangeType.UPDATE,
+                    reason=reason,
+                )
 
-        # Histórico campo a campo
-        for field, (old_val, new_val) in changes.items():
-            await self._record_history(
-                patient_id=patient.id,
-                field_name=field,
-                old_value=_serialize(old_val),
-                new_value=_serialize(new_val),
-                change_type=PatientFieldChangeType.UPDATE,
-                reason=reason,
+        # Documentos: reconciliação se documents foi passado
+        doc_changes = 0
+        if documents_payload is not None:
+            doc_changes = await self._reconcile_documents(patient.id, documents_payload, reason)
+
+        if changes or doc_changes:
+            await write_audit(
+                self.db,
+                module="hsp",
+                action="patient_update",
+                severity="info",
+                resource="patient",
+                resource_id=str(patient.id),
+                description=f"Atualizou paciente {patient.name}",
+                details={
+                    "changedFields": list(changes.keys()),
+                    "documentChanges": doc_changes,
+                    "reason": reason or "",
+                },
             )
-
-        await write_audit(
-            self.db,
-            module="hsp",
-            action="patient_update",
-            severity="info",
-            resource="patient",
-            resource_id=str(patient.id),
-            description=f"Atualizou paciente {patient.name}",
-            details={"changedFields": list(changes.keys()), "reason": reason or ""},
-        )
 
         return patient
 
@@ -422,6 +437,120 @@ class PatientService:
         if photo is None:
             raise HTTPException(status_code=404, detail="Foto não encontrada.")
         return photo
+
+    # ── Documentos ─────────────────────────────────────────────────
+    async def list_documents(self, patient_id: UUID) -> list[PatientDocument]:
+        await self.get_patient(patient_id)
+        return list((await self.db.scalars(
+            select(PatientDocument)
+            .where(PatientDocument.patient_id == patient_id)
+            .order_by(PatientDocument.tipo_codigo, PatientDocument.created_at)
+        )).all())
+
+    async def _add_document(
+        self, patient_id: UUID, payload: DocumentInput, *, log: bool = True,
+    ) -> PatientDocument:
+        doc = PatientDocument(
+            patient_id=patient_id,
+            tipo_documento_id=payload.tipo_documento_id,
+            tipo_codigo=payload.tipo_codigo or "",
+            numero=payload.numero or "",
+            orgao_emissor=payload.orgao_emissor or "",
+            uf_emissor=payload.uf_emissor or "",
+            pais_emissor=payload.pais_emissor or "",
+            data_emissao=payload.data_emissao,
+            data_validade=payload.data_validade,
+            observacao=payload.observacao or "",
+        )
+        self.db.add(doc)
+        await self.db.flush()
+        if log:
+            await self._record_history(
+                patient_id=patient_id,
+                field_name=f"document:{doc.tipo_codigo or doc.id}",
+                old_value=None,
+                new_value=doc.numero,
+                change_type=PatientFieldChangeType.DOCUMENT_ADD,
+                reason=None,
+            )
+        return doc
+
+    async def _update_document(
+        self, current: PatientDocument, payload: DocumentInput, reason: str | None,
+    ) -> bool:
+        """Aplica updates no documento. Retorna True se algo mudou."""
+        fields = (
+            "tipo_documento_id", "tipo_codigo", "numero", "orgao_emissor",
+            "uf_emissor", "pais_emissor", "data_emissao", "data_validade",
+            "observacao",
+        )
+        changed: list[str] = []
+        for f in fields:
+            new_val = getattr(payload, f)
+            if new_val is None and f in ("tipo_documento_id", "data_emissao", "data_validade"):
+                pass  # permitir limpar nullable
+            elif new_val is None:
+                continue
+            if getattr(current, f) != new_val:
+                setattr(current, f, new_val)
+                changed.append(f)
+        if not changed:
+            return False
+        await self.db.flush()
+        await self._record_history(
+            patient_id=current.patient_id,
+            field_name=f"document:{current.tipo_codigo or current.id}",
+            old_value=None,
+            new_value=",".join(changed),
+            change_type=PatientFieldChangeType.DOCUMENT_UPDATE,
+            reason=reason,
+        )
+        return True
+
+    async def _remove_document(self, doc: PatientDocument, reason: str | None) -> None:
+        await self._record_history(
+            patient_id=doc.patient_id,
+            field_name=f"document:{doc.tipo_codigo or doc.id}",
+            old_value=doc.numero,
+            new_value=None,
+            change_type=PatientFieldChangeType.DOCUMENT_REMOVE,
+            reason=reason,
+        )
+        await self.db.delete(doc)
+        await self.db.flush()
+
+    async def _reconcile_documents(
+        self, patient_id: UUID, payload: list[DocumentInput], reason: str | None,
+    ) -> int:
+        """Sincroniza a lista de documentos com o payload.
+
+        - Itens com ``id`` que existem → update
+        - Itens sem ``id`` → criar
+        - Documentos atuais cujo id não está no payload → remover
+
+        Retorna o total de operações (add + update + remove).
+        """
+        current = await self.list_documents(patient_id)
+        current_by_id = {d.id: d for d in current}
+        payload_ids: set[UUID] = {d.id for d in payload if d.id}
+
+        ops = 0
+        # Add + update
+        for item in payload:
+            if item.id and item.id in current_by_id:
+                if await self._update_document(current_by_id[item.id], item, reason):
+                    ops += 1
+            else:
+                await self._add_document(patient_id, item, log=True)
+                ops += 1
+
+        # Remove os que sumiram
+        for doc_id, doc in current_by_id.items():
+            if doc_id not in payload_ids:
+                await self._remove_document(doc, reason)
+                ops += 1
+
+        return ops
 
     # ── Histórico ──────────────────────────────────────────────────
     async def list_history(

@@ -32,11 +32,14 @@ async def _user_name(db, ctx: WorkContext) -> str:
     return u.name if u else ""
 
 
-def _patient_to_read(p: Patient) -> PatientRead:
+def _patient_to_read(p: Patient, docs: list | None = None) -> PatientRead:
     read = PatientRead.model_validate(p, from_attributes=True)
     read.has_photo = p.current_photo_id is not None
     # deficiencias é armazenado como list[str] (UUIDs em JSONB).
     read.deficiencias = [UUID(v) if isinstance(v, str) else v for v in (p.deficiencias or [])]
+    if docs is not None:
+        from app.modules.hsp.schemas import DocumentOut
+        read.documents = [DocumentOut.model_validate(d, from_attributes=True) for d in docs]
     return read
 
 
@@ -89,7 +92,8 @@ async def create_patient(
 ) -> PatientRead:
     svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
     patient = await svc.create_patient(payload)
-    return _patient_to_read(patient)
+    docs = await svc.list_documents(patient.id)
+    return _patient_to_read(patient, docs)
 
 
 # ── Detail / Update / Delete ───────────────────────────────────────────────
@@ -102,7 +106,8 @@ async def get_patient(
 ) -> PatientRead:
     svc = PatientService(db, ctx)
     patient = await svc.get_patient(patient_id)
-    return _patient_to_read(patient)
+    docs = await svc.list_documents(patient_id)
+    return _patient_to_read(patient, docs)
 
 
 @router.patch("/patients/{patient_id}", response_model=PatientRead)
@@ -114,7 +119,8 @@ async def update_patient(
 ) -> PatientRead:
     svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
     patient = await svc.update_patient(patient_id, payload)
-    return _patient_to_read(patient)
+    docs = await svc.list_documents(patient.id)
+    return _patient_to_read(patient, docs)
 
 
 @router.delete("/patients/{patient_id}", status_code=204)
@@ -155,7 +161,8 @@ async def upload_patient_photo(
     svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
     await svc.set_photo(patient_id, content=raw, mime_type=mime, width=width, height=height)
     patient = await svc.get_patient(patient_id)
-    return _patient_to_read(patient)
+    docs = await svc.list_documents(patient_id)
+    return _patient_to_read(patient, docs)
 
 
 @router.get("/patients/{patient_id}/photo")

@@ -151,6 +151,43 @@ async function tryRefresh(): Promise<boolean> {
   return refreshPromise
 }
 
+// ─── Blob fetch (imagens, downloads) ─────────────────────────────────────────
+
+/**
+ * Igual ao apiFetch mas retorna um Blob em vez de JSON. Usado para servir
+ * imagens autenticadas em <img> via URL.createObjectURL.
+ */
+export async function apiFetchBlob(
+  path: string,
+  opts: { withContext?: boolean } = {},
+): Promise<Blob> {
+  const headers: Record<string, string> = {}
+
+  if (tokenStore) {
+    const access = tokenStore.getAccess()
+    if (access) headers['Authorization'] = `Bearer ${access}`
+    if (opts.withContext) {
+      const ctx = tokenStore.getContext()
+      if (ctx) headers['X-Work-Context'] = ctx
+    }
+  }
+
+  const url = `${BASE_URL}${path}`
+  let res = await fetch(url, { headers })
+
+  if (res.status === 401 && tokenStore) {
+    const refreshed = await tryRefresh()
+    if (refreshed) {
+      const access = tokenStore.getAccess()
+      if (access) headers['Authorization'] = `Bearer ${access}`
+      res = await fetch(url, { headers })
+    }
+  }
+
+  if (!res.ok) throw await parseError(res)
+  return res.blob()
+}
+
 // ─── Atalhos ────────────────────────────────────────────────────────────────
 
 export const api = {

@@ -7,7 +7,9 @@ import { api, apiFetch } from './client'
 export type Sex = 'M' | 'F' | 'I'
 export type PlanoSaudeTipo = 'SUS' | 'PARTICULAR' | 'CONVENIO'
 export type PatientFieldChangeType =
-  | 'create' | 'update' | 'delete' | 'photo_upload' | 'photo_remove'
+  | 'create' | 'update' | 'delete'
+  | 'photo_upload' | 'photo_remove'
+  | 'document_add' | 'document_update' | 'document_remove'
 
 // ─── Tipos ───────────────────────────────────────────────────────────────
 
@@ -16,19 +18,9 @@ export interface PatientBaseFields {
   prontuario?: string | null
   name: string
   socialName: string
-  cpf: string
+  cpf: string | null
   cns: string | null
-  rg: string
-  rgOrgaoEmissor: string
-  rgUf: string
-  rgDataEmissao: string | null
-  tipoDocumentoId: string | null
-  numeroDocumento: string
-  passaporte: string
-  paisPassaporte: string
-  nisPis: string
-  tituloEleitor: string
-  cadunico: string
+  // Demais documentos vivem em `documents[]` no PatientRead/PatientUpdate.
 
   // Nascimento
   birthDate: string | null
@@ -110,14 +102,87 @@ export interface PatientBaseFields {
   consentimentoLgpd: boolean
 }
 
+export interface PatientDocumentInput {
+  /** Quando vier, atualiza; senão cria. */
+  id?: string
+  tipoDocumentoId: string | null
+  tipoCodigo: string
+  numero: string
+  orgaoEmissor: string
+  ufEmissor: string
+  paisEmissor: string
+  dataEmissao: string | null
+  dataValidade: string | null
+  observacao: string
+}
+
+export interface PatientDocument extends PatientDocumentInput {
+  id: string
+  patientId: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Estado completo do form (todos os campos presentes). É o que o componente
+ * mantém em state — fácil de trabalhar (sem `??` em toda parte). É
+ * compatível com PatientCreate/PatientUpdate.
+ */
+export interface PatientFormData extends PatientBaseFields {
+  documents: PatientDocumentInput[]
+}
+
+/**
+ * Campos válidos para Create/Update. Usado para filtrar o state do form
+ * antes de enviar — o backend usa `extra="forbid"` e rejeita campos extras
+ * como `id`, `active`, `createdAt`, etc.
+ */
+export const PATIENT_BASE_FIELDS: readonly (keyof PatientBaseFields)[] = [
+  'prontuario', 'name', 'socialName', 'cpf', 'cns',
+  'birthDate', 'sex', 'naturalidadeIbge', 'naturalidadeUf', 'paisNascimento',
+  'identidadeGeneroId', 'orientacaoSexualId',
+  'nacionalidadeId', 'racaId', 'etniaId', 'estadoCivilId', 'escolaridadeId',
+  'religiaoId', 'povoTradicionalId', 'cboId', 'ocupacaoLivre',
+  'situacaoRua', 'frequentaEscola', 'rendaFamiliar', 'beneficiarioBolsaFamilia',
+  'cep', 'logradouroId', 'endereco', 'numero', 'complemento', 'bairro',
+  'municipioIbge', 'uf', 'pais', 'areaMicroarea',
+  'phone', 'cellphone', 'phoneRecado', 'email', 'idiomaPreferencial',
+  'motherName', 'motherUnknown', 'fatherName', 'fatherUnknown',
+  'responsavelNome', 'responsavelCpf', 'responsavelParentescoId',
+  'contatoEmergenciaNome', 'contatoEmergenciaTelefone', 'contatoEmergenciaParentescoId',
+  'tipoSanguineoId', 'alergias', 'temAlergia', 'doencasCronicas',
+  'deficiencias', 'gestante', 'dum', 'fumante', 'etilista', 'observacoesClinicas',
+  'planoTipo', 'convenioNome', 'convenioNumeroCarteirinha', 'convenioValidade',
+  'unidadeSaudeId', 'vinculado', 'observacoes', 'consentimentoLgpd',
+] as const
+
+/**
+ * Pega só os campos aceitos pelo schema Create/Update + anexa documents.
+ * Remove propriedades extras herdadas do PatientRead (id, active, createdAt, ...).
+ */
+export function toSubmitPayload(
+  form: PatientFormData,
+  documents?: PatientDocumentInput[],
+): PatientCreate & PatientUpdate {
+  const out: Record<string, unknown> = {}
+  for (const key of PATIENT_BASE_FIELDS) {
+    out[key] = form[key]
+  }
+  if (documents !== undefined) out.documents = documents
+  return out as PatientCreate & PatientUpdate
+}
+
 export type PatientCreate = Partial<PatientBaseFields> & {
   name: string
-  cpf: string
-  prontuario?: string
+  cpf?: string | null
+  prontuario?: string | null
+  documents?: PatientDocumentInput[]
 }
 
 export type PatientUpdate = Partial<PatientBaseFields> & {
   reason?: string
+  /** Se vier, reconcilia (add+update+remove pelos `id`s presentes). */
+  documents?: PatientDocumentInput[]
 }
 
 export interface PatientRead extends PatientBaseFields {
@@ -133,6 +198,7 @@ export interface PatientRead extends PatientBaseFields {
   updatedBy: string | null
   createdAt: string
   updatedAt: string
+  documents: PatientDocument[]
 }
 
 export interface PatientListItem {
@@ -140,7 +206,7 @@ export interface PatientListItem {
   prontuario: string
   name: string
   socialName: string
-  cpf: string
+  cpf: string | null
   cns: string | null
   birthDate: string | null
   sex: Sex | null

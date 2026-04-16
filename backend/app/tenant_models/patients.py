@@ -47,23 +47,14 @@ class Patient(TenantBase):
     prontuario: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     social_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
-    cpf: Mapped[str] = mapped_column(String(11), unique=True, nullable=False, index=True)
+    # CPF é opcional para suportar cadastro simplificado / pacientes recém-nascidos.
+    # Postgres aceita múltiplos NULLs em UNIQUE por padrão, então o índice
+    # único só impede CPFs repetidos quando preenchidos.
+    cpf: Mapped[str | None] = mapped_column(String(11), unique=True, nullable=True, index=True)
     cns: Mapped[str | None] = mapped_column(String(15), nullable=True, index=True)
 
-    # Outros documentos
-    rg: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
-    rg_orgao_emissor: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
-    rg_uf: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
-    rg_data_emissao: Mapped[date | None] = mapped_column(Date, nullable=True)
-
-    tipo_documento_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
-    numero_documento: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
-
-    passaporte: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
-    pais_passaporte: Mapped[str] = mapped_column(String(3), nullable=False, server_default="")  # ISO 3166-1 alpha-3
-    nis_pis: Mapped[str] = mapped_column(String(15), nullable=False, server_default="")
-    titulo_eleitor: Mapped[str] = mapped_column(String(15), nullable=False, server_default="")
-    cadunico: Mapped[str] = mapped_column(String(15), nullable=False, server_default="")
+    # Demais documentos (RG, CNH, Passaporte, NIS, Título de eleitor,
+    # CadÚnico, etc.) vivem em ``patient_documents`` — múltiplos por paciente.
 
     # ── Nascimento / sexo / gênero ─────────────────────────────────────
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
@@ -227,6 +218,48 @@ class PatientFieldChangeType(str, enum.Enum):
     DELETE = "delete"
     PHOTO_UPLOAD = "photo_upload"
     PHOTO_REMOVE = "photo_remove"
+    DOCUMENT_ADD = "document_add"
+    DOCUMENT_UPDATE = "document_update"
+    DOCUMENT_REMOVE = "document_remove"
+
+
+class PatientDocument(TenantBase):
+    """Documentos do paciente (RG, CNH, Passaporte, etc.).
+
+    Lista dinâmica — um paciente pode ter quantos documentos quiser. CPF e
+    CNS continuam direto em ``patients`` por serem chaves de busca/identidade.
+
+    ``tipo_documento_id`` referencia ``app.ref_tipos_documento`` (sem FK
+    cross-schema). ``tipo_codigo`` é snapshot pra evitar JOIN em listagens.
+    """
+
+    __tablename__ = "patient_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    patient_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("patients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    tipo_documento_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    tipo_codigo: Mapped[str] = mapped_column(String(8), nullable=False, server_default="", index=True)
+
+    numero: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
+    orgao_emissor: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
+    uf_emissor: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
+    pais_emissor: Mapped[str] = mapped_column(String(3), nullable=False, server_default="")  # ISO alpha-3
+    data_emissao: Mapped[date | None] = mapped_column(Date, nullable=True)
+    data_validade: Mapped[date | None] = mapped_column(Date, nullable=True)
+    observacao: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()"),
+    )
 
 
 class PatientFieldHistory(TenantBase):

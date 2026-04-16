@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.tenant_models.patients import (  # noqa: F401
     Patient,
+    PatientDocument,
     PatientFieldChangeType,
     PatientFieldHistory,
     PatientPhoto,

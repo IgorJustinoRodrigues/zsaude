@@ -4,6 +4,7 @@ import { Edit, History, User2, Trash2 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientFieldHistoryItem, type PatientRead } from '../../api/hsp'
+import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { toast } from '../../store/toastStore'
 import { formatCPF, formatDate, formatDateTime, calcAge, initials, cn } from '../../lib/utils'
 
@@ -84,7 +85,7 @@ export function HspPatientDetailPage() {
     <div>
       <PageHeader
         title={patient.socialName || patient.name}
-        subtitle={`Prontuário ${patient.prontuario} · CPF ${formatCPF(patient.cpf)}`}
+        subtitle={`Prontuário ${patient.prontuario}${patient.cpf ? ` · CPF ${formatCPF(patient.cpf)}` : ''}`}
         back="/hsp/pacientes"
         actions={
           <div className="flex gap-2">
@@ -110,7 +111,13 @@ export function HspPatientDetailPage() {
       <div className="bg-white rounded-xl border border-border p-5 mb-6 flex items-start gap-5">
         <div className="w-20 h-20 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xl font-bold shrink-0 overflow-hidden">
           {patient.hasPhoto ? (
-            <img src={hspApi.photoUrl(patient.id)} alt="Foto" className="w-full h-full object-cover" />
+            <PatientPhotoImg
+              patientId={patient.id}
+              cacheKey={patient.currentPhotoId ?? undefined}
+              alt="Foto"
+              className="w-full h-full object-cover"
+              fallback={initials(patient.name)}
+            />
           ) : initials(patient.name)}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
@@ -152,9 +159,40 @@ export function HspPatientDetailPage() {
           <DataCard title="Identificação" rows={[
             ['Nome', patient.name],
             ['Nome social', patient.socialName || '—'],
-            ['RG', `${patient.rg || '—'}${patient.rgOrgaoEmissor ? ` (${patient.rgOrgaoEmissor}/${patient.rgUf})` : ''}`],
-            ['NIS/PIS', patient.nisPis || '—'],
+            ['CPF', patient.cpf ? formatCPF(patient.cpf) : '—'],
+            ['CNS', patient.cns || '—'],
           ]} />
+
+          <div className="bg-white rounded-xl border border-border p-5 md:row-span-2">
+            <h3 className="text-sm font-semibold mb-3">
+              Documentos
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ({patient.documents.length})
+              </span>
+            </h3>
+            {patient.documents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum documento.</p>
+            ) : (
+              <ul className="space-y-2">
+                {patient.documents.map(d => (
+                  <li key={d.id} className="text-sm border-l-2 border-primary/40 pl-3">
+                    <p className="font-medium">
+                      {d.tipoCodigo || 'Documento'}
+                      <span className="ml-2 text-muted-foreground font-normal">{d.numero}</span>
+                    </p>
+                    {(d.orgaoEmissor || d.ufEmissor) && (
+                      <p className="text-xs text-muted-foreground">
+                        {d.orgaoEmissor}{d.ufEmissor ? `/${d.ufEmissor}` : ''}
+                        {d.dataEmissao ? ` · emit. ${formatDate(d.dataEmissao)}` : ''}
+                        {d.dataValidade ? ` · val. ${formatDate(d.dataValidade)}` : ''}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <DataCard title="Endereço" rows={[
             ['CEP', patient.cep || '—'],
             ['Endereço', `${patient.endereco || '—'}${patient.numero ? `, ${patient.numero}` : ''}${patient.complemento ? ` — ${patient.complemento}` : ''}`],

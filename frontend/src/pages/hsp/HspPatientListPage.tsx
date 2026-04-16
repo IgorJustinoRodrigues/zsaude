@@ -129,7 +129,7 @@ export function HspPatientListPage() {
                       </div>
                       <div>
                         <p className="font-medium text-sm">{p.socialName || p.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatCPF(p.cpf)}</p>
+                        <p className="text-xs text-muted-foreground">{p.cpf ? formatCPF(p.cpf) : '—'}</p>
                       </div>
                     </div>
                   </td>

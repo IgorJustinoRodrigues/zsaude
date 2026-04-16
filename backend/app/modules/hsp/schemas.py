@@ -21,17 +21,7 @@ class PatientBase(CamelModel):
     social_name: str = Field(default="", max_length=200)
     cpf: str | None = Field(default=None, min_length=11, max_length=11)
     cns: str | None = Field(default=None, max_length=15)
-    rg: str = Field(default="", max_length=20)
-    rg_orgao_emissor: str = Field(default="", max_length=20)
-    rg_uf: str = Field(default="", max_length=2)
-    rg_data_emissao: date | None = None
-    tipo_documento_id: UUID | None = None
-    numero_documento: str = Field(default="", max_length=40)
-    passaporte: str = Field(default="", max_length=20)
-    pais_passaporte: str = Field(default="", max_length=3)
-    nis_pis: str = Field(default="", max_length=15)
-    titulo_eleitor: str = Field(default="", max_length=15)
-    cadunico: str = Field(default="", max_length=15)
+    # Demais documentos vivem em PatientDocument (lista no Read/Update).
 
     # Nascimento
     birth_date: date | None = None
@@ -113,16 +103,53 @@ class PatientBase(CamelModel):
     consentimento_lgpd: bool = False
 
 
+class DocumentBase(CamelModel):
+    """Documento do paciente (RG, CNH, Passaporte, etc.)."""
+    tipo_documento_id: UUID | None = None
+    tipo_codigo: str = Field(default="", max_length=8)
+    numero: str = Field(default="", max_length=40)
+    orgao_emissor: str = Field(default="", max_length=40)
+    uf_emissor: str = Field(default="", max_length=2)
+    pais_emissor: str = Field(default="", max_length=3)
+    data_emissao: date | None = None
+    data_validade: date | None = None
+    observacao: str = Field(default="", max_length=500)
+
+
+class DocumentInput(DocumentBase):
+    """Item enviado pelo client. Se ``id`` vier, atualiza; senão cria."""
+    id: UUID | None = None
+
+
+class DocumentOut(DocumentBase):
+    id: UUID
+    patient_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
 class PatientCreate(PatientBase):
-    # Cria: name e cpf são obrigatórios; prontuario pode ser gerado.
+    """Cria paciente.
+
+    Apenas ``name`` é obrigatório. CPF, sexo, etc. podem ser preenchidos
+    no cadastro simplificado e completados depois pela tela de edição.
+    """
     name: str = Field(..., min_length=2, max_length=200)
-    cpf: str = Field(..., min_length=11, max_length=11)
+    cpf: str | None = Field(default=None, min_length=11, max_length=11)
     prontuario: str | None = Field(default=None, max_length=20)
+    documents: list[DocumentInput] = Field(default_factory=list)
 
 
 class PatientUpdate(PatientBase):
-    """Todos os campos opcionais para PATCH parcial."""
+    """Todos os campos opcionais para PATCH parcial.
+
+    Se ``documents`` vier (não-None), o backend faz reconciliação:
+    - itens com ``id`` que existem → update
+    - itens sem ``id`` → criar
+    - documentos atuais cujo id não está no payload → remover
+    """
     reason: str | None = Field(default=None, max_length=500)
+    documents: list[DocumentInput] | None = None
 
 
 class PatientListItem(CamelModel):
@@ -130,7 +157,7 @@ class PatientListItem(CamelModel):
     prontuario: str
     name: str
     social_name: str
-    cpf: str
+    cpf: str | None = None
     cns: str | None = None
     birth_date: date | None = None
     sex: Sex | None = None
@@ -155,6 +182,7 @@ class PatientRead(PatientBase):
     updated_by: UUID | None = None
     created_at: datetime
     updated_at: datetime
+    documents: list[DocumentOut] = Field(default_factory=list)
 
 
 class PatientPhotoOut(CamelModel):
