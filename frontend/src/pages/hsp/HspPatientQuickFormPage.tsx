@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight, AlertCircle } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
@@ -20,15 +20,31 @@ interface QuickForm {
   cpf: string
   birthDate: string
   cns: string
+  motherName: string
+  fatherName: string
 }
 
 const EMPTY: QuickForm = {
   name: '', socialName: '', sex: '', cpf: '', birthDate: '', cns: '',
+  motherName: '', fatherName: '',
 }
 
 export function HspPatientQuickFormPage() {
   const navigate = useNavigate()
-  const [form, setForm] = useState<QuickForm>(EMPTY)
+  const [searchParams] = useSearchParams()
+
+  // Pré-preenche pela query string (ex.: vindo da tela Buscar).
+  const initial: QuickForm = useMemo(() => ({
+    ...EMPTY,
+    name:       searchParams.get('name')       ?? '',
+    cpf:        (searchParams.get('cpf')       ?? '').replace(/\D/g, ''),
+    cns:        (searchParams.get('cns')       ?? '').replace(/\D/g, ''),
+    birthDate:  searchParams.get('birthDate')  ?? '',
+    motherName: searchParams.get('motherName') ?? '',
+    fatherName: searchParams.get('fatherName') ?? '',
+  }), [searchParams])
+
+  const [form, setForm] = useState<QuickForm>(initial)
   const [touched, setTouched] = useState<Set<keyof QuickForm>>(new Set())
   const [submitTried, setSubmitTried] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -72,6 +88,8 @@ export function HspPatientQuickFormPage() {
         cpf: form.cpf || null,
         birthDate: form.birthDate || null,
         cns: form.cns || null,
+        motherName: form.motherName.trim() || undefined,
+        fatherName: form.fatherName.trim() || null,
       })
       toast.success('Paciente cadastrado.', 'Edite o cadastro para completar as informações.')
       navigate(`/hsp/pacientes/${created.id}`)
@@ -88,7 +106,7 @@ export function HspPatientQuickFormPage() {
       <PageHeader
         title="Novo paciente"
         subtitle="Cadastro rápido — só os dados essenciais"
-        back="/hsp/pacientes"
+        back="/hsp/pacientes/buscar"
       />
 
       <div className="bg-white rounded-xl border border-border p-6 space-y-5">

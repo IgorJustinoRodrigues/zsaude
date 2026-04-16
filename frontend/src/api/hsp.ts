@@ -260,10 +260,37 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
 
 // ─── API ─────────────────────────────────────────────────────────────────
 
+export interface PatientLookupParams {
+  cpf?: string
+  cns?: string
+  documento?: string
+  name?: string
+  birthDate?: string
+  motherName?: string
+  fatherName?: string
+  limit?: number
+}
+
 export const hspApi = {
   list: (params: PatientListParams = {}) =>
     api.get<PageResponse<PatientListItem>>(
       `/api/v1/hsp/patients${qs({ ...params })}`,
+      { withContext: true },
+    ),
+
+  /** Busca pré-cadastro: aceita combinação de CPF/CNS/documento/nome+nasc/filiação. */
+  lookup: (params: PatientLookupParams) =>
+    api.get<PatientListItem[]>(
+      `/api/v1/hsp/patients/lookup${qs({
+        cpf: params.cpf,
+        cns: params.cns,
+        documento: params.documento,
+        name: params.name,
+        birth_date: params.birthDate,
+        mother_name: params.motherName,
+        father_name: params.fatherName,
+        limit: params.limit,
+      })}`,
       { withContext: true },
     ),
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -82,6 +83,31 @@ async def list_patients(
     )
     return Page(items=[_patient_to_item(p) for p in rows], total=total,
                 page=page, page_size=page_size)
+
+
+@router.get("/patients/lookup", response_model=list[PatientListItem])
+async def lookup_patients(
+    db: DB,
+    cpf: str | None = Query(default=None, description="CPF (com ou sem pontuação)"),
+    cns: str | None = Query(default=None, description="CNS (15 dígitos)"),
+    documento: str | None = Query(default=None, description="Número de documento (RG, CNH, etc.)"),
+    name: str | None = Query(default=None, description="Nome / Nome social (ilike)"),
+    birth_date: date | None = Query(default=None, description="Data de nascimento (combinada com name)"),
+    mother_name: str | None = Query(default=None, description="Nome da mãe (ilike)"),
+    father_name: str | None = Query(default=None, description="Nome do pai (ilike)"),
+    limit: int = Query(default=10, ge=1, le=50),
+    ctx: WorkContext = requires(permission="hsp.patient.view"),
+) -> list[PatientListItem]:
+    """Busca pré-cadastro: ajuda a evitar duplicatas. Aceita combinação de
+    chaves; usa OR entre os tipos informados."""
+    svc = PatientService(db, ctx)
+    rows = await svc.lookup_patients(
+        cpf=cpf, cns=cns, documento=documento,
+        name=name, birth_date=birth_date,
+        mother_name=mother_name, father_name=father_name,
+        limit=limit,
+    )
+    return [_patient_to_item(p) for p in rows]
 
 
 @router.post("/patients", response_model=PatientRead, status_code=201)

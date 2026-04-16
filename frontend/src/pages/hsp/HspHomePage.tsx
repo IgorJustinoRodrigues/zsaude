@@ -1,25 +1,19 @@
 import { useNavigate } from 'react-router-dom'
-import { Users, UserPlus, History } from 'lucide-react'
+import { SearchCheck, UserPlus } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 const CARDS = [
   {
-    title: 'Pacientes',
-    subtitle: 'Listar e gerenciar cadastros',
-    icon: Users,
-    to: '/hsp/pacientes',
+    title: 'Buscar paciente',
+    subtitle: 'Procurar antes de cadastrar — evita duplicatas',
+    icon: SearchCheck,
+    to: '/hsp/pacientes/buscar',
   },
   {
     title: 'Novo paciente',
-    subtitle: 'Cadastrar um novo registro',
+    subtitle: 'Cadastro rápido com os dados essenciais',
     icon: UserPlus,
     to: '/hsp/pacientes/novo',
-  },
-  {
-    title: 'Histórico',
-    subtitle: 'Ver alterações recentes',
-    icon: History,
-    to: '/hsp/pacientes',
   },
 ] as const
 
@@ -28,7 +22,7 @@ export function HspHomePage() {
   return (
     <div>
       <PageHeader title="Hospitalar" subtitle="Cadastro e acompanhamento de pacientes" />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {CARDS.map(card => {
           const Icon = card.icon
           return (

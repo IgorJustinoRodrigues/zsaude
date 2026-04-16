@@ -127,6 +127,78 @@ class PatientService:
             n += 1
         return f"{n:06d}"
 
+    # ── Lookup pré-cadastro ────────────────────────────────────────
+    async def lookup_patients(
+        self,
+        *,
+        cpf: str | None = None,
+        cns: str | None = None,
+        documento: str | None = None,
+        name: str | None = None,
+        birth_date: date | None = None,
+        mother_name: str | None = None,
+        father_name: str | None = None,
+        limit: int = 10,
+    ) -> list[Patient]:
+        """Busca paciente para evitar duplicatas no pré-cadastro.
+
+        - CPF/CNS: match exato em ``patients`` (ignora pontuação).
+        - documento: match exato em ``patient_documents.numero``.
+        - name + birth_date + mother_name: cada combinação acumula como
+          AND, reduzindo falsos positivos com homônimos.
+        - name sozinho: ilike (varredura limitada a `limit`).
+        """
+        clauses: list[Any] = []
+
+        if cpf:
+            clean = re.sub(r"\D", "", cpf)
+            if len(clean) == 11:
+                clauses.append(Patient.cpf == clean)
+
+        if cns:
+            clean = re.sub(r"\D", "", cns)
+            if len(clean) == 15:
+                clauses.append(Patient.cns == clean)
+
+        if documento:
+            clean_doc = (documento or "").strip()
+            if clean_doc:
+                doc_subq = select(PatientDocument.patient_id).where(
+                    PatientDocument.numero == clean_doc
+                )
+                clauses.append(Patient.id.in_(doc_subq))
+
+        # Bloco "Nome + nascimento + filiação" — combinados em AND para
+        # reduzir falsos positivos. Vai como um único OR-arm no where geral.
+        name_term = (name or "").strip()
+        mother_term = (mother_name or "").strip()
+        father_term = (father_name or "").strip()
+        if name_term or mother_term or father_term:
+            sub: list[Any] = []
+            if name_term:
+                sub.append(or_(
+                    Patient.name.ilike(f"%{name_term}%"),
+                    Patient.social_name.ilike(f"%{name_term}%"),
+                ))
+            if birth_date:
+                sub.append(Patient.birth_date == birth_date)
+            if mother_term:
+                sub.append(Patient.mother_name.ilike(f"%{mother_term}%"))
+            if father_term:
+                sub.append(Patient.father_name.ilike(f"%{father_term}%"))
+            clauses.append(and_(*sub))
+
+        if not clauses:
+            return []
+
+        q = (
+            select(Patient)
+            .where(or_(*clauses))
+            .order_by(Patient.name)
+            .limit(limit)
+        )
+        return list((await self.db.scalars(q)).all())
+
     # ── Listagem / busca ───────────────────────────────────────────
     async def list_patients(
         self,

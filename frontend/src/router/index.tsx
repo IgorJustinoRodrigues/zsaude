@@ -32,9 +32,9 @@ import { DgnHomePage } from '../pages/dgn/DgnHomePage'
 
 // HSP – Hospitalar
 import { HspHomePage } from '../pages/hsp/HspHomePage'
-import { HspPatientListPage } from '../pages/hsp/HspPatientListPage'
 import { HspPatientFormPage } from '../pages/hsp/HspPatientFormPage'
 import { HspPatientQuickFormPage } from '../pages/hsp/HspPatientQuickFormPage'
+import { HspPatientSearchPage } from '../pages/hsp/HspPatientSearchPage'
 import { HspPatientDetailPage } from '../pages/hsp/HspPatientDetailPage'
 
 // PLN – Planos
@@ -189,7 +189,9 @@ export const router = createBrowserRouter([
                 element: <RequireModule moduleId="hsp" />,
                 children: [
                   { path: '/hsp',                          element: <HspHomePage /> },
-                  { path: '/hsp/pacientes',                element: <HspPatientListPage /> },
+                  // /hsp/pacientes redireciona para a busca (listagem foi removida).
+                  { path: '/hsp/pacientes',                element: <Navigate to="/hsp/pacientes/buscar" replace /> },
+                  { path: '/hsp/pacientes/buscar',         element: <HspPatientSearchPage /> },
                   { path: '/hsp/pacientes/novo',           element: <HspPatientQuickFormPage /> },
                   { path: '/hsp/pacientes/:id',            element: <HspPatientDetailPage /> },
                   { path: '/hsp/pacientes/:id/editar',     element: <HspPatientFormPage /> },

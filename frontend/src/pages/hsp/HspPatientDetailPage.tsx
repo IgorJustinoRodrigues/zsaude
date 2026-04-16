@@ -63,7 +63,7 @@ export function HspPatientDetailPage() {
     try {
       await hspApi.remove(patient.id, reason || undefined)
       toast.success('Paciente desativado.')
-      navigate('/hsp/pacientes')
+      navigate('/hsp/pacientes/buscar')
     } catch (err) {
       if (err instanceof HttpError) toast.error(err.message)
     }
@@ -86,7 +86,7 @@ export function HspPatientDetailPage() {
       <PageHeader
         title={patient.socialName || patient.name}
         subtitle={`Prontuário ${patient.prontuario}${patient.cpf ? ` · CPF ${formatCPF(patient.cpf)}` : ''}`}
-        back="/hsp/pacientes"
+        back="/hsp/pacientes/buscar"
         actions={
           <div className="flex gap-2">
             <button

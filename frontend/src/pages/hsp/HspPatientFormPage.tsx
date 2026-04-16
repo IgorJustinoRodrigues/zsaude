@@ -333,7 +333,7 @@ export function HspPatientFormPage() {
       <PageHeader
         title={isEdit ? 'Editar paciente' : 'Novo paciente'}
         subtitle={isEdit ? `Prontuário ${patient?.prontuario ?? ''}` : 'Cadastro completo'}
-        back={isEdit ? `/hsp/pacientes/${id}` : '/hsp/pacientes'}
+        back={isEdit ? `/hsp/pacientes/${id}` : '/hsp/pacientes/buscar'}
         actions={
           <div className="flex items-center gap-3">
             {submitTried && totalErrors > 0 && (
