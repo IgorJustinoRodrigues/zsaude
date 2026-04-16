@@ -8,6 +8,7 @@ from app.core.schema_base import CamelModel
 class CboOut(CamelModel):
     codigo: str
     descricao: str
+    total_procedimentos: int = 0
 
 
 class CidOut(CamelModel):
@@ -15,6 +16,7 @@ class CidOut(CamelModel):
     descricao: str
     agravo: str
     sexo: str
+    total_procedimentos: int = 0
 
 
 class ProcedimentoOut(CamelModel):

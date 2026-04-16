@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Search, X, ChevronLeft, ChevronRight, Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, Filter, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { sigtapSearchApi, type ProcedimentoItem } from '../../api/sigtap-search'
 import { HttpError } from '../../api/client'
@@ -50,8 +50,15 @@ export function OpsProcedureSearchPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<'codigo' | 'nome' | 'complexidade' | 'valorTotal'>('codigo')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  useEffect(() => { setPage(1) }, [debouncedSearch, complexidade, sexo, revogado])
+  useEffect(() => { setPage(1) }, [debouncedSearch, complexidade, sexo, revogado, sortField, sortDir])
+
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir(field === 'valorTotal' ? 'desc' : 'asc') }
+  }
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -61,6 +68,7 @@ export function OpsProcedureSearchPage() {
         complexidade: complexidade || undefined,
         sexo: sexo || undefined,
         revogado,
+        sort: sortField, dir: sortDir,
         page,
         pageSize: PAGE_SIZE,
       })
@@ -72,7 +80,7 @@ export function OpsProcedureSearchPage() {
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, complexidade, sexo, revogado, page])
+  }, [debouncedSearch, complexidade, sexo, revogado, sortField, sortDir, page])
 
   useEffect(() => { void reload() }, [reload])
 
@@ -118,6 +126,13 @@ export function OpsProcedureSearchPage() {
 
       {loading ? <LoadingBox /> : items.length === 0 ? <EmptyBox /> : (
         <>
+          <div className="flex items-center gap-1 px-1 mb-1">
+            <span className="text-[10px] text-slate-400 mr-2">Ordenar por:</span>
+            <SortBtn field="codigo" label="Código" current={sortField} dir={sortDir} onSort={toggleSort} />
+            <SortBtn field="nome" label="Nome" current={sortField} dir={sortDir} onSort={toggleSort} />
+            <SortBtn field="complexidade" label="Complexidade" current={sortField} dir={sortDir} onSort={toggleSort} />
+            <SortBtn field="valorTotal" label="Valor total" current={sortField} dir={sortDir} onSort={toggleSort} />
+          </div>
           <div className="space-y-2">
             {items.map(p => {
               const expanded = expandedId === p.codigo
@@ -157,6 +172,19 @@ export function OpsProcedureSearchPage() {
         </>
       )}
     </div>
+  )
+}
+
+function SortBtn({ field, label, current, dir, onSort }: { field: string; label: string; current: string; dir: 'asc' | 'desc'; onSort: (f: any) => void }) {
+  const active = field === current
+  return (
+    <button onClick={() => onSort(field)} className={cn(
+      'inline-flex items-center gap-0.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors',
+      active ? 'bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200',
+    )}>
+      {label}
+      {active ? dir === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} /> : <ChevronsUpDown size={10} className="opacity-40" />}
+    </button>
   )
 }
 

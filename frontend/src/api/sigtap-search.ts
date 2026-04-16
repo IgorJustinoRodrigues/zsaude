@@ -24,6 +24,7 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
 export interface CboItem {
   codigo: string
   descricao: string
+  totalProcedimentos: number
 }
 
 export interface CidItem {
@@ -31,6 +32,7 @@ export interface CidItem {
   descricao: string
   agravo: string
   sexo: string
+  totalProcedimentos: number
 }
 
 export interface ProcedimentoItem {
@@ -75,13 +77,13 @@ export interface CidProcedimentoItem {
 // ── API ──
 
 export const sigtapSearchApi = {
-  cbos: (params: { search?: string; page?: number; pageSize?: number } = {}) =>
+  cbos: (params: { search?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
     api.get<PageResponse<CboItem>>(`/api/v1/sigtap/search/cbo${qs(params)}`, { withContext: true }),
 
-  cids: (params: { search?: string; sexo?: string; agravo?: string; page?: number; pageSize?: number } = {}) =>
+  cids: (params: { search?: string; sexo?: string; agravo?: string; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
     api.get<PageResponse<CidItem>>(`/api/v1/sigtap/search/cid${qs(params)}`, { withContext: true }),
 
-  procedimentos: (params: { search?: string; complexidade?: string; sexo?: string; revogado?: boolean; page?: number; pageSize?: number } = {}) =>
+  procedimentos: (params: { search?: string; complexidade?: string; sexo?: string; revogado?: boolean; sort?: string; dir?: string; page?: number; pageSize?: number } = {}) =>
     api.get<PageResponse<ProcedimentoItem>>(`/api/v1/sigtap/search/procedimentos${qs(params)}`, { withContext: true }),
 
   cboProcedimentos: (params: { codigoCbo: string; search?: string; page?: number; pageSize?: number }) =>
