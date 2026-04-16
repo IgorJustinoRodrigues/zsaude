@@ -57,11 +57,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))
-    # Aquece o modelo de reconhecimento facial em background — evita que o
-    # primeiro match real pague o preço de carregar ~320MB. Idempotente e
-    # não propaga erro (fica pro primeiro match real tentar de novo).
     import asyncio
 
+    # Cria partições futuras do ai_usage_logs. Idempotente, roda em ~50ms.
+    try:
+        async with sessionmaker()() as session:
+            from app.modules.ai.partitions import ensure_partitions
+            await ensure_partitions(session)
+            await session.commit()
+    except Exception as e:  # noqa: BLE001
+        log.warning("ai_partitions_failed", error=str(e))
+
+    # Aquece o modelo de reconhecimento facial em background.
     from app.services.face import warm as warm_face
 
     asyncio.create_task(warm_face())

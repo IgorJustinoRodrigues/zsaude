@@ -115,7 +115,10 @@ class ExtractPatientDocument(AIOperation[ExtractPatientDocumentInput, ExtractPat
                     role="user",
                     content=[
                         ContentPart(kind="text", text=hint or "Extraia os campos do documento."),
-                        ContentPart(kind="image", image_url=input_dto.image_url),
+                        # detail="low" força 512×512 (~85 tokens de imagem em vez de
+                        # ~37k em high). Documentos de identidade são texto legível
+                        # em resolução baixa, então funciona bem e corta ~90% do custo.
+                        ContentPart(kind="image", image_url=input_dto.image_url, image_detail="low"),
                     ],
                 ),
             ],

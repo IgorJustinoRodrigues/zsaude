@@ -93,7 +93,8 @@ async def run_operation(
             idempotency_key=payload.idempotency_key,
         )
     except AIServiceError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+        status = 429 if e.code == "quota_exceeded" else 503
+        raise HTTPException(status_code=status, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
@@ -661,6 +662,97 @@ async def sys_usage_summary(
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
+
+
+@sys_router.get("/usage/timeseries")
+async def sys_usage_timeseries(
+    db: DB,
+    from_: datetime | None = Query(default=None, alias="from"),
+    to: datetime | None = None,
+    municipality_id: UUID | None = None,
+    group: str = Query(default="day", pattern="^(day|week)$"),
+) -> list[dict]:
+    """Retorna séries temporais de consumo agrupadas por dia ou semana.
+
+    Cada item: ``{date, requests, tokensIn, tokensOut, totalCostCents, successes, failures}``.
+    """
+    trunc_fn = func.date_trunc(group, AIUsageLog.at)
+    conds = []
+    if municipality_id is not None:
+        conds.append(AIUsageLog.municipality_id == municipality_id)
+    if from_:
+        conds.append(AIUsageLog.at >= from_)
+    if to:
+        conds.append(AIUsageLog.at <= to)
+
+    stmt = (
+        select(
+            trunc_fn.label("bucket"),
+            func.count().label("requests"),
+            func.coalesce(func.sum(AIUsageLog.tokens_in), 0).label("tokens_in"),
+            func.coalesce(func.sum(AIUsageLog.tokens_out), 0).label("tokens_out"),
+            func.coalesce(func.sum(AIUsageLog.total_cost_cents), 0).label("total_cost_cents"),
+            func.count().filter(AIUsageLog.success.is_(True)).label("successes"),
+            func.count().filter(AIUsageLog.success.is_(False)).label("failures"),
+        )
+        .where(*conds)
+        .group_by("bucket")
+        .order_by("bucket")
+    )
+    rows = await db.execute(stmt)
+    return [
+        {
+            "date": r.bucket.isoformat() if r.bucket else "",
+            "requests": int(r.requests or 0),
+            "tokensIn": int(r.tokens_in or 0),
+            "tokensOut": int(r.tokens_out or 0),
+            "totalCostCents": int(r.total_cost_cents or 0),
+            "successes": int(r.successes or 0),
+            "failures": int(r.failures or 0),
+        }
+        for r in rows.all()
+    ]
+
+
+@sys_router.get("/usage/top-operations")
+async def sys_top_operations(
+    db: DB,
+    from_: datetime | None = Query(default=None, alias="from"),
+    to: datetime | None = None,
+    municipality_id: UUID | None = None,
+    limit: int = Query(default=5, ge=1, le=20),
+) -> list[dict]:
+    """Top operations por número de chamadas."""
+    conds = []
+    if municipality_id is not None:
+        conds.append(AIUsageLog.municipality_id == municipality_id)
+    if from_:
+        conds.append(AIUsageLog.at >= from_)
+    if to:
+        conds.append(AIUsageLog.at <= to)
+
+    stmt = (
+        select(
+            AIUsageLog.operation_slug,
+            func.count().label("requests"),
+            func.coalesce(func.sum(AIUsageLog.total_cost_cents), 0).label("cost"),
+            func.coalesce(func.sum(AIUsageLog.tokens_in + AIUsageLog.tokens_out), 0).label("tokens"),
+        )
+        .where(*conds)
+        .group_by(AIUsageLog.operation_slug)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    rows = await db.execute(stmt)
+    return [
+        {
+            "operationSlug": r.operation_slug,
+            "requests": int(r.requests or 0),
+            "totalCostCents": int(r.cost or 0),
+            "totalTokens": int(r.tokens or 0),
+        }
+        for r in rows.all()
+    ]
 
 
 def _route_to_read(

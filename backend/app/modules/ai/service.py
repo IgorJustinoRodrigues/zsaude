@@ -29,7 +29,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import CryptoError, decrypt_secret
-from app.modules.ai import circuit
+from app.modules.ai import circuit, quota
 from app.modules.ai.costs import compute_cost_cents
 from app.modules.ai.models import (
     AICapabilityRoute,
@@ -216,6 +216,12 @@ class AIService:
         if not routes:
             raise NoRouteError(capability)
 
+        # Gate de quota ANTES de chamar qualquer provider.
+        try:
+            await quota.check_quota(self.db, self.municipality_id)
+        except quota.QuotaExceededError as e:
+            raise AIServiceError(str(e), code="quota_exceeded") from e
+
         last_error: ProviderError | None = None
         for resolved in routes:
             prov_slug = resolved.provider.slug
@@ -289,6 +295,13 @@ class AIService:
                 error_code="", error_message="",
                 cost_cents_override=cost_cents,
             )
+
+            # Incrementa contadores de quota + verifica alertas 80%/100%.
+            await quota.record_usage(
+                self.municipality_id, tokens_in, tokens_out, cost_cents,
+            )
+            await quota.check_and_log_alerts(self.db, self.municipality_id)
+
             return result
 
         # Se caiu fora do loop, todas as rotas retriáveis falharam.

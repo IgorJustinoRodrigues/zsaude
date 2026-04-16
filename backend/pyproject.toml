@@ -23,6 +23,7 @@ dependencies = [
     "httpx>=0.28.0",
     "uuid-utils>=0.10.0",
     "openai>=1.50.0",
+    "anthropic>=0.40.0",
     "tenacity>=9.0.0",
     # Reconhecimento facial (F2a): InsightFace + ONNX + pgvector. Tudo local,
     # sem dependência de LLM pago. numpy fica em <2.0 porque a 0.7.3 do

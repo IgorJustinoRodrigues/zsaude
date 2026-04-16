@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.modules.ai.models import AISdkKind
+from app.modules.ai.providers.anthropic import AnthropicProvider
 from app.modules.ai.providers.base import AIProvider
 from app.modules.ai.providers.ollama import OllamaProvider
 from app.modules.ai.providers.openai import OpenAIProvider
@@ -13,6 +14,7 @@ _REGISTRY: dict[AISdkKind, AIProvider] = {
     AISdkKind.openai: OpenAIProvider(),
     AISdkKind.openrouter: OpenRouterProvider(),
     AISdkKind.ollama: OllamaProvider(),
+    AISdkKind.anthropic: AnthropicProvider(),
 }
 
 

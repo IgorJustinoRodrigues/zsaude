@@ -32,7 +32,10 @@ def _content_to_openai(content: str | list[ContentPart]) -> str | list[dict]:
         if p.kind == "text":
             parts.append({"type": "text", "text": p.text or ""})
         elif p.kind == "image":
-            parts.append({"type": "image_url", "image_url": {"url": p.image_url or ""}})
+            img: dict = {"url": p.image_url or ""}
+            if p.image_detail:
+                img["detail"] = p.image_detail
+            parts.append({"type": "image_url", "image_url": img})
     return parts
 
 

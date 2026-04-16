@@ -11,6 +11,7 @@ import {
   type AIPromptTemplateRead, type AIPromptTemplateWrite, type SdkKind,
   type Capability, type AIMunicipalityKeyRead, type AIQuotaRead,
   type AIUsageListResponse, type AIUsageSummary,
+  type AITimeseriesPoint, type AITopOperation,
 } from '../../api/ai'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { toast } from '../../store/toastStore'
@@ -632,6 +633,8 @@ function QuotasTab({ scopeMunId }: { scopeMunId: string | null }) {
 
 function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
   const [summary, setSummary] = useState<AIUsageSummary | null>(null)
+  const [timeseries, setTimeseries] = useState<AITimeseriesPoint[]>([])
+  const [topOps, setTopOps] = useState<AITopOperation[]>([])
   const [list, setList] = useState<AIUsageListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -639,14 +642,14 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
   const reload = async () => {
     setLoading(true)
     try {
-      const [s, l] = await Promise.all([
-        sysAiApi.usageSummary(undefined, undefined, scopeMunId ?? undefined),
-        sysAiApi.listUsage({
-          municipalityId: scopeMunId ?? undefined,
-          page, pageSize: 30,
-        }),
+      const mun = scopeMunId ?? undefined
+      const [s, ts, top, l] = await Promise.all([
+        sysAiApi.usageSummary(undefined, undefined, mun),
+        sysAiApi.usageTimeseries({ municipalityId: mun }),
+        sysAiApi.topOperations({ municipalityId: mun }),
+        sysAiApi.listUsage({ municipalityId: mun, page, pageSize: 20 }),
       ])
-      setSummary(s); setList(l)
+      setSummary(s); setTimeseries(ts); setTopOps(top); setList(l)
     } finally { setLoading(false) }
   }
   useEffect(() => { void reload() }, [page, scopeMunId])  // eslint-disable-line
@@ -655,12 +658,13 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
     <div className="space-y-4">
       <InfoBar>
         {scopeMunId
-          ? 'Lista de chamadas à IA feitas apenas por este município.'
-          : 'Tudo que foi consumido no sistema — somando todos os municípios e as chamadas que caíram na configuração padrão.'}
+          ? 'Consumo apenas deste município.'
+          : 'Consumo de todos os municípios do sistema.'}
       </InfoBar>
 
       {loading && <Spinner />}
 
+      {/* Cards de resumo */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard label="Chamadas" value={String(summary.requests)} />
@@ -671,6 +675,39 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
         </div>
       )}
 
+      {/* Gráfico de chamadas por dia */}
+      {timeseries.length > 0 && (
+        <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">Chamadas por dia</p>
+          <UsageChart data={timeseries} />
+        </div>
+      )}
+
+      {/* Gráfico + top operations lado a lado */}
+      {topOps.length > 0 && (
+        <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">Tarefas mais usadas</p>
+          <div className="space-y-2">
+            {topOps.map(op => {
+              const maxReq = topOps[0]?.requests ?? 1
+              const pct = Math.round((op.requests / maxReq) * 100)
+              return (
+                <div key={op.operationSlug} className="flex items-center gap-3">
+                  <span className="font-mono text-xs w-48 truncate text-slate-700 dark:text-slate-200">{op.operationSlug}</span>
+                  <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs text-slate-500 w-24 text-right">
+                    {op.requests} ({formatUSD(op.totalCostCents)})
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Tabela detalhada */}
       <div className="flex justify-end">
         <button onClick={reload} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-800">
           <RefreshCw size={12} /> Atualizar
@@ -687,7 +724,7 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
               <th className="text-left px-3 py-2">Modelo</th>
               <th className="text-right px-3 py-2">Tokens</th>
               <th className="text-right px-3 py-2">Custo</th>
-              <th className="text-right px-3 py-2" title="Tempo de resposta">Tempo</th>
+              <th className="text-right px-3 py-2">Tempo</th>
               <th className="text-center px-3 py-2">Status</th>
             </tr>
           </thead>
@@ -708,7 +745,7 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
                 </td>
               </tr>
             ))}
-            {(list?.items ?? []).length === 0 && <tr><td colSpan={8} className="py-6 text-center text-sm text-slate-400">Nenhuma chamada à IA registrada ainda.</td></tr>}
+            {(list?.items ?? []).length === 0 && <tr><td colSpan={8} className="py-6 text-center text-sm text-slate-400">Nenhuma chamada registrada ainda.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -726,6 +763,45 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
         </div>
       )}
     </div>
+  )
+}
+
+// Lazy import: recharts é grande; carrega só quando UsageTab renderiza.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _recharts: any = null
+
+function UsageChart({ data }: { data: AITimeseriesPoint[] }) {
+  const [rc, setRc] = useState<typeof _recharts>(null)
+  useEffect(() => {
+    if (_recharts) { setRc(_recharts); return }
+    void import('recharts').then(m => { _recharts = m; setRc(m) })
+  }, [])
+
+  if (!rc) return <div className="h-[200px] flex items-center justify-center text-xs text-slate-400">Carregando gráfico...</div>
+
+  const { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } = rc
+
+  const formatted = data.map(d => ({
+    ...d,
+    label: new Date(d.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+  }))
+
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <AreaChart data={formatted}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+        <YAxis tick={{ fontSize: 10 }} />
+        <Tooltip
+          labelFormatter={(v: string) => v}
+          formatter={(v: number, name: string) => [v, name === 'successes' ? 'Sucesso' : 'Falhas']}
+        />
+        <Area type="monotone" dataKey="successes" stackId="1"
+          fill="#10b981" stroke="#10b981" fillOpacity={0.3} name="successes" />
+        <Area type="monotone" dataKey="failures" stackId="1"
+          fill="#f43f5e" stroke="#f43f5e" fillOpacity={0.3} name="failures" />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 

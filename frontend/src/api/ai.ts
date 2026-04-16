@@ -376,4 +376,33 @@ export const sysAiApi = {
     api.get<AIUsageSummary>(
       `${PREFIX}/sys/ai/usage/summary${qs({ from, to, municipalityId })}`,
     ),
+
+  usageTimeseries: (opts: { from?: string; to?: string; municipalityId?: string; group?: 'day' | 'week' } = {}) =>
+    api.get<AITimeseriesPoint[]>(
+      `${PREFIX}/sys/ai/usage/timeseries${qs(opts as Record<string, unknown>)}`,
+    ),
+
+  topOperations: (opts: { from?: string; to?: string; municipalityId?: string; limit?: number } = {}) =>
+    api.get<AITopOperation[]>(
+      `${PREFIX}/sys/ai/usage/top-operations${qs(opts as Record<string, unknown>)}`,
+    ),
+}
+
+// ─── Tipos dashboard ────────────────────────────────────────────────────────
+
+export interface AITimeseriesPoint {
+  date: string
+  requests: number
+  tokensIn: number
+  tokensOut: number
+  totalCostCents: number
+  successes: number
+  failures: number
+}
+
+export interface AITopOperation {
+  operationSlug: string
+  requests: number
+  totalCostCents: number
+  totalTokens: number
 }

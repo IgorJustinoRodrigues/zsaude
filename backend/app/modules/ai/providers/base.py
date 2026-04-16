@@ -8,6 +8,7 @@ provider ↔ formato interno.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -33,6 +34,9 @@ class ContentPart:
     kind: Literal["text", "image"]
     text: str | None = None
     image_url: str | None = None  # https://... ou data:image/jpeg;base64,...
+    # OpenAI vision: "auto" | "low" | "high". "low" força 512px e consome
+    # ~85 tokens em vez de milhares — ideal pra documentos legíveis.
+    image_detail: str | None = None
 
 
 @dataclass
@@ -120,6 +124,19 @@ class AIProvider(ABC):
         model: str,
         creds: ProviderCredentials,
     ) -> ChatResponse: ...
+
+    async def chat_stream(
+        self,
+        req: ChatRequest,
+        *,
+        model: str,
+        creds: ProviderCredentials,
+    ) -> AsyncIterator[str]:
+        """Streaming de texto token-a-token. Default: fallback pro chat
+        normal e yield do texto completo de uma vez. Providers que suportam
+        streaming nativo (OpenAI, Anthropic) sobrescrevem."""
+        resp = await self.chat(req, model=model, creds=creds)
+        yield resp.text
 
     @abstractmethod
     async def embed(
