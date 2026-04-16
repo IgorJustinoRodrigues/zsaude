@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
-  LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download,
+  LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download, Database,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
@@ -52,7 +52,8 @@ export function SysShell() {
           <SysNavItem to="/sys/perfis"       icon={<KeyRound size={15} />}>Perfis & permissões</SysNavItem>
 
           <SysNavSection label="Plataforma" />
-          <SysNavItem to="/sys/importacoes"   icon={<Download size={15} />}>Importações</SysNavItem>
+          <SysNavItem to="/sys/importacoes"     icon={<Download size={15} />}>Importações</SysNavItem>
+          <SysNavItem to="/sys/dados-referencia" icon={<Database size={15} />}>Dados de referência</SysNavItem>
           <SysNavItem to="/sys/configuracoes" icon={<Settings size={15} />}>Configurações</SysNavItem>
           <SysNavItem to="/sys/logs"           icon={<ScrollText size={15} />}>Logs do sistema</SysNavItem>
         </nav>

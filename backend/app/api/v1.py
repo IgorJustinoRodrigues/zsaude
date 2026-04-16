@@ -13,6 +13,7 @@ from app.modules.permissions.admin_router import (
     router as roles_admin_router,
 )
 from app.modules.permissions.router import router as roles_router
+from app.modules.reference.router import router as reference_router
 from app.modules.sessions.router import router as sessions_router
 from app.modules.sigtap.router import router as sigtap_router
 from app.modules.sigtap.search_router import router as sigtap_search_router
@@ -35,6 +36,7 @@ api_v1.include_router(roles_router)
 api_v1.include_router(roles_admin_router)
 api_v1.include_router(roles_admin_access_router)
 api_v1.include_router(system_router)
+api_v1.include_router(reference_router)
 api_v1.include_router(audit_router)
 api_v1.include_router(dgn_router)
 api_v1.include_router(cnes_router)

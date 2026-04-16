@@ -14,6 +14,12 @@ from app.modules.permissions.models import (  # noqa: F401
     Role,
     RolePermission,
 )
+from app.modules.reference.models import (  # noqa: F401
+    RefEtnia,
+    RefLogradouro,
+    RefNacionalidade,
+    RefRaca,
+)
 from app.modules.sessions.models import UserSession  # noqa: F401
 from app.modules.sigtap.models import (  # noqa: F401
     SigtapCbo,
