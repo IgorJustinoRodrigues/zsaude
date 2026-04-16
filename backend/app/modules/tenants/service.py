@@ -297,10 +297,22 @@ class TenantService:
         # provisiona schema mun_<ibge> no mesmo commit
         await ensure_municipality_schema(self.session, mun.ibge)
 
+        # Cria a SMS default — toda cidade tem Secretaria Municipal de Saúde.
+        # Evita o ciclo "cadastrei município mas não consigo importar CNES
+        # porque ainda não tem nenhuma unidade". MASTER pode arquivar depois.
+        self.session.add(Facility(
+            municipality_id=mun.id,
+            name=f"Secretaria Municipal de Saúde — {mun.name}",
+            short_name="SMS",
+            type=FacilityType.SMS,
+            cnes=None,
+        ))
+
         # bairros iniciais
         if payload.neighborhoods:
             await self._replace_neighborhoods(mun.id, payload.neighborhoods)
 
+        await self.session.flush()
         return await self._municipality_detail(mun)
 
     async def update_municipality(self, municipality_id: UUID, payload: MunicipalityUpdate) -> MunicipalityDetail:

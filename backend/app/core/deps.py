@@ -186,7 +186,10 @@ async def current_context(
 
     perm_svc = PermissionService(db, valkey)
     access, permissions = await perm_svc.resolve_for_facility(user.id, facility_id)
-    if access is None:
+    # MASTER (is_root) não precisa de FacilityAccess — token emitido pelo
+    # `select` já é legítimo. Para usuários comuns, ausência de access = acesso
+    # revogado após a emissão do token.
+    if access is None and not permissions.is_root:
         raise HTTPException(status_code=403, detail="Acesso à unidade revogado.")
 
     # Módulos derivados das permissões (intersecção com módulos operacionais).
@@ -202,7 +205,7 @@ async def current_context(
         municipality_id=UUID(payload["mun"]),
         municipality_ibge=str(payload.get("ibge", "")),
         facility_id=facility_id,
-        facility_access_id=access.id,
+        facility_access_id=access.id if access is not None else None,
         role=str(payload.get("role", "")),
         modules=derived_modules,
         permissions=permissions,

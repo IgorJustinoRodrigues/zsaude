@@ -37,7 +37,10 @@ export function ContextSelectPage() {
     }
   }, []) // eslint-disable-line
 
-  const accessible = contextOptions?.municipalities ?? []
+  // Esconde municípios sem unidade cadastrada — não há onde estabelecer
+  // contexto de trabalho. (Para MASTER o backend lista tudo; o admin panel
+  // continua mostrando esses municípios para gerenciá-los.)
+  const accessible = (contextOptions?.municipalities ?? []).filter(m => m.facilities.length > 0)
   const totalFacilities = accessible.reduce((s, m) => s + m.facilities.length, 0)
 
   const handleSelect = async (municipalityId: string, facilityId: string) => {

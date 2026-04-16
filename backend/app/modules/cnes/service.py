@@ -281,7 +281,10 @@ class CnesImportService:
             for row in (await self.db.execute(select(CnesUnit.cnes))).all()
         }
 
-        rows_to_upsert: list[dict[str, Any]] = []
+        # Dedupe por CNES: o mesmo CNES pode aparecer em mais de uma linha
+        # (mantenedoras diferentes, retificações). Mantemos a última ocorrência
+        # — caso contrário o ON CONFLICT DO UPDATE estoura `CardinalityViolation`.
+        by_cnes: dict[str, dict[str, Any]] = {}
         for i, raw in enumerate(lines, start=2):  # +2 porque pulou header e é 1-based
             if not raw.strip():
                 result.rows_skipped += 1
@@ -296,7 +299,12 @@ class CnesImportService:
                 result.warn(f"Linha {i}: CNES vazio — ignorada.")
                 result.rows_skipped += 1
                 continue
-            rows_to_upsert.append({
+            if row.cnes in by_cnes:
+                result.warn(
+                    f"Linha {i}: CNES {row.cnes} duplicado no arquivo — "
+                    "mantendo a última ocorrência."
+                )
+            by_cnes[row.cnes] = {
                 "id_unidade": row.id_unidade,
                 "cnes": row.cnes,
                 "cnpj_mantenedora": row.cnpj_mantenedora,
@@ -309,8 +317,11 @@ class CnesImportService:
                 "codigo_ibge": self.expected_ibge,  # grava sempre com 7 dígitos
                 "competencia_ultima_importacao": competencia,
                 "active": True,
-            })
-            if row.cnes in existing_cnes:
+            }
+
+        rows_to_upsert = list(by_cnes.values())
+        for r in rows_to_upsert:
+            if r["cnes"] in existing_cnes:
                 result.rows_updated += 1
             else:
                 result.rows_inserted += 1
@@ -428,7 +439,10 @@ class CnesImportService:
             for row in (await self.db.execute(select(CnesProfessional.id_profissional))).all()
         }
 
-        rows_to_upsert: list[dict[str, Any]] = []
+        # Dedupe por id_profissional na mesma passada (arquivos CNES às vezes
+        # trazem o mesmo profissional em múltiplas linhas). Sem dedupe o
+        # ON CONFLICT DO UPDATE dá CardinalityViolation.
+        by_id: dict[str, dict[str, Any]] = {}
         for i, raw in enumerate(lines, start=2):
             if not raw.strip():
                 result.rows_skipped += 1
@@ -437,6 +451,9 @@ class CnesImportService:
                 row = lfces018.parse(raw)
             except Exception as exc:  # noqa: BLE001
                 result.warn(f"Linha {i}: erro ao parsear — {exc}")
+                result.rows_skipped += 1
+                continue
+            if not row.id_profissional:
                 result.rows_skipped += 1
                 continue
 
@@ -451,15 +468,18 @@ class CnesImportService:
                         f"({int(similarity * 100)}%): {prev_name!r} → {row.nome!r}"
                     )
 
-            rows_to_upsert.append({
+            by_id[row.id_profissional] = {
                 "id_profissional": row.id_profissional,
                 "cpf": row.cpf,
                 "cns": row.cns,
                 "nome": row.nome,
                 "status": "Ativo",
                 "competencia_ultima_importacao": competencia,
-            })
-            if row.id_profissional in existing_ids:
+            }
+
+        rows_to_upsert = list(by_id.values())
+        for r in rows_to_upsert:
+            if r["id_profissional"] in existing_ids:
                 result.rows_updated += 1
             else:
                 result.rows_inserted += 1
