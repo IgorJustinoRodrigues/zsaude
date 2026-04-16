@@ -29,6 +29,8 @@ async def _setup_db(postgres_container: PostgresContainer):
     os.environ["DATABASE_URL"] = url
     # não usamos valkey nos testes básicos
     os.environ.setdefault("PASSWORD_PEPPER", "test-pepper-that-is-long-enough-to-pass-validation-xxxx")
+    # Chave Fernet determinística pros testes — derivada, nunca vai pra prod.
+    os.environ.setdefault("SECRETS_ENCRYPTION_KEY", "xJJY6CxeHhyQnIwr1ygNxdHKHuOSp9rndZmsIHsNU9I=")
     # JWT keys temporárias (geradas inline)
     _ensure_test_keys()
 

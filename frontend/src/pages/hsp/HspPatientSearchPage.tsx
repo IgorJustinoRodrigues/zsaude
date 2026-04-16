@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ArrowRight, UserPlus, AlertCircle, ScanLine, ScanFace } from 'lucide-react'
+import { Search, ArrowRight, UserPlus, AlertCircle, ScanLine, ScanFace, Loader2 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
@@ -9,6 +9,7 @@ import { FaceRecognitionModal } from './components/FaceRecognitionModal'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientListItem, type PatientLookupParams } from '../../api/hsp'
+import { aiApi } from '../../api/ai'
 import { toast } from '../../store/toastStore'
 import { cnsMask, cpfMask } from '../../lib/masks'
 import { validateCns, validateCpf } from '../../lib/validators'
@@ -41,6 +42,7 @@ export function HspPatientSearchPage() {
   const [results, setResults] = useState<PatientListItem[]>([])
   const [showScanner, setShowScanner] = useState(false)
   const [showFace, setShowFace] = useState(false)
+  const [extracting, setExtracting] = useState(false)
 
   const reset = () => {
     setSearched(false)
@@ -137,13 +139,49 @@ export function HspPatientSearchPage() {
       {showScanner && (
         <DocumentScannerModal
           onClose={() => setShowScanner(false)}
-          onCapture={dataUrl => {
-            // TODO: chamar IA de extração. Por enquanto só abre a imagem
-            // em nova aba pra o usuário validar a captura.
-            const w = window.open('')
-            w?.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto">`)
+          onCapture={async dataUrl => {
+            setShowScanner(false)
+            setExtracting(true)
+            try {
+              const { output } = await aiApi.extractPatientDocument(
+                { imageUrl: dataUrl },
+                { moduleCode: 'hsp' },
+              )
+              // Pré-preenche o form rápido com o que a IA conseguiu ler.
+              const qs = new URLSearchParams()
+              if (output.cpf) qs.set('cpf', output.cpf)
+              if (output.cns) qs.set('cns', output.cns)
+              if (output.name) qs.set('name', output.name)
+              if (output.socialName) qs.set('socialName', output.socialName)
+              if (output.birthDate) qs.set('birthDate', output.birthDate)
+              if (output.motherName) qs.set('motherName', output.motherName)
+              if (output.fatherName) qs.set('fatherName', output.fatherName)
+              const confidence = Math.round((output.confidence ?? 0) * 100)
+              toast.success(
+                'Documento lido',
+                `Tipo detectado: ${output.detectedType ?? 'não identificado'}. Confiança: ${confidence}%. Revise os campos antes de salvar.`,
+              )
+              navigate(`/hsp/pacientes/novo${qs.toString() ? `?${qs}` : ''}`)
+            } catch (e) {
+              const msg = e instanceof HttpError ? e.message : 'Falha ao extrair documento.'
+              toast.error('IA indisponível', msg)
+            } finally {
+              setExtracting(false)
+            }
           }}
         />
+      )}
+
+      {extracting && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-card rounded-xl border border-border p-6 flex flex-col items-center gap-3 max-w-xs text-center">
+            <Loader2 size={24} className="animate-spin text-primary" />
+            <p className="text-sm font-medium">Lendo documento...</p>
+            <p className="text-xs text-muted-foreground">
+              A IA está extraindo os campos (CPF, RG, nome, nascimento) da imagem capturada.
+            </p>
+          </div>
+        </div>
       )}
 
       {showFace && (

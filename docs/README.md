@@ -19,6 +19,8 @@ Python 3.13 · FastAPI · SQLAlchemy async · PostgreSQL 17 · Alembic
 - [**RBAC (perfis e permissões)**](./backend/rbac.md) — catálogo, roles, overrides, resolução.
 - [Auditoria e sessões](./backend/audit-and-sessions.md) — como os logs e a presença funcionam.
 - [Segurança](./backend/security.md) — níveis MASTER/ADMIN/USER, escopo, JWT.
+- [**Gateway de IA**](./backend/ai-gateway.md) — consumo provider-agnostic, chaves cifradas, rotas, operations.
+- [**Gateway de IA — receitas**](./backend/ai-gateway-recipes.md) — passo-a-passo pra criar operations, embeddings, vision, triagem, busca semântica, assistente.
 
 ## Frontend
 

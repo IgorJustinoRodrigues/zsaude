@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.modules.ai.router import (
+    operations_router as ai_operations_router,
+    sys_router as ai_sys_router,
+)
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
 from app.modules.cnes.router import router as cnes_router
@@ -44,3 +48,5 @@ api_v1.include_router(hsp_router)
 api_v1.include_router(cnes_router)
 api_v1.include_router(sigtap_router)
 api_v1.include_router(sigtap_search_router)
+api_v1.include_router(ai_operations_router)
+api_v1.include_router(ai_sys_router)

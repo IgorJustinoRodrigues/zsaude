@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     # ── Segurança ──────────────────────────────────────────────────────
     password_pepper: str = Field(min_length=32)
+    # Chave Fernet pra cifrar secrets em repouso (API keys de IA, senhas
+    # CadSUS, etc). Gere com:
+    #   python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
+    secrets_encryption_key: str = Field(default="", min_length=0)
 
     # ── SMTP ───────────────────────────────────────────────────────────
     smtp_host: str = "mailhog"
@@ -55,6 +59,13 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "nao-responder@zsaude.local"
+
+    # ── Gateway de IA ──────────────────────────────────────────────────
+    ai_default_timeout_seconds: int = 30
+    ai_max_retries: int = 2
+    ai_circuit_open_after_errors: int = 5
+    ai_circuit_cooldown_seconds: int = 60
+    ai_usage_log_retention_months: int = 24
 
     # ── Integração CadSUS (DATASUS PDQ Supplier) ─────────────────────
     # Sem credenciais, o endpoint de busca devolve 503. Em dev, ativar

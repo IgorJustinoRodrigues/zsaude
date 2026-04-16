@@ -145,17 +145,20 @@ async def search_cadsus(
     from app.modules.tenants.models import Municipality
     from app.modules.system.service import SettingsService
 
+    from app.core.crypto import decrypt_secret
+
     mun = await db.scalar(select(Municipality).where(Municipality.id == ctx.municipality_id))
     user = (mun.cadsus_user if mun else "") or ""
-    password = (mun.cadsus_password if mun else "") or ""
+    password = decrypt_secret(mun.cadsus_password if mun else "") or ""
 
     if not user or not password:
         base = await SettingsService(db).get("cadsus.base", {}) or {}
         if isinstance(base, dict):
             user = user or (base.get("user") or "")
-            password = password or (base.get("password") or "")
+            # Setting guarda senha cifrada (migration retrofit aplicou).
+            password = password or decrypt_secret(base.get("password") or "")
 
-    # Último fallback: env (dev/legado).
+    # Último fallback: env (dev/legado — sempre plaintext).
     user = user or settings.cadsus_user
     password = password or settings.cadsus_password
 

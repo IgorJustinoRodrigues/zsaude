@@ -87,6 +87,7 @@ import { SysImportsPage } from '../pages/sys/SysImportsPage'
 import { SysImportSigtapPage } from '../pages/sys/SysImportSigtapPage'
 import { SysReferencePage } from '../pages/sys/SysReferencePage'
 import { SysCadsusPage } from '../pages/sys/SysCadsusPage'
+import { SysAiPage } from '../pages/sys/SysAiPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -140,6 +141,7 @@ export const router = createBrowserRouter([
               { path: '/sys/importacoes/sigtap',    element: <SysImportSigtapPage /> },
               { path: '/sys/dados-referencia',      element: <SysReferencePage /> },
               { path: '/sys/cadsus',                element: <SysCadsusPage /> },
+              { path: '/sys/ia',                    element: <SysAiPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
             ],

@@ -6,6 +6,16 @@ Nada mais deve ser feito aqui.
 
 from __future__ import annotations
 
+from app.modules.ai.models import (  # noqa: F401
+    AICapabilityRoute,
+    AIModel,
+    AIMunicipalityKey,
+    AIPromptTemplate,
+    AIProvider,
+    AIQuota,
+    AIQuotaAlert,
+    AIUsageLog,
+)
 from app.modules.audit.models import AuditLog  # noqa: F401
 from app.modules.auth.models import LoginAttempt, PasswordReset, RefreshToken  # noqa: F401
 from app.modules.permissions.models import (  # noqa: F401

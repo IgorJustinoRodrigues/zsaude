@@ -38,12 +38,13 @@ export function HspPatientQuickFormPage() {
   // Pré-preenche pela query string (ex.: vindo da tela Buscar).
   const initial: QuickForm = useMemo(() => ({
     ...EMPTY,
-    name:       searchParams.get('name')       ?? '',
-    cpf:        (searchParams.get('cpf')       ?? '').replace(/\D/g, ''),
-    cns:        (searchParams.get('cns')       ?? '').replace(/\D/g, ''),
-    birthDate:  searchParams.get('birthDate')  ?? '',
-    motherName: searchParams.get('motherName') ?? '',
-    fatherName: searchParams.get('fatherName') ?? '',
+    name:       searchParams.get('name')        ?? '',
+    socialName: searchParams.get('socialName')  ?? '',
+    cpf:        (searchParams.get('cpf')        ?? '').replace(/\D/g, ''),
+    cns:        (searchParams.get('cns')        ?? '').replace(/\D/g, ''),
+    birthDate:  searchParams.get('birthDate')   ?? '',
+    motherName: searchParams.get('motherName')  ?? '',
+    fatherName: searchParams.get('fatherName')  ?? '',
   }), [searchParams])
 
   const [form, setForm] = useState<QuickForm>(initial)

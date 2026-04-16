@@ -392,8 +392,11 @@ class TenantService:
             mun.cadsus_user = payload.cadsus_user or ""
         if "cadsus_password" in fields and payload.cadsus_password is not None:
             # Não logamos o valor da senha — só indica que foi alterada.
+            # Armazenada cifrada via Fernet (ver app/core/crypto.py).
+            from app.core.crypto import encrypt_secret
+
             had = bool(mun.cadsus_password)
-            mun.cadsus_password = payload.cadsus_password
+            mun.cadsus_password = encrypt_secret(payload.cadsus_password) or ""
             if had != bool(payload.cadsus_password):
                 changes["cadsusPassword"] = {
                     "from": "(definida)" if had else "(vazia)",

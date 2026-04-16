@@ -55,3 +55,8 @@ P("hsp.patient.export", "Exportar dados de pacientes")
 P("hsp.patient_photo.upload", "Enviar ou remover foto do paciente")
 P("hsp.patient_photo.view", "Visualizar foto do paciente")
 P("hsp.patient_history.view", "Visualizar histórico de alterações do paciente")
+
+# ── Gateway de IA ───────────────────────────────────────────────────────────
+P("ai.operations.use", "Usar operações de IA (consumidor)")
+# Configuração de IA é centralizada no SYS (MASTER) — não precisa de perm por
+# município. A tela de OPS foi removida; OPS só consome operations via ai.operations.use.
