@@ -5,6 +5,8 @@ import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientFieldHistoryItem, type PatientRead } from '../../api/hsp'
 import { referenceApi, type RefKind } from '../../api/reference'
+import { ibgeApi } from '../../api/ibge'
+import { AddressMap } from './components/AddressMap'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { friendlyFieldName, friendlyValue, type RefMap } from './lib/historyLabels'
 import { toast } from '../../store/toastStore'
@@ -26,6 +28,7 @@ export function HspPatientDetailPage() {
   const [historyField, setHistoryField] = useState('')
   const [previewPhoto, setPreviewPhoto] = useState<{ patientId: string; photoId: string } | null>(null)
   const [refs, setRefs] = useState<RefMap>({})
+  const [municipioName, setMunicipioName] = useState<string>('')
 
   const reload = useCallback(async () => {
     if (!id) return
@@ -41,6 +44,18 @@ export function HspPatientDetailPage() {
   }, [id])
 
   useEffect(() => { void reload() }, [reload])
+
+  // Resolve o nome do município pelo IBGE quando temos UF + código.
+  useEffect(() => {
+    if (!patient?.uf || !patient.municipioIbge) { setMunicipioName(''); return }
+    let alive = true
+    ibgeApi.listMunicipios(patient.uf).then(list => {
+      if (!alive) return
+      const m = list.find(x => String(x.id) === patient.municipioIbge)
+      setMunicipioName(m?.nome ?? '')
+    }).catch(() => { if (alive) setMunicipioName('') })
+    return () => { alive = false }
+  }, [patient?.uf, patient?.municipioIbge])
 
   // Carrega refs uma vez — usado pra resolver UUIDs no histórico em texto humano.
   useEffect(() => {
@@ -258,7 +273,9 @@ export function HspPatientDetailPage() {
               ['CEP', patient.cep ? cepMask.format(patient.cep) : null],
               ['Endereço', enderecoLinha],
               ['Bairro', patient.bairro || null],
-              ['Município/UF', patient.municipioIbge ? `${patient.municipioIbge}/${patient.uf}` : null],
+              ['Cidade/UF', municipioName
+                ? `${municipioName}/${patient.uf}`
+                : (patient.municipioIbge ? `${patient.municipioIbge}/${patient.uf}` : null)],
             ]),
           },
           {
@@ -299,6 +316,10 @@ export function HspPatientDetailPage() {
           },
         ].filter(s => s.rows.length > 0)
 
+        // Endereço é renderizado separado com mini-mapa lateral.
+        const enderecoSection = sections.find(s => s.title === 'Endereço')
+        const otherSections = sections.filter(s => s.title !== 'Endereço')
+
         const hasDocuments = patient.documents.length > 0
         const hasObservacoes = !!patient.observacoes
 
@@ -321,45 +342,77 @@ export function HspPatientDetailPage() {
         }
 
         return (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {hasDocuments && (
-              <div className="bg-card rounded-xl border border-border p-5 md:row-span-2">
-                <h3 className="text-sm font-semibold mb-3">
-                  Documentos
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    ({patient.documents.length})
-                  </span>
-                </h3>
-                <ul className="space-y-2">
-                  {patient.documents.map(d => (
-                    <li key={d.id} className="text-sm border-l-2 border-primary/40 pl-3">
-                      <p className="font-medium">
-                        {d.tipoCodigo || 'Documento'}
-                        <span className="ml-2 text-muted-foreground font-normal">{d.numero}</span>
-                      </p>
-                      {(d.orgaoEmissor || d.ufEmissor) && (
-                        <p className="text-xs text-muted-foreground">
-                          {d.orgaoEmissor}{d.ufEmissor ? `/${d.ufEmissor}` : ''}
-                          {d.dataEmissao ? ` · emit. ${formatDate(d.dataEmissao)}` : ''}
-                          {d.dataValidade ? ` · val. ${formatDate(d.dataValidade)}` : ''}
+          <div className="space-y-5">
+            {/* Endereço — full-width com mini mapa lateral */}
+            {enderecoSection && (
+              <div className="bg-card rounded-xl border border-border p-5">
+                <h3 className="text-sm font-semibold mb-3">Endereço</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <dl className="space-y-2 md:col-span-1">
+                    {enderecoSection.rows.map(([k, v]) => (
+                      <div key={k} className="flex flex-col">
+                        <dt className="text-xs text-muted-foreground">{k}</dt>
+                        <dd className="text-sm">{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="md:col-span-2">
+                    <AddressMap
+                      autoSearch
+                      height="220px"
+                      endereco={patient.endereco}
+                      numero={patient.numero}
+                      bairro={patient.bairro}
+                      cidade={municipioName}
+                      uf={patient.uf}
+                      cep={patient.cep}
+                      pais={patient.pais}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {hasDocuments && (
+                <div className="bg-card rounded-xl border border-border p-5 md:row-span-2">
+                  <h3 className="text-sm font-semibold mb-3">
+                    Documentos
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ({patient.documents.length})
+                    </span>
+                  </h3>
+                  <ul className="space-y-2">
+                    {patient.documents.map(d => (
+                      <li key={d.id} className="text-sm border-l-2 border-primary/40 pl-3">
+                        <p className="font-medium">
+                          {d.tipoCodigo || 'Documento'}
+                          <span className="ml-2 text-muted-foreground font-normal">{d.numero}</span>
                         </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+                        {(d.orgaoEmissor || d.ufEmissor) && (
+                          <p className="text-xs text-muted-foreground">
+                            {d.orgaoEmissor}{d.ufEmissor ? `/${d.ufEmissor}` : ''}
+                            {d.dataEmissao ? ` · emit. ${formatDate(d.dataEmissao)}` : ''}
+                            {d.dataValidade ? ` · val. ${formatDate(d.dataValidade)}` : ''}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-            {sections.map(s => (
-              <DataCard key={s.title} title={s.title} rows={s.rows} />
-            ))}
+              {otherSections.map(s => (
+                <DataCard key={s.title} title={s.title} rows={s.rows} />
+              ))}
 
-            {hasObservacoes && (
-              <div className="bg-card rounded-xl border border-border p-5 md:col-span-2">
-                <h3 className="text-sm font-semibold mb-2">Observações</h3>
-                <p className="text-sm whitespace-pre-wrap">{patient.observacoes}</p>
-              </div>
-            )}
+              {hasObservacoes && (
+                <div className="bg-card rounded-xl border border-border p-5 md:col-span-2">
+                  <h3 className="text-sm font-semibold mb-2">Observações</h3>
+                  <p className="text-sm whitespace-pre-wrap">{patient.observacoes}</p>
+                </div>
+              )}
+            </div>
           </div>
         )
       })()}

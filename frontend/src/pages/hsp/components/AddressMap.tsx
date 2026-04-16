@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MapPin, Loader2, Search, AlertCircle } from 'lucide-react'
 import { LocationMap, type LatLng } from '../../../components/shared/LocationMap'
 import { geocodeAddress } from '../../../api/nominatim'
@@ -12,6 +12,10 @@ interface Props {
   cep: string
   /** ISO alpha-3 (default 'BRA'). Convertido pra alpha-2 para Nominatim. */
   pais?: string
+  /** Busca automática ao montar (uma vez). Útil em telas read-only. */
+  autoSearch?: boolean
+  /** Altura do mapa (default 280px). */
+  height?: string
 }
 
 const ISO3_TO_ISO2: Record<string, string> = {
@@ -36,7 +40,7 @@ export function AddressMap(props: Props) {
   const canSearch =
     (!!props.cidade && !!props.uf) || props.cep.length === 8
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!canSearch) return
     setStatus('loading')
     const country = ISO3_TO_ISO2[(props.pais ?? 'BRA').toUpperCase()] ?? 'br'
@@ -57,7 +61,16 @@ export function AddressMap(props: Props) {
       setResolved(null)
       setStatus('notfound')
     }
-  }
+  }, [canSearch, props.cidade, props.uf, props.cep, props.pais, props.endereco, props.numero])
+
+  // Busca automática (uma vez) — só quando autoSearch + canSearch.
+  // setState dentro do effect é intencional: side-effect one-shot async.
+  useEffect(() => {
+    if (props.autoSearch && canSearch && status === 'idle') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void handleSearch()
+    }
+  }, [props.autoSearch, canSearch, status, handleSearch])
 
   return (
     <div className="space-y-2">
@@ -86,15 +99,17 @@ export function AddressMap(props: Props) {
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleSearch}
-          disabled={!canSearch || status === 'loading'}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-        >
-          <Search size={12} />
-          {point ? 'Buscar de novo' : 'Localizar'}
-        </button>
+        {!props.autoSearch && (
+          <button
+            type="button"
+            onClick={handleSearch}
+            disabled={!canSearch || status === 'loading'}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            <Search size={12} />
+            {point ? 'Buscar de novo' : 'Localizar'}
+          </button>
+        )}
       </div>
 
       <LocationMap
@@ -103,7 +118,7 @@ export function AddressMap(props: Props) {
         mode="idle"
         onPointChange={() => {}}
         onPolygonChange={() => {}}
-        height="280px"
+        height={props.height ?? '280px'}
         fitKey={point ? `${point[0]},${point[1]}` : 'empty'}
       />
     </div>
