@@ -187,6 +187,41 @@ class TenantService:
             modules=modules,
         )
 
+        # Audit com nomes (não só IDs) — assim os logs ficam legíveis sem
+        # precisar resolver UUIDs posteriormente.
+        from app.modules.audit.writer import write_audit
+        fac_type = facility.type.value if hasattr(facility.type, "value") else str(facility.type)
+        desc = (
+            f"Entrou em {facility.name} ({fac_type}) · {mun.name}/{mun.state}"
+            + (f" · módulo {payload.module.upper()}" if payload.module else "")
+        )
+        await write_audit(
+            self.session,
+            module="AUTH",
+            action="select_context",
+            severity="info",
+            resource="WorkContext",
+            resource_id=str(facility.id),
+            description=desc,
+            user_id=user_id,
+            municipality_id=mun.id,
+            facility_id=facility.id,
+            role=role_name,
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+                "facilityId": str(facility.id),
+                "facilityName": facility.name,
+                "facilityShortName": facility.short_name,
+                "facilityType": fac_type,
+                "role": role_name,
+                "modules": modules,
+                "selectedModule": payload.module,
+            },
+        )
+
         return WorkContextIssued(
             context_token=token,
             municipality=MunicipalityRead.model_validate(mun),
@@ -402,12 +437,33 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
         mun.archived = True
         # arquiva também todas as unidades do município
+        fac_count = await self.session.scalar(
+            select(func.count()).select_from(Facility).where(Facility.municipality_id == mun.id)
+        ) or 0
         await self.session.execute(
             Facility.__table__.update()
             .where(Facility.municipality_id == mun.id)
             .values(archived=True)
         )
         await self.session.flush()
+
+        from app.modules.audit.writer import write_audit
+        await write_audit(
+            self.session,
+            module="SYS",
+            action="delete",
+            severity="warning",
+            resource="Municipality",
+            resource_id=str(mun.id),
+            description=f"Arquivou município {mun.name}/{mun.state} (IBGE {mun.ibge})",
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+                "facilitiesArchived": int(fac_count),
+            },
+        )
         return await self._municipality_detail(mun)
 
     async def unarchive_municipality(self, municipality_id: UUID) -> MunicipalityDetail:
@@ -416,6 +472,23 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
         mun.archived = False
         await self.session.flush()
+
+        from app.modules.audit.writer import write_audit
+        await write_audit(
+            self.session,
+            module="SYS",
+            action="edit",
+            severity="info",
+            resource="Municipality",
+            resource_id=str(mun.id),
+            description=f"Reativou município {mun.name}/{mun.state}",
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+            },
+        )
         return await self._municipality_detail(mun)
 
     # ─── Facilities ────────────────────────────────────────────────────
@@ -483,12 +556,37 @@ class TenantService:
             )
         return fac
 
+    async def _facility_audit_common(self, fac: Facility) -> dict:
+        mun = await self.repo.get_municipality(fac.municipality_id)
+        return {
+            "facilityId": str(fac.id),
+            "facilityName": fac.name,
+            "facilityShortName": fac.short_name,
+            "facilityType": fac.type.value if hasattr(fac.type, "value") else str(fac.type),
+            "municipalityId": str(fac.municipality_id),
+            "municipalityName": mun.name if mun else "",
+            "municipalityState": mun.state if mun else "",
+        }
+
     async def archive_facility(self, facility_id: UUID) -> Facility:
         fac = await self.session.scalar(select(Facility).where(Facility.id == facility_id))
         if fac is None:
             raise NotFoundError("Unidade não encontrada.")
         fac.archived = True
         await self.session.flush()
+
+        from app.modules.audit.writer import write_audit
+        details = await self._facility_audit_common(fac)
+        await write_audit(
+            self.session,
+            module="SYS",
+            action="delete",
+            severity="warning",
+            resource="Facility",
+            resource_id=str(fac.id),
+            description=f"Arquivou unidade {fac.name} ({details['municipalityName']}/{details['municipalityState']})",
+            details=details,
+        )
         return fac
 
     async def unarchive_facility(self, facility_id: UUID) -> Facility:
@@ -497,6 +595,19 @@ class TenantService:
             raise NotFoundError("Unidade não encontrada.")
         fac.archived = False
         await self.session.flush()
+
+        from app.modules.audit.writer import write_audit
+        details = await self._facility_audit_common(fac)
+        await write_audit(
+            self.session,
+            module="SYS",
+            action="edit",
+            severity="info",
+            resource="Facility",
+            resource_id=str(fac.id),
+            description=f"Reativou unidade {fac.name} ({details['municipalityName']}/{details['municipalityState']})",
+            details=details,
+        )
         return fac
 
     # ─── Listas admin (inclui archived opcional) ──────────────────────

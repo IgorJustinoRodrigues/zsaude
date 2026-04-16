@@ -50,6 +50,11 @@ SKIP_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"/api/v1/users/[^/]+$"),
     re.compile(r"/api/v1/admin/municipalities/[^/]+$"),
     re.compile(r"/api/v1/admin/facilities/[^/]+$"),
+    # Work-context select: serviço grava audit com nomes + módulos concedidos.
+    re.compile(r"/api/v1/work-context/select$"),
+    # Archive/unarchive: serviço grava com nome do recurso afetado.
+    re.compile(r"/api/v1/admin/municipalities/[^/]+/(?:un)?archive$"),
+    re.compile(r"/api/v1/admin/facilities/[^/]+/(?:un)?archive$"),
 )
 
 
