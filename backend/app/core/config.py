@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "nao-responder@zsaude.local"
 
+    # ── Integração CadSUS (DATASUS PDQ Supplier) ─────────────────────
+    # Sem credenciais, o endpoint de busca devolve 503. Em dev, ativar
+    # `cadsus_mock=true` retorna paciente fake pra testar UI sem API real.
+    cadsus_mock: bool = False
+    cadsus_url: str = "https://servicos.saude.gov.br/cadsus/PDQSupplier"
+    cadsus_user: str = ""
+    cadsus_password: str = ""
+    cadsus_timeout_seconds: int = 15
+
     # ── Validadores ────────────────────────────────────────────────────
     @field_validator("cors_origins", mode="before")
     @classmethod

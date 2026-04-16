@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowRight, AlertCircle } from 'lucide-react'
+import { ArrowRight, AlertCircle, Database } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
+import { CadsusSearchModal } from './components/CadsusSearchModal'
 import { DuplicateBanner } from './components/DuplicateBanner'
 import { useDuplicateCheck } from './hooks/useDuplicateCheck'
+import type { CadsusPatientResult } from '../../api/cadsus'
 import { HttpError } from '../../api/client'
 import { hspApi, type Sex } from '../../api/hsp'
 import { toast } from '../../store/toastStore'
@@ -48,6 +50,23 @@ export function HspPatientQuickFormPage() {
   const [touched, setTouched] = useState<Set<keyof QuickForm>>(new Set())
   const [submitTried, setSubmitTried] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [showCadsus, setShowCadsus] = useState(false)
+
+  const handleCadsusPick = (p: CadsusPatientResult) => {
+    setForm(prev => ({
+      ...prev,
+      name: p.nome || prev.name,
+      cpf: p.cpf || prev.cpf,
+      cns: p.cns || prev.cns,
+      birthDate: p.dataNascimento || prev.birthDate,
+      sex: (p.sexo === 'M' || p.sexo === 'F') ? p.sexo : prev.sex,
+      motherName: p.nomeMae || prev.motherName,
+      fatherName: p.nomePai || prev.fatherName,
+    }))
+    setShowCadsus(false)
+    toast.success('Dados importados do CadSUS.',
+      'Revise e salve para cadastrar o paciente no sistema.')
+  }
 
   const set = <K extends keyof QuickForm>(key: K, value: QuickForm[K]) => {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -107,7 +126,30 @@ export function HspPatientQuickFormPage() {
         title="Novo paciente"
         subtitle="Cadastro rápido — só os dados essenciais"
         back="/hsp/pacientes/buscar"
+        actions={
+          <button
+            type="button"
+            onClick={() => setShowCadsus(true)}
+            className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted"
+            title="Importar dados do cadastro federal"
+          >
+            <Database size={14} /> Buscar no CadSUS
+          </button>
+        }
       />
+
+      {showCadsus && (
+        <CadsusSearchModal
+          onClose={() => setShowCadsus(false)}
+          onPick={handleCadsusPick}
+          initial={{
+            cpf: form.cpf || undefined,
+            cns: form.cns || undefined,
+            nome: form.name || undefined,
+            dataNascimento: form.birthDate || undefined,
+          }}
+        />
+      )}
 
       <div className="bg-card rounded-xl border border-border p-6 space-y-5">
         <p className="text-sm text-muted-foreground border-l-2 border-primary/40 pl-3">

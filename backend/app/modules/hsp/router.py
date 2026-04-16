@@ -9,8 +9,12 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.deps import DB, WorkContext, requires
 from app.core.pagination import Page
+from app.modules.hsp.cadsus import client as cadsus_client
+from app.modules.hsp.cadsus import mock as cadsus_mock
+from app.modules.hsp.cadsus.schemas import CadsusSearchResponse
 from app.modules.hsp.schemas import (
     PatientCreate,
     PatientFieldHistoryOut,
@@ -109,6 +113,59 @@ async def lookup_patients(
         limit=limit,
     )
     return [_patient_to_item(p) for p in rows]
+
+
+@router.get("/cadsus/search", response_model=CadsusSearchResponse)
+async def search_cadsus(
+    db: DB,
+    cpf: str | None = Query(default=None, description="CPF (com ou sem formatação)"),
+    cns: str | None = Query(default=None, description="CNS (15 dígitos)"),
+    nome: str | None = Query(default=None, min_length=2),
+    data_nascimento: str | None = Query(default=None, description="AAAA-MM-DD"),
+    nome_mae: str | None = Query(default=None, min_length=2),
+    sexo: str | None = Query(default=None, pattern="^[MF]$"),
+    ctx: WorkContext = requires(permission="hsp.patient.create"),
+) -> CadsusSearchResponse:
+    """Busca paciente no CadSUS (DATASUS PDQ Supplier).
+
+    Credenciais: resolvidas do município ativo (``ctx.municipality_id``);
+    fallback para variáveis de ambiente globais. Regra do DATASUS: se CNS
+    ou CPF forem informados, os demais critérios são descartados.
+    """
+    # Modo mock — útil em dev sem credenciais.
+    if settings.cadsus_mock:
+        items = cadsus_mock.mock_search(
+            cpf=cpf, cns=cns, nome=nome,
+            data_nascimento=data_nascimento,
+            nome_mae=nome_mae, sexo=sexo,
+        )
+        return CadsusSearchResponse(items=items, source="mock")
+
+    # Credenciais por município primeiro, fallback pra env.
+    from app.modules.tenants.models import Municipality
+    mun = await db.scalar(select(Municipality).where(Municipality.id == ctx.municipality_id))
+    mun_user = mun.cadsus_user if mun else ""
+    mun_pass = mun.cadsus_password if mun else ""
+
+    user = mun_user or settings.cadsus_user
+    password = mun_pass or settings.cadsus_password
+    if not user or not password:
+        raise HTTPException(
+            status_code=503,
+            detail="Integração CadSUS não configurada para este município.",
+        )
+
+    try:
+        items = await cadsus_client.search_cadsus(
+            cpf=cpf, cns=cns, nome=nome,
+            data_nascimento=data_nascimento,
+            nome_mae=nome_mae, sexo=sexo,
+            user=user, password=password,
+        )
+    except cadsus_client.CadsusError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    return CadsusSearchResponse(items=items, source="pdq")
 
 
 @router.post("/patients", response_model=PatientRead, status_code=201)
