@@ -20,6 +20,7 @@ import { referenceApi, type RefKind } from '../../api/reference'
 import { ibgeApi, type IbgeEstado, type IbgeMunicipio } from '../../api/ibge'
 import { fetchCep } from '../../api/viacep'
 import { toast } from '../../store/toastStore'
+import { confirmDialog } from '../../store/dialogStore'
 import { cepMask, cnsMask, cpfMask, phoneMask } from '../../lib/masks'
 import {
   validateBirthDate, validateCep, validateCns, validateCpf,
@@ -322,7 +323,13 @@ export function HspPatientFormPage() {
 
   const handlePhotoRemove = async () => {
     if (!isEdit || !patient?.currentPhotoId) return
-    if (!confirm('Remover a foto do paciente?')) return
+    const ok = await confirmDialog({
+      title: 'Remover a foto?',
+      message: 'A foto deixa de aparecer no prontuário, mas continua acessível pelo histórico.',
+      variant: 'danger',
+      confirmLabel: 'Remover foto',
+    })
+    if (!ok) return
     try {
       await hspApi.removePhoto(patient.id)
       const refreshed = await hspApi.get(patient.id)
@@ -517,13 +524,6 @@ export function HspPatientFormPage() {
                     options={municipioOptions(municipiosNaturalidade)}
                     onChange={v => setField('naturalidadeIbge', v ?? '')}
                     disabled={!form.naturalidadeUf} />
-                </FormField>
-              </div>
-              <div className="md:col-span-3">
-                <FormField label="País de nascimento" hint="Código ISO (3 letras)">
-                  <input value={form.paisNascimento} maxLength={3}
-                    onChange={e => setField('paisNascimento', e.target.value.toUpperCase())}
-                    className={cn(baseInput(null), 'uppercase')} />
                 </FormField>
               </div>
             </div>

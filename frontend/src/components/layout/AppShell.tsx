@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { Toaster } from '../ui/Toaster'
+import { DialogContainer } from '../ui/DialogContainer'
 
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
 
@@ -50,6 +51,7 @@ export function AppShell() {
       </div>
 
       <Toaster />
+      <DialogContainer />
     </div>
   )
 }

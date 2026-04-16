@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
+import { DialogContainer } from '../ui/DialogContainer'
 import { BrandName } from '../shared/BrandName'
 
 /**
@@ -115,6 +116,7 @@ export function SysShell() {
       </div>
 
       <Toaster />
+      <DialogContainer />
     </div>
   )
 }

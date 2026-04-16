@@ -8,6 +8,7 @@ import { referenceApi, type RefKind } from '../../api/reference'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
 import { friendlyFieldName, friendlyValue, type RefMap } from './lib/historyLabels'
 import { toast } from '../../store/toastStore'
+import { promptDialog } from '../../store/dialogStore'
 import { formatCPF, formatDate, formatDateTime, calcAge, initials, cn } from '../../lib/utils'
 
 const TABS = ['Dados', 'Histórico'] as const
@@ -81,8 +82,14 @@ export function HspPatientDetailPage() {
 
   const handleDeactivate = async () => {
     if (!patient) return
-    const reason = prompt('Motivo da desativação (opcional):') ?? undefined
-    if (reason === null) return
+    const reason = await promptDialog({
+      title: 'Desativar paciente?',
+      message: 'O cadastro deixa de aparecer em buscas padrão. Você pode reativar depois.',
+      placeholder: 'Motivo (opcional)',
+      variant: 'danger',
+      confirmLabel: 'Desativar',
+    })
+    if (reason === null) return  // cancelou
     try {
       await hspApi.remove(patient.id, reason || undefined)
       toast.success('Paciente desativado.')
@@ -94,8 +101,13 @@ export function HspPatientDetailPage() {
 
   const handleReactivate = async () => {
     if (!patient) return
-    const reason = prompt('Motivo da reativação (opcional):')
-    if (reason === null) return  // cancelou
+    const reason = await promptDialog({
+      title: 'Reativar paciente?',
+      message: 'O cadastro volta a aparecer em buscas padrão.',
+      placeholder: 'Motivo (opcional)',
+      confirmLabel: 'Reativar',
+    })
+    if (reason === null) return
     try {
       const updated = await hspApi.restore(patient.id, reason || undefined)
       setPatient(updated)

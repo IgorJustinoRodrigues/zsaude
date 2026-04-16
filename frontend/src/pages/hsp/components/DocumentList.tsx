@@ -2,6 +2,7 @@ import { Plus, Trash2, FileText } from 'lucide-react'
 import { ComboBox, type ComboBoxOption } from '../../../components/ui/ComboBox'
 import { FormField } from '../../../components/ui/FormField'
 import type { PatientDocumentInput } from '../../../api/hsp'
+import { confirmDialog } from '../../../store/dialogStore'
 import { cn } from '../../../lib/utils'
 
 interface RefItem { id: string; codigo: string; descricao: string }
@@ -169,8 +170,14 @@ export function DocumentList({ value, onChange, tiposDocumento }: Props) {
 
   const add = () => onChange([...value, { ...empty }])
 
-  const remove = (i: number) => {
-    if (!confirm('Remover este documento?')) return
+  const remove = async (i: number) => {
+    const ok = await confirmDialog({
+      title: 'Remover documento?',
+      message: 'Esta ação remove o documento da lista. A alteração será gravada quando você salvar o paciente.',
+      variant: 'danger',
+      confirmLabel: 'Remover',
+    })
+    if (!ok) return
     onChange(value.filter((_, idx) => idx !== i))
   }
 
