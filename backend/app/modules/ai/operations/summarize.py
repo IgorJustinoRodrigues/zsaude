@@ -51,9 +51,14 @@ class Summarize(AIOperation[SummarizeInput, SummarizeOutput]):
         idempotency_key: str | None,
     ) -> tuple[SummarizeOutput, dict[str, Any]]:
         ctx_line = f"\nContexto: {input_dto.context}" if input_dto.context else ""
+        from app.modules.ai.prompt_loader import load_prompt
+        system = await load_prompt(
+            service.db, cls.prompt_slug, cls.prompt_version,
+            fallback=_SYSTEM,
+        ) or _SYSTEM
         req = ChatRequest(
             messages=[
-                ChatMessage(role="system", content=_SYSTEM),
+                ChatMessage(role="system", content=system),
                 ChatMessage(
                     role="user",
                     content=f"Limite: {input_dto.max_words} palavras.{ctx_line}\n\nTexto:\n{input_dto.text}",

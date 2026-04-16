@@ -98,7 +98,65 @@ export interface EmbedTextOutput { vectors: number[][]; dim: number }
 
 // ─── aiApi: consumo ────────────────────────────────────────────────────────
 
+/**
+ * Streaming SSE — consome `/ai/operations/{slug}/stream` e chama `onChunk`
+ * a cada pedaço de texto recebido do servidor. Retorna o texto completo.
+ *
+ * Uso:
+ * ```ts
+ * const full = await aiApi.stream('improve_text', {
+ *   text: 'meu prontuário...', system: '...', moduleCode: 'hsp',
+ * }, chunk => setOutput(prev => prev + chunk))
+ * ```
+ */
+async function streamOp(
+  slug: string,
+  inputs: Record<string, unknown> & { moduleCode: string },
+  onChunk: (text: string) => void,
+): Promise<string> {
+  const { moduleCode, ...rest } = inputs
+  const res = await fetch(
+    `${(import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '')}${PREFIX}/ai/operations/${slug}/stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...((() => {
+          const store = (window as any).__tokenStore
+          const h: Record<string, string> = {}
+          if (store?.getAccess?.()) h['Authorization'] = `Bearer ${store.getAccess()}`
+          if (store?.getContext?.()) h['X-Work-Context'] = store.getContext()
+          return h
+        })()),
+      },
+      body: JSON.stringify({ inputs: rest, moduleCode }),
+    },
+  )
+  if (!res.ok) throw new Error(`SSE error: ${res.status}`)
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('ReadableStream not supported')
+  const decoder = new TextDecoder()
+  let full = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    const text = decoder.decode(value, { stream: true })
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('data: ')) continue
+      const payload = line.slice(6)
+      if (payload === '[DONE]') continue
+      if (payload.startsWith('[ERROR]')) throw new Error(payload)
+      full += payload
+      onChunk(payload)
+    }
+  }
+  return full
+}
+
 export const aiApi = {
+  /** Streaming token-a-token via SSE. Chama `onChunk` a cada pedaço. */
+  stream: streamOp,
+
   improveText: (input: ImproveTextInput, args: OpArgs) =>
     runOp<ImproveTextOutput>('improve_text', input, args),
 

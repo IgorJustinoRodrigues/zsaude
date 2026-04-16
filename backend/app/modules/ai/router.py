@@ -16,7 +16,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import csv
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -120,6 +124,60 @@ async def run_operation(
     )
 
 
+@operations_router.post("/{slug}/stream")
+async def stream_operation(
+    slug: str,
+    payload: AIOperationRequest,
+    db: DB,
+    ctx: WorkContext = requires(permission="ai.operations.use"),
+) -> StreamingResponse:
+    """SSE: envia tokens um a um conforme o provider responde.
+
+    Formato: ``data: <texto>\n\n`` pra cada chunk. ``data: [DONE]\n\n``
+    no final. Content-Type ``text/event-stream``.
+
+    Útil pra operações longas como redação assistida de prontuário.
+    """
+    from app.modules.ai.providers.base import ChatMessage, ChatRequest
+
+    # Monta um ChatRequest simples com o texto do input.
+    text_input = payload.inputs.get("text") or payload.inputs.get("prompt") or ""
+    system = payload.inputs.get("system") or ""
+    messages = []
+    if system:
+        messages.append(ChatMessage(role="system", content=str(system)))
+    messages.append(ChatMessage(role="user", content=str(text_input)))
+
+    req = ChatRequest(
+        messages=messages,
+        temperature=float(payload.inputs.get("temperature", 0.3)),
+        max_tokens=int(payload.inputs.get("maxTokens", 2048)),
+    )
+    service = AIService(db, ctx)
+
+    async def event_generator():
+        try:
+            async for chunk in service.stream_chat(
+                req,
+                capability="chat",
+                module_code=payload.module_code,
+                operation_slug=slug,
+            ):
+                yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+        except AIServiceError as e:
+            yield f"data: [ERROR] {e}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @operations_router.get("/", response_model=list[dict[str, Any]])
 async def list_available_operations(
     _ctx: WorkContext = requires(permission="ai.operations.use"),
@@ -189,7 +247,14 @@ async def sys_update_provider(provider_id: UUID, payload: AIProviderWrite, db: D
 
 @sys_router.delete("/providers/{provider_id}", status_code=204)
 async def sys_delete_provider(provider_id: UUID, db: DB) -> None:
-    await db.execute(delete(AIProvider).where(AIProvider.id == provider_id))
+    try:
+        await db.execute(delete(AIProvider).where(AIProvider.id == provider_id))
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Não é possível remover este provedor — existem modelos vinculados a ele. Remova os modelos primeiro.",
+        ) from None
 
 
 # ── Catálogo: Modelos ───────────────────────────────────────────────────────
@@ -248,7 +313,14 @@ async def sys_update_model(model_id: UUID, payload: AIModelWrite, db: DB) -> AIM
 
 @sys_router.delete("/models/{model_id}", status_code=204)
 async def sys_delete_model(model_id: UUID, db: DB) -> None:
-    await db.execute(delete(AIModel).where(AIModel.id == model_id))
+    try:
+        await db.execute(delete(AIModel).where(AIModel.id == model_id))
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Não é possível remover este modelo — existem rotas usando ele. Remova as rotas primeiro.",
+        ) from None
 
 
 # ── Rotas (global + municipal + módulo) ─────────────────────────────────────
@@ -565,6 +637,9 @@ async def sys_update_prompt(
         raise HTTPException(status_code=404, detail="Prompt não encontrado.") from None
     for k, v in payload.model_dump().items():
         setattr(row, k, v)
+    # Invalida cache pra o slug atualizado entrar em vigor imediatamente.
+    from app.modules.ai.prompt_loader import invalidate_cache
+    invalidate_cache(row.slug)
     return AIPromptTemplateRead.model_validate(row, from_attributes=True)
 
 
@@ -662,6 +737,102 @@ async def sys_usage_summary(
 
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
+
+
+@sys_router.get("/usage/export")
+async def sys_export_usage_csv(
+    db: DB,
+    from_: datetime | None = Query(default=None, alias="from"),
+    to: datetime | None = None,
+    municipality_id: UUID | None = None,
+    capability: str | None = None,
+    operation_slug: str | None = None,
+) -> StreamingResponse:
+    """Exporta log de consumo como CSV (UTF-8 com BOM)."""
+    conds = []
+    if municipality_id is not None:
+        conds.append(AIUsageLog.municipality_id == municipality_id)
+    if from_:
+        conds.append(AIUsageLog.at >= from_)
+    if to:
+        conds.append(AIUsageLog.at <= to)
+    if capability:
+        conds.append(AIUsageLog.capability == capability)
+    if operation_slug:
+        conds.append(AIUsageLog.operation_slug == operation_slug)
+
+    rows = await db.execute(
+        select(AIUsageLog).where(*conds).order_by(AIUsageLog.at.desc()).limit(10000)
+    )
+    items = rows.scalars().all()
+
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM pra Excel abrir em UTF-8
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Data/Hora", "Operação", "Capacidade", "Módulo", "Provedor", "Modelo",
+        "Tokens Entrada", "Tokens Saída", "Custo (USD)", "Latência (ms)",
+        "Sucesso", "Erro",
+    ])
+    for r in items:
+        writer.writerow([
+            r.at.isoformat() if r.at else "",
+            r.operation_slug, r.capability, r.module_code,
+            r.provider_slug, r.model_slug,
+            r.tokens_in, r.tokens_out,
+            f"{r.total_cost_cents / 100:.4f}",
+            r.latency_ms,
+            "Sim" if r.success else "Não",
+            r.error_message or "",
+        ])
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=consumo_ia.csv"},
+    )
+
+
+@sys_router.get("/usage/annual")
+async def sys_annual_report(
+    db: DB,
+    year: int = Query(default=2026, ge=2024, le=2030),
+    municipality_id: UUID | None = None,
+) -> list[dict]:
+    """Consumo mensal consolidado para o ano informado.
+
+    Retorna até 12 linhas: ``{month, requests, tokensIn, tokensOut, totalCostCents}``.
+    """
+    conds = [
+        func.extract("year", AIUsageLog.at) == year,
+    ]
+    if municipality_id is not None:
+        conds.append(AIUsageLog.municipality_id == municipality_id)
+
+    stmt = (
+        select(
+            func.extract("month", AIUsageLog.at).label("month"),
+            func.count().label("requests"),
+            func.coalesce(func.sum(AIUsageLog.tokens_in), 0).label("tokens_in"),
+            func.coalesce(func.sum(AIUsageLog.tokens_out), 0).label("tokens_out"),
+            func.coalesce(func.sum(AIUsageLog.total_cost_cents), 0).label("total_cost_cents"),
+        )
+        .where(*conds)
+        .group_by("month")
+        .order_by("month")
+    )
+    rows = await db.execute(stmt)
+    return [
+        {
+            "month": int(r.month),
+            "requests": int(r.requests or 0),
+            "tokensIn": int(r.tokens_in or 0),
+            "tokensOut": int(r.tokens_out or 0),
+            "totalCostCents": int(r.total_cost_cents or 0),
+        }
+        for r in rows.all()
+    ]
 
 
 @sys_router.get("/usage/timeseries")

@@ -29,7 +29,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.crypto import CryptoError, decrypt_secret
-from app.modules.ai import circuit, quota
+from app.modules.ai import circuit, pii, quota
 from app.modules.ai.costs import compute_cost_cents
 from app.modules.ai.models import (
     AICapabilityRoute,
@@ -40,6 +40,8 @@ from app.modules.ai.models import (
     AIUsageLog,
 )
 from app.modules.ai.providers import get_provider
+from collections.abc import AsyncIterator
+
 from app.modules.ai.providers.base import (
     ChatRequest,
     ChatResponse,
@@ -163,7 +165,15 @@ class AIService:
     ) -> ChatResponse:
         async def _exec(route: _ResolvedRoute, creds: ProviderCredentials):
             provider_impl = get_provider(route.provider.sdk_kind)
-            return await provider_impl.chat(req, model=route.model.slug, creds=creds)
+            # PII redaction: mascara CPF/CNS/telefone/email antes de enviar
+            # pro provider externo (não aplica em Ollama/local).
+            safe_req = ChatRequest(
+                messages=pii.redact_messages(req.messages, route.provider.sdk_kind),
+                temperature=req.temperature,
+                max_tokens=req.max_tokens,
+                response_schema=req.response_schema,
+            )
+            return await provider_impl.chat(safe_req, model=route.model.slug, creds=creds)
 
         return await self._execute(
             capability=capability,
@@ -198,6 +208,84 @@ class AIService:
             fingerprint=_fingerprint_embed(req),
             exec_fn=_exec,
         )
+
+    async def stream_chat(
+        self,
+        req: ChatRequest,
+        *,
+        capability: str = "chat",
+        module_code: str,
+        operation_slug: str,
+    ) -> AsyncIterator[str]:
+        """Streaming token-a-token. Resolve rota, faz quota check, e
+        delega pro ``chat_stream`` do provider. Loga uso estimado no final.
+
+        Não faz failover entre rotas (streaming não é re-tentável mid-stream).
+        """
+        routes = await self._resolve_routes(capability, module_code)
+        if not routes:
+            raise NoRouteError(capability)
+
+        await quota.check_quota(self.db, self.municipality_id)
+
+        resolved = routes[0]
+        creds = await self._resolve_credentials(resolved)
+        if creds is None:
+            raise NoKeyError(resolved.provider.slug)
+
+        if await circuit.is_open(resolved.provider.slug):
+            raise AIServiceError(
+                f"Provider '{resolved.provider.slug}' temporariamente indisponível.",
+                code="circuit_open",
+            )
+
+        provider_impl = get_provider(resolved.provider.sdk_kind)
+        full_text: list[str] = []
+        start = time.monotonic()
+
+        try:
+            async for chunk in provider_impl.chat_stream(
+                req, model=resolved.model.slug, creds=creds,
+            ):
+                full_text.append(chunk)
+                yield chunk
+        except ProviderError as e:
+            await circuit.record_error(resolved.provider.slug)
+            raise AIServiceError(str(e), code=e.code) from e
+
+        latency = int((time.monotonic() - start) * 1000)
+        await circuit.record_success(resolved.provider.slug)
+
+        # Estimativa de tokens (sem usage real no stream — OpenAI stream
+        # não retorna usage por default). ~4 chars/token é boa estimativa.
+        text_len = sum(len(c) for c in full_text)
+        est_tokens_out = max(1, text_len // 4)
+        est_tokens_in = max(1, sum(
+            len(m.content) if isinstance(m.content, str) else
+            sum(len(p.text or "") for p in m.content)
+            for m in req.messages
+        ) // 4)
+        cost = compute_cost_cents(
+            est_tokens_in, est_tokens_out,
+            resolved.model.input_cost_per_mtok,
+            resolved.model.output_cost_per_mtok,
+        )
+        await self._log_usage(
+            resolved=resolved,
+            module_code=module_code,
+            operation_slug=operation_slug,
+            capability=capability,
+            prompt_template=None,
+            idempotency_key=None,
+            fingerprint="",
+            tokens_in=est_tokens_in,
+            tokens_out=est_tokens_out,
+            latency_ms=latency,
+            success=True,
+            error_code="", error_message="",
+            cost_cents_override=cost,
+        )
+        await quota.record_usage(self.municipality_id, est_tokens_in, est_tokens_out, cost)
 
     # ── Núcleo: resolve rotas, itera, loga ──────────────────────────────
 

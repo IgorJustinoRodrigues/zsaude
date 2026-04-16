@@ -577,11 +577,10 @@ function QuotasTab({ scopeMunId }: { scopeMunId: string | null }) {
 
   return (
     <div className="space-y-4">
-      <InfoBar warn>
+      <InfoBar>
         Use <strong>0</strong> quando não quiser aplicar limite naquele item.
-        Nesta primeira versão os valores ficam registrados mas o bloqueio
-        automático ainda não está ativo — serve como referência para
-        monitorar o consumo.
+        Quando um município atinge o limite, chamadas à IA são bloqueadas
+        automaticamente até o próximo mês.
       </InfoBar>
 
       <div className="grid grid-cols-2 gap-4">
@@ -708,7 +707,14 @@ function UsageTab({ scopeMunId }: { scopeMunId: string | null }) {
       )}
 
       {/* Tabela detalhada */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <a
+          href={`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/v1/sys/ai/usage/export${scopeMunId ? `?municipalityId=${scopeMunId}` : ''}`}
+          target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-800"
+        >
+          Exportar CSV
+        </a>
         <button onClick={reload} className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 dark:border-slate-700 rounded hover:bg-slate-50 dark:hover:bg-slate-800">
           <RefreshCw size={12} /> Atualizar
         </button>
@@ -1215,10 +1221,10 @@ function PromptsTab() {
 
   return (
     <div className="space-y-3">
-      <InfoBar warn>
+      <InfoBar>
         Cada instrução (prompt) diz como a IA deve executar uma tarefa.
-        Por enquanto, as instruções reais ficam no código — esta tela serve
-        apenas para registrar e auditar versões.
+        Ao editar o texto aqui, ele entra em vigor automaticamente em até
+        1 minuto — sem precisar mexer no código nem reiniciar o sistema.
       </InfoBar>
 
       {loading ? <Spinner /> : (

@@ -7,6 +7,8 @@ Usa o SDK ``anthropic`` oficial. Estrutura de mensagens diferente do OpenAI:
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from app.modules.ai.providers.base import (
     AIProvider,
     ChatMessage,
@@ -116,6 +118,54 @@ class AnthropicProvider(AIProvider):
             finish_reason=resp.stop_reason or "",
             raw={},
         )
+
+    async def chat_stream(
+        self,
+        req: ChatRequest,
+        *,
+        model: str,
+        creds: ProviderCredentials,
+    ) -> AsyncIterator[str]:
+        from anthropic import AsyncAnthropic
+        from anthropic import APIError as AnthropicAPIError
+        from anthropic import APIConnectionError as AnthropicConnError
+        from anthropic import RateLimitError as AnthropicRateLimit
+
+        client = AsyncAnthropic(
+            api_key=creds.api_key,
+            base_url=creds.base_url or None,
+        )
+
+        system_text = ""
+        messages: list[dict] = []
+        for m in req.messages:
+            if m.role == "system":
+                system_text += (m.content if isinstance(m.content, str) else
+                                " ".join(p.text or "" for p in m.content if p.kind == "text"))
+            else:
+                messages.append({"role": m.role, "content": _content_to_anthropic(m.content)})
+
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": req.max_tokens or 4096,
+        }
+        if system_text:
+            kwargs["system"] = system_text
+        if req.temperature is not None:
+            kwargs["temperature"] = req.temperature
+
+        try:
+            async with client.messages.stream(**kwargs) as stream:
+                async for text_chunk in stream.text_stream:
+                    yield text_chunk
+        except AnthropicRateLimit as e:
+            raise ProviderError(str(e), code="rate_limit", retriable=True) from e
+        except AnthropicConnError as e:
+            raise ProviderError(str(e), code="connection_error", retriable=True) from e
+        except AnthropicAPIError as e:
+            status = getattr(e, "status_code", 0) or 0
+            raise ProviderError(str(e), code=f"http_{status}", retriable=status >= 500) from e
 
     async def embed(
         self,

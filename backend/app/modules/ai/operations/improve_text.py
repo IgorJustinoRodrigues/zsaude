@@ -59,9 +59,17 @@ class ImproveText(AIOperation[ImproveTextInput, ImproveTextOutput]):
         module_code: str,
         idempotency_key: str | None,
     ) -> tuple[ImproveTextOutput, dict[str, Any]]:
+        # Carrega prompt do banco (editável em /sys/ia → Instruções) com
+        # fallback pro hardcoded se não encontrar.
+        from app.modules.ai.prompt_loader import load_prompt
+        system = await load_prompt(
+            service.db, cls.prompt_slug, cls.prompt_version,
+            fallback=_SYSTEM_PROMPT,
+        ) or _SYSTEM_PROMPT
+
         req = ChatRequest(
             messages=[
-                ChatMessage(role="system", content=_SYSTEM_PROMPT),
+                ChatMessage(role="system", content=system),
                 ChatMessage(
                     role="user",
                     content=f"Estilo: {input_dto.style}\nIdioma: {input_dto.language}\n\nTexto:\n{input_dto.text}",

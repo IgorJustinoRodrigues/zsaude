@@ -10,6 +10,8 @@ override vindo do catálogo/chave do município.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+
 from app.modules.ai.providers.base import (
     AIProvider,
     ChatMessage,
@@ -102,6 +104,45 @@ class OpenAIProvider(AIProvider):
             finish_reason=choice.finish_reason or "",
             raw={},  # não guardar payload (LGPD — ver plano)
         )
+
+    async def chat_stream(
+        self,
+        req: ChatRequest,
+        *,
+        model: str,
+        creds: ProviderCredentials,
+    ) -> AsyncIterator[str]:
+        from openai import AsyncOpenAI
+        from openai import APIError as OpenAIAPIError
+        from openai import APIConnectionError, RateLimitError
+
+        client = AsyncOpenAI(
+            api_key=creds.api_key,
+            base_url=creds.base_url or None,
+        )
+
+        kwargs: dict = {
+            "model": model,
+            "messages": [_msg_to_openai(m) for m in req.messages],
+            "temperature": req.temperature,
+            "stream": True,
+        }
+        if req.max_tokens is not None:
+            kwargs["max_tokens"] = req.max_tokens
+
+        try:
+            stream = await client.chat.completions.create(**kwargs)
+            async for chunk in stream:
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta and delta.content:
+                    yield delta.content
+        except RateLimitError as e:
+            raise ProviderError(str(e), code="rate_limit", retriable=True) from e
+        except APIConnectionError as e:
+            raise ProviderError(str(e), code="connection_error", retriable=True) from e
+        except OpenAIAPIError as e:
+            status = getattr(e, "status_code", 0) or 0
+            raise ProviderError(str(e), code=f"http_{status}", retriable=status >= 500) from e
 
     async def embed(
         self,
