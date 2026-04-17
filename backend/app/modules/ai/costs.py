@@ -8,13 +8,15 @@ def compute_cost_cents(
     tokens_out: int,
     unit_cost_in_cents_per_mtok: int,
     unit_cost_out_cents_per_mtok: int,
-) -> int:
-    """Retorna custo total em centavos (arredondado pra cima pra evitar
-    sub-cobrança em ticks minúsculos)."""
+) -> float:
+    """Retorna custo total em centavos com precisão decimal.
+
+    Exemplo: 1991 tokens × 10 ¢/Mtok = 0.01991 centavos.
+    O banco armazena como NUMERIC(12,6); o display mostra em USD com
+    casas decimais adequadas.
+    """
     if tokens_in <= 0 and tokens_out <= 0:
-        return 0
-    micros_in = tokens_in * unit_cost_in_cents_per_mtok   # cents * tokens / 1M
-    micros_out = tokens_out * unit_cost_out_cents_per_mtok
-    total_micros = micros_in + micros_out
-    # ceildiv por 1_000_000 sem float
-    return (total_micros + 999_999) // 1_000_000
+        return 0.0
+    cost_in = tokens_in * unit_cost_in_cents_per_mtok / 1_000_000
+    cost_out = tokens_out * unit_cost_out_cents_per_mtok / 1_000_000
+    return round(cost_in + cost_out, 6)

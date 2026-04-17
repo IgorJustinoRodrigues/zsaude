@@ -34,7 +34,7 @@ class AIUsageMeta(CamelModel):
     model_slug: str
     tokens_in: int
     tokens_out: int
-    total_cost_cents: int
+    total_cost_cents: float
     latency_ms: int
 
 
@@ -207,7 +207,7 @@ class AIUsageLogRead(CamelModel):
     model_slug: str
     tokens_in: int
     tokens_out: int
-    total_cost_cents: int
+    total_cost_cents: float
     latency_ms: int
     success: bool
     error_code: str
@@ -220,7 +220,7 @@ class AIUsageSummary(CamelModel):
     requests: int
     tokens_in: int
     tokens_out: int
-    total_cost_cents: int
+    total_cost_cents: float
     success_count: int
     failure_count: int
 

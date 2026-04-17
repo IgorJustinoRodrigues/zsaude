@@ -39,12 +39,12 @@ const SCOPE_LABELS: Record<string, string> = {
 const scopeLabel = (s: string) => SCOPE_LABELS[s] ?? s
 
 // Formata centavos de USD como "$1.23" (ou "$0.002500" quando precisa de precisão).
-function formatUSD(cents: number, digits = 2): string {
+function formatUSD(cents: number): string {
   const value = cents / 100
-  if (value > 0 && value < 0.01 && digits <= 2) {
-    return `$${value.toFixed(4)}`
-  }
-  return `$${value.toFixed(digits)}`
+  if (value === 0) return '$0.00'
+  if (value < 0.01) return `$${value.toFixed(6)}`
+  if (value < 1) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(2)}`
 }
 
 type Tab = 'keys' | 'routes' | 'quotas' | 'usage' | 'providers' | 'models' | 'prompts'

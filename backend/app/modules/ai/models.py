@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -335,7 +336,7 @@ class AIUsageLog(Base):
     # se catálogo mudar de preço depois.
     unit_cost_in_cents_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     unit_cost_out_cents_snapshot: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    total_cost_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    total_cost_cents: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, server_default=text("0"))
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
