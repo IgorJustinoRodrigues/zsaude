@@ -74,7 +74,7 @@ async def _get_limits(db: AsyncSession, mun_id: UUID | None) -> AIQuota | None:
         row = await db.scalar(
             select(AIQuota).where(
                 AIQuota.municipality_id == mun_id,
-                AIQuota.active.is_(True),
+                AIQuota.active== True,
             )
         )
         if row is not None:
@@ -83,7 +83,7 @@ async def _get_limits(db: AsyncSession, mun_id: UUID | None) -> AIQuota | None:
     return await db.scalar(
         select(AIQuota).where(
             AIQuota.municipality_id.is_(None),
-            AIQuota.active.is_(True),
+            AIQuota.active== True,
         )
     )
 

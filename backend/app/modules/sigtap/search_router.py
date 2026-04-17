@@ -42,8 +42,7 @@ from app.modules.sigtap.search_schemas import (
 router = APIRouter(prefix="/sigtap/search", tags=["sigtap-search"])
 
 
-def _unaccent_ilike(column: expression.ColumnElement, term: str) -> expression.ColumnElement:
-    return func.unaccent(func.lower(column)).ilike(func.unaccent(func.lower(f"%{term}%")))
+from app.db.query_helpers import unaccent_ilike as _unaccent_ilike
 
 
 def _order(col: Any, direction: str) -> Any:

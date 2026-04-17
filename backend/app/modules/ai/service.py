@@ -438,10 +438,10 @@ class AIService:
             .join(AIModel, AIModel.id == AICapabilityRoute.model_id)
             .join(AIProvider, AIProvider.id == AIModel.provider_id)
             .where(
-                AICapabilityRoute.active.is_(True),
+                AICapabilityRoute.active== True,
                 AICapabilityRoute.capability == capability,
-                AIModel.active.is_(True),
-                AIProvider.active.is_(True),
+                AIModel.active== True,
+                AIProvider.active== True,
                 or_(*conds),
             )
         )
@@ -480,7 +480,7 @@ class AIService:
                 select(AIMunicipalityKey).where(
                     AIMunicipalityKey.municipality_id == mun_id,
                     AIMunicipalityKey.provider_id == resolved.provider.id,
-                    AIMunicipalityKey.active.is_(True),
+                    AIMunicipalityKey.active== True,
                 )
             )
 
@@ -490,7 +490,7 @@ class AIService:
                 select(AIMunicipalityKey).where(
                     AIMunicipalityKey.municipality_id.is_(None),
                     AIMunicipalityKey.provider_id == resolved.provider.id,
-                    AIMunicipalityKey.active.is_(True),
+                    AIMunicipalityKey.active== True,
                 )
             )
 

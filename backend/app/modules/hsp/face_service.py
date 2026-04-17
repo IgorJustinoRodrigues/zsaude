@@ -267,7 +267,7 @@ async def reindex_all(
     stmt = (
         select(Patient.id, Patient.current_photo_id, PatientPhoto.content)
         .join(PatientPhoto, PatientPhoto.id == Patient.current_photo_id)
-        .where(Patient.current_photo_id.is_not(None), Patient.active.is_(True))
+        .where(Patient.current_photo_id.is_not(None), Patient.active== True)
     )
     rows = (await db.execute(stmt)).all()
 

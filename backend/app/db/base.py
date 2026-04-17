@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import MetaData, func, text
+from sqlalchemy import MetaData, event, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -28,6 +28,21 @@ APP_SCHEMA = "app"
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION, schema=APP_SCHEMA)
+
+
+def _register_oracle_null_fix() -> None:
+    """Oracle trata '' como NULL. Converte None → '' ao carregar strings do ORM."""
+    from sqlalchemy import String as SAString
+    from sqlalchemy.orm import InstanceEvents
+
+    @event.listens_for(Base, "load", propagate=True)
+    def _fix_empty_strings(target, context):
+        mapper = target.__class__.__mapper__
+        for col in mapper.columns:
+            if isinstance(col.type, SAString) and not col.nullable:
+                val = getattr(target, col.key, None)
+                if val is None:
+                    object.__setattr__(target, col.key, "")
 
 
 # ── Mixins comuns ───────────────────────────────────────────────────────────

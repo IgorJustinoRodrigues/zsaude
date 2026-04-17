@@ -103,7 +103,13 @@ async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
         cursor.close()
 
     def _do_create(connection):
-        TenantBase.metadata.create_all(connection, checkfirst=True)
+        result = connection.execute(text(
+            f"SELECT COUNT(*) FROM all_tables WHERE owner = :o"
+        ), {"o": schema.upper()})
+        if result.scalar() > 0:
+            log.info("tenant_tables_exist_skip", schema=schema)
+            return
+        TenantBase.metadata.create_all(connection)
 
     try:
         async with tmp_eng.begin() as conn:

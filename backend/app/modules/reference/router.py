@@ -58,8 +58,7 @@ def _get_model(kind: str) -> tuple[Any, str]:
     return _TABLES[kind]
 
 
-def _unaccent_ilike(column: expression.ColumnElement, term: str) -> expression.ColumnElement:
-    return func.unaccent(func.lower(column)).ilike(func.unaccent(func.lower(f"%{term}%")))
+from app.db.query_helpers import unaccent_ilike as _unaccent_ilike
 
 
 @router.get("/{kind}", response_model=Page[RefOut])

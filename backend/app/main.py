@@ -49,6 +49,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool_pre_ping=True,
         pool_recycle=3600,
     )
+    # Oracle: registra fix para '' = NULL
+    if registry.app_dialect == "oracle":
+        from app.db.base import _register_oracle_null_fix
+        from app.tenant_models import _register_tenant_oracle_null_fix
+        _register_oracle_null_fix()
+        _register_tenant_oracle_null_fix()
+
     # inicializa engine legado (compatibilidade com session.py singleton)
     engine()
     # Sincroniza catálogo de permissões (registry → DB) e SYSTEM roles base.

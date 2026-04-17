@@ -140,7 +140,7 @@ class EngineRegistry:
                 rows = (await session.execute(
                     select(MunicipalityDatabase, Municipality.ibge)
                     .join(Municipality, Municipality.id == MunicipalityDatabase.municipality_id)
-                    .where(MunicipalityDatabase.active.is_(True))
+                    .where(MunicipalityDatabase.active== True)
                 )).all()
 
                 count = 0

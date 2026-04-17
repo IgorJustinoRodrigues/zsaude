@@ -73,7 +73,7 @@ class TenantService:
             # independentemente de MunicipalityAccess/FacilityAccess.
             muns = list((await self.session.scalars(
                 select(Municipality)
-                .where(Municipality.archived.is_(False))
+                .where(Municipality.archived== False)
                 .order_by(Municipality.name)
             )).all())
         else:
@@ -99,7 +99,7 @@ class TenantService:
                 # MASTER vê todas as unidades do município. Role sintético.
                 fac_rows = list((await self.session.scalars(
                     select(Facility)
-                    .where(Facility.municipality_id == mun.id, Facility.archived.is_(False))
+                    .where(Facility.municipality_id == mun.id, Facility.archived== False)
                     .order_by(Facility.name)
                 )).all())
                 for fac in fac_rows:
@@ -268,7 +268,7 @@ class TenantService:
     async def _municipality_detail(self, mun: Municipality) -> MunicipalityDetail:
         fac_count = await self.session.scalar(
             select(func.count()).select_from(Facility).where(
-                Facility.municipality_id == mun.id, Facility.archived.is_(False)
+                Facility.municipality_id == mun.id, Facility.archived== False
             )
         ) or 0
         user_count = await self.session.scalar(
@@ -633,7 +633,7 @@ class TenantService:
     async def list_all_municipalities(self, *, include_archived: bool = False) -> list[MunicipalityDetail]:
         stmt = select(Municipality).order_by(Municipality.name)
         if not include_archived:
-            stmt = stmt.where(Municipality.archived.is_(False))
+            stmt = stmt.where(Municipality.archived== False)
         rows = list((await self.session.scalars(stmt)).all())
         return [await self._municipality_detail(m) for m in rows]
 

@@ -151,27 +151,49 @@ class UserRepository:
 
         from sqlalchemy import text
 
-        stmt = text(
+        dialect = self.session.bind.dialect.name
+        if dialect == "oracle":
+            # Oracle: CONNECT BY em vez de WITH RECURSIVE, IN em vez de ANY
+            placeholders = ", ".join(f":uid_{i}" for i in range(len(user_ids)))
+            sql = f"""
+                SELECT DISTINCT fa.user_id, p.module
+                  FROM "APP".FACILITY_ACCESSES fa
+                  JOIN (
+                    SELECT id AS source_id, id AS ancestor_id FROM "APP".ROLES
+                    UNION ALL
+                    SELECT CONNECT_BY_ROOT id, id
+                      FROM "APP".ROLES
+                     START WITH parent_id IS NOT NULL
+                   CONNECT BY PRIOR parent_id = id
+                  ) rc ON rc.source_id = fa.role_id
+                  JOIN "APP".ROLE_PERMISSIONS rp
+                    ON rp.role_id = rc.ancestor_id AND rp.granted = 1
+                  JOIN "APP".PERMISSIONS p
+                    ON p.code = rp.permission_code
+                 WHERE fa.user_id IN ({placeholders})
             """
-            WITH RECURSIVE role_chain(source_id, ancestor_id) AS (
-                SELECT id, id FROM app.roles
-                UNION
-                SELECT rc.source_id, r.parent_id
-                  FROM role_chain rc
-                  JOIN app.roles r ON r.id = rc.ancestor_id
-                 WHERE r.parent_id IS NOT NULL
-            )
-            SELECT DISTINCT fa.user_id, p.module
-              FROM app.facility_accesses fa
-              JOIN role_chain rc ON rc.source_id = fa.role_id
-              JOIN app.role_permissions rp
-                ON rp.role_id = rc.ancestor_id AND rp.granted = true
-              JOIN app.permissions p
-                ON p.code = rp.permission_code
-             WHERE fa.user_id = ANY(:user_ids)
+            params = {f"uid_{i}": uid.bytes for i, uid in enumerate(user_ids)}
+        else:
+            sql = """
+                WITH RECURSIVE role_chain(source_id, ancestor_id) AS (
+                    SELECT id, id FROM app.roles
+                    UNION
+                    SELECT rc.source_id, r.parent_id
+                      FROM role_chain rc
+                      JOIN app.roles r ON r.id = rc.ancestor_id
+                     WHERE r.parent_id IS NOT NULL
+                )
+                SELECT DISTINCT fa.user_id, p.module
+                  FROM app.facility_accesses fa
+                  JOIN role_chain rc ON rc.source_id = fa.role_id
+                  JOIN app.role_permissions rp
+                    ON rp.role_id = rc.ancestor_id AND rp.granted = true
+                  JOIN app.permissions p
+                    ON p.code = rp.permission_code
+                 WHERE fa.user_id = ANY(:user_ids)
             """
-        )
-        rows = (await self.session.execute(stmt, {"user_ids": user_ids})).all()
+            params = {"user_ids": user_ids}
+        rows = (await self.session.execute(text(sql), params)).all()
         out: dict[UUID, set[str]] = {uid: set() for uid in user_ids}
         for uid, module in rows:
             out[uid].add(module)

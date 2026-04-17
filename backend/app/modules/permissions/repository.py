@@ -67,7 +67,7 @@ class RoleRepository:
             return []
         stmt = stmt.where(or_(*clauses))
         if not include_archived:
-            stmt = stmt.where(Role.archived.is_(False))
+            stmt = stmt.where(Role.archived== False)
         stmt = stmt.order_by(Role.scope, Role.name)
         return list((await self.db.scalars(stmt)).all())
 
@@ -85,7 +85,7 @@ class RoleRepository:
         if municipality_id is not None:
             stmt = stmt.where(Role.municipality_id == municipality_id)
         if not include_archived:
-            stmt = stmt.where(Role.archived.is_(False))
+            stmt = stmt.where(Role.archived== False)
         stmt = stmt.order_by(Role.scope, Role.name)
         return list((await self.db.scalars(stmt)).all())
 
@@ -110,22 +110,27 @@ class RoleRepository:
 
         Usado na invalidação: mudar role pai afeta resolução dos filhos.
         """
-        # Recursive CTE em Postgres é limpo.
         from sqlalchemy import text
 
-        stmt = text(
+        dialect = self.db.bind.dialect.name
+        if dialect == "oracle":
+            sql = """
+                SELECT id FROM "APP".ROLES
+                START WITH parent_id = :root_id
+                CONNECT BY PRIOR id = parent_id
             """
-            WITH RECURSIVE tree AS (
-                SELECT id FROM app.roles WHERE parent_id = :root_id
-                UNION
-                SELECT r.id
-                  FROM app.roles r
-                  JOIN tree t ON r.parent_id = t.id
-            )
-            SELECT id FROM tree
+            params = {"root_id": role_id.bytes if hasattr(role_id, 'bytes') else role_id}
+        else:
+            sql = """
+                WITH RECURSIVE tree AS (
+                    SELECT id FROM app.roles WHERE parent_id = :root_id
+                    UNION
+                    SELECT r.id FROM app.roles r JOIN tree t ON r.parent_id = t.id
+                )
+                SELECT id FROM tree
             """
-        )
-        result = await self.db.execute(stmt, {"root_id": role_id})
+            params = {"root_id": role_id}
+        result = await self.db.execute(text(sql), params)
         ids = [row[0] for row in result.all()]
         if not ids:
             return []

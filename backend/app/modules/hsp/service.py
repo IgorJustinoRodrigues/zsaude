@@ -60,11 +60,7 @@ _TRACKED_FIELDS: tuple[str, ...] = (
 )
 
 
-def _unaccent_ilike(column: expression.ColumnElement, term: str) -> expression.ColumnElement:
-    """Match case+accent-insensitive: unaccent(lower(col)) ILIKE unaccent(lower('%term%'))."""
-    return func.unaccent(func.lower(column)).ilike(
-        func.unaccent(func.lower(f"%{term}%"))
-    )
+from app.db.query_helpers import unaccent_ilike as _unaccent_ilike
 
 
 def _is_empty(v: Any) -> bool:
@@ -133,10 +129,18 @@ class PatientService:
         """
         from sqlalchemy import text as sa_text
 
-        last = await self.db.scalar(sa_text(
-            "SELECT COALESCE(MAX(CAST(prontuario AS integer)), 0) "
-            "FROM patients WHERE prontuario ~ '^[0-9]+$'"
-        ))
+        dialect = self.db.bind.dialect.name
+        if dialect == "oracle":
+            sql = (
+                "SELECT COALESCE(MAX(CAST(prontuario AS INTEGER)), 0) "
+                "FROM patients WHERE REGEXP_LIKE(prontuario, '^[0-9]+$')"
+            )
+        else:
+            sql = (
+                "SELECT COALESCE(MAX(CAST(prontuario AS integer)), 0) "
+                "FROM patients WHERE prontuario ~ '^[0-9]+$'"
+            )
+        last = await self.db.scalar(sa_text(sql))
         n = int(last or 0) + 1
         # Colisão improvável, mas garantimos:
         for _ in range(5):
@@ -239,10 +243,10 @@ class PatientService:
                     # Texto livre: ignora maiúsculas/minúsculas e acentos.
                     _unaccent_ilike(Patient.name, term),
                     _unaccent_ilike(Patient.social_name, term),
-                    # Códigos: ilike puro (sem acento mesmo).
-                    Patient.cpf.ilike(like),
-                    Patient.cns.ilike(like),
-                    Patient.prontuario.ilike(like),
+                    # Códigos: case-insensitive match.
+                    func.lower(Patient.cpf).like(func.lower(like)),
+                    func.lower(Patient.cns).like(func.lower(like)),
+                    func.lower(Patient.prontuario).like(func.lower(like)),
                 )
             )
         if active is not None:

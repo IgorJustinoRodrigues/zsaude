@@ -47,7 +47,7 @@ async def load_prompt(
                 and_(
                     AIPromptTemplate.slug == slug,
                     AIPromptTemplate.version == version,
-                    AIPromptTemplate.active.is_(True),
+                    AIPromptTemplate.active== True,
                 )
             )
         )

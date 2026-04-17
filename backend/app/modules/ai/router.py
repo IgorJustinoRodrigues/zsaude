@@ -514,7 +514,7 @@ async def sys_test_key(
         select(AIModel)
         .where(
             AIModel.provider_id == payload.provider_id,
-            AIModel.active.is_(True),
+            AIModel.active== True,
             AIModel.capabilities.any("chat"),  # type: ignore[attr-defined]
         )
         .order_by(AIModel.input_cost_per_mtok.asc())
@@ -724,7 +724,7 @@ async def sys_usage_summary(
     )
     r = row.one()
     ok_count = await db.scalar(
-        select(func.count()).select_from(AIUsageLog).where(*conds, AIUsageLog.success.is_(True))
+        select(func.count()).select_from(AIUsageLog).where(*conds, AIUsageLog.success== True)
     ) or 0
     return AIUsageSummary(
         requests=int(r.requests or 0),
@@ -863,8 +863,8 @@ async def sys_usage_timeseries(
             func.coalesce(func.sum(AIUsageLog.tokens_in), 0).label("tokens_in"),
             func.coalesce(func.sum(AIUsageLog.tokens_out), 0).label("tokens_out"),
             func.coalesce(func.sum(AIUsageLog.total_cost_cents), 0).label("total_cost_cents"),
-            func.count().filter(AIUsageLog.success.is_(True)).label("successes"),
-            func.count().filter(AIUsageLog.success.is_(False)).label("failures"),
+            func.count().filter(AIUsageLog.success== True).label("successes"),
+            func.count().filter(AIUsageLog.success== False).label("failures"),
         )
         .where(*conds)
         .group_by("bucket")
