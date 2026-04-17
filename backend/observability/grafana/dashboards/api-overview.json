@@ -4,16 +4,46 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "municipality",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(municipality_info, name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": true,
+        "sort": 1
+      },
+      {
+        "name": "ibge",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(municipality_info{name=~\"$municipality\"}, ibge)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" },
+        "multi": true,
+        "sort": 1,
+        "hide": 2
+      }
+    ]
+  },
   "panels": [
     {
       "title": "Requests / segundo",
+      "description": "Taxa de requests por status code, filtrado por município",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus" },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total[1m])) by (status)",
-          "legendFormat": "{{status}}"
+          "expr": "sum(rate(http_requests_total{municipality=~\"$ibge|global\"}[1m])) by (status)",
+          "legendFormat": "HTTP {{status}}"
         }
       ],
       "fieldConfig": {
@@ -22,21 +52,22 @@
           "unit": "reqps"
         },
         "overrides": [
-          { "matcher": { "id": "byRegexp", "options": "^5" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": "^4" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
-          { "matcher": { "id": "byRegexp", "options": "^2" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+          { "matcher": { "id": "byRegexp", "options": "^.*5" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "^.*4" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "^.*2" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
         ]
       }
     },
     {
       "title": "Latencia (p50 / p95 / p99)",
+      "description": "Percentis de latência dos requests",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{municipality=~\"$ibge|global\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{municipality=~\"$ibge|global\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{municipality=~\"$ibge|global\"}[5m])) by (le))", "legendFormat": "p99" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
@@ -50,60 +81,92 @@
     {
       "title": "Error Rate %",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m])) * 100", "legendFormat": "Error %" }
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\",municipality=~\"$ibge|global\"}[5m])) / sum(rate(http_requests_total{municipality=~\"$ibge|global\"}[5m])) * 100 or vector(0)", "legendFormat": "" }
       ],
-      "fieldConfig": {
-        "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } }
-      }
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } }
     },
     {
-      "title": "Requests In Progress",
+      "title": "Requests Ativos",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 8 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "sum(http_requests_in_progress)", "legendFormat": "In Progress" }
+        { "expr": "sum(http_requests_in_progress)", "legendFormat": "" }
       ],
       "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] } } }
     },
     {
-      "title": "Total Requests (24h)",
+      "title": "Total (24h)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "sum(increase(http_requests_total[24h]))", "legendFormat": "Total" }
+        { "expr": "sum(increase(http_requests_total{municipality=~\"$ibge|global\"}[24h]))", "legendFormat": "" }
       ],
       "fieldConfig": { "defaults": { "unit": "short" } }
     },
     {
-      "title": "Logins",
+      "title": "Logins OK (1h)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 12 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 3, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "sum(increase(auth_login_total{status=\"success\"}[1h]))", "legendFormat": "Sucesso (1h)" }
+        { "expr": "sum(increase(auth_login_total{status=\"success\"}[1h])) or vector(0)", "legendFormat": "" }
       ],
       "fieldConfig": { "defaults": { "color": { "fixedColor": "green", "mode": "fixed" } } }
     },
     {
-      "title": "Logins Falhos",
+      "title": "Logins Falhos (1h)",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 12 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 3, "x": 15, "y": 8 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "sum(increase(auth_login_total{status!=\"success\"}[1h]))", "legendFormat": "Falhos (1h)" }
+        { "expr": "sum(increase(auth_login_total{status!=\"success\"}[1h])) or vector(0)", "legendFormat": "" }
       ],
       "fieldConfig": { "defaults": { "color": { "fixedColor": "red", "mode": "fixed" } } }
     },
     {
+      "title": "Municípios Ativos",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 3, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "active_municipalities_total", "legendFormat": "" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "blue", "mode": "fixed" } } }
+    },
+    {
+      "title": "Usuários Ativos",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 3, "x": 21, "y": 8 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "active_users_total", "legendFormat": "" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "fixedColor": "purple", "mode": "fixed" } } }
+    },
+    {
+      "title": "Requests por Município",
+      "description": "Distribuição de requests entre municípios",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 13 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (municipality) (increase(http_requests_total{municipality!=\"global\"}[1h]))",
+          "legendFormat": "{{municipality}}"
+        }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right" }, "pieType": "donut" }
+    },
+    {
       "title": "DB Pool Connections",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 13 },
+      "datasource": { "type": "prometheus" },
       "targets": [
         { "expr": "db_pool_checked_out", "legendFormat": "Ativas" },
         { "expr": "db_pool_checked_in", "legendFormat": "Ociosas" },
@@ -119,10 +182,10 @@
     {
       "title": "Top 10 Endpoints Mais Lentos",
       "type": "table",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 13 },
+      "datasource": { "type": "prometheus" },
       "targets": [
-        { "expr": "topk(10, histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path)))", "legendFormat": "{{path}}", "format": "table", "instant": true }
+        { "expr": "topk(10, histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{municipality=~\"$ibge|global\"}[5m])) by (le, path)))", "legendFormat": "{{path}}", "format": "table", "instant": true }
       ],
       "fieldConfig": { "defaults": { "unit": "s" } },
       "transformations": [
@@ -130,10 +193,24 @@
       ]
     },
     {
+      "title": "Requests por Município ao Longo do Tempo",
+      "description": "Compara tráfego entre municípios",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (municipality) (rate(http_requests_total{municipality!=\"global\",municipality=~\"$ibge\"}[5m]))",
+          "legendFormat": "{{municipality}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 } } }
+    },
+    {
       "title": "Logs Recentes",
       "type": "logs",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
-      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 29 },
+      "datasource": { "type": "loki" },
       "targets": [
         { "expr": "{service=\"app\"} |= ``", "legendFormat": "" }
       ],
@@ -142,8 +219,7 @@
   ],
   "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["zsaude", "api"],
-  "templating": { "list": [] },
+  "tags": ["zsaude", "api", "municipios"],
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",

@@ -14,13 +14,13 @@ APP_INFO = Info("zsaude", "zSaúde application info")
 HTTP_REQUESTS_TOTAL = Counter(
     "http_requests_total",
     "Total HTTP requests",
-    ["method", "path", "status"],
+    ["method", "path", "status", "municipality"],
 )
 
 HTTP_REQUEST_DURATION = Histogram(
     "http_request_duration_seconds",
     "HTTP request latency in seconds",
-    ["method", "path"],
+    ["method", "path", "municipality"],
     buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
 )
 
@@ -65,3 +65,10 @@ AI_REQUEST_DURATION = Histogram(
 ACTIVE_MUNICIPALITIES = Gauge("active_municipalities_total", "Number of active municipalities")
 ACTIVE_USERS = Gauge("active_users_total", "Number of active users")
 PATIENTS_TOTAL = Gauge("patients_total", "Total patients across all municipalities")
+
+# Mapping IBGE → nome do município (para label join no Grafana)
+MUNICIPALITY_INFO = Gauge(
+    "municipality_info",
+    "Municipality metadata (value always 1, labels carry info)",
+    ["ibge", "name", "state"],
+)

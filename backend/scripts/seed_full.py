@@ -55,6 +55,7 @@ MUNICIPALITIES = [
     {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108", "pop": 391772,  "lat": -16.3281, "lng": -48.9530},
     {"key": "mun4", "name": "Senador Canedo",       "state": "GO", "ibge": "5220454", "pop": 127192,  "lat": -16.7082, "lng": -49.0917},
     {"key": "mun5", "name": "Trindade",             "state": "GO", "ibge": "5221403", "pop": 129823,  "lat": -16.6512, "lng": -49.4884},
+    {"key": "mun6", "name": "Goianésia",            "state": "GO", "ibge": "5208608", "pop": 72681,   "lat": -15.3125, "lng": -49.1172},
 ]
 
 NEIGHBORHOODS = {
@@ -81,6 +82,12 @@ NEIGHBORHOODS = {
         {"key": "bairro30", "name": "Centro",             "pop": 10000},
         {"key": "bairro31", "name": "Jundiaí",            "pop": 35000},
         {"key": "bairro32", "name": "Vila Santa Isabel",  "pop": 12000},
+    ],
+    "mun6": [
+        {"key": "bairro60", "name": "Centro",             "pop": 8000},
+        {"key": "bairro61", "name": "Setor Universitário","pop": 5000},
+        {"key": "bairro62", "name": "Vila Brasília",      "pop": 6000},
+        {"key": "bairro63", "name": "Jardim Goiás",       "pop": 4000},
     ],
 }
 
@@ -115,6 +122,11 @@ FACILITIES = [
     # Trindade
     {"key": "fac20", "mun": "mun5", "name": "SMS Trindade",                               "short": "SMS Trindade",     "type": FacilityType.SMS,         "cnes": "3701234"},
     {"key": "fac21", "mun": "mun5", "name": "UBS Trindade Centro",                        "short": "UBS Trindade",     "type": FacilityType.UBS,         "cnes": "3701242"},
+    # Goianésia
+    {"key": "fac22", "mun": "mun6", "name": "Secretaria Municipal de Saúde de Goianésia", "short": "SMS Goianésia",    "type": FacilityType.SMS,         "cnes": "2504901"},
+    {"key": "fac23", "mun": "mun6", "name": "UBS Centro Goianésia",                       "short": "UBS Centro Goia",  "type": FacilityType.UBS,         "cnes": "2504928"},
+    {"key": "fac24", "mun": "mun6", "name": "Hospital Municipal de Goianésia",            "short": "HM Goianésia",     "type": FacilityType.HOSPITAL,    "cnes": "2504936"},
+    {"key": "fac25", "mun": "mun6", "name": "UBS Vila Brasília",                          "short": "UBS V.Brasília",   "type": FacilityType.UBS,         "cnes": "2504944"},
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -147,6 +159,11 @@ USERS = [
     {"key": "usr18", "login": "admin.canedo",      "email": "admin@canedo.gov.br",     "name": "Roberta Alves",           "cpf": "88899900011", "phone": "(62) 98999-0001", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1990-12-12"},
     {"key": "usr19", "login": "admin.trindade",    "email": "admin@trindade.gov.br",   "name": "Fernando Gomes",          "cpf": "99900011122", "phone": "(62) 99000-1112", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1987-04-05"},
     {"key": "usr20", "login": "medico.canedo",     "email": "medico@canedo.gov.br",    "name": "Dr. Lucas Pereira",       "cpf": "00011122233", "phone": "(62) 90011-2223", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1979-08-16"},
+    # Goianésia
+    {"key": "usr21", "login": "admin.goianesia",   "email": "admin@goianesia.gov.br",  "name": "Mariana Costa Oliveira",  "cpf": "11100022233", "phone": "(62) 91100-2223", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1991-06-15"},
+    {"key": "usr22", "login": "medico.goianesia",  "email": "medico@goianesia.gov.br", "name": "Dr. Henrique Ferreira",   "cpf": "22200033344", "phone": "(62) 92200-3334", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1976-02-28"},
+    {"key": "usr23", "login": "enf.goianesia",     "email": "enf@goianesia.gov.br",    "name": "Patrícia Enfermeira",     "cpf": "33300044455", "phone": "(62) 93300-4445", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1988-09-10"},
+    {"key": "usr24", "login": "recep.goianesia",   "email": "recep@goianesia.gov.br",  "name": "Cláudia Recepcionista",   "cpf": "44400055566", "phone": "(62) 94400-5556", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1995-12-20"},
 ]
 
 _ROLE_MAP = {
@@ -163,6 +180,7 @@ MUN_ACCESS = [
     ("usr10", "mun3"), ("usr11", "mun2"), ("usr12", "mun1"), ("usr13", "mun2"), ("usr14", "mun3"),
     ("usr15", "mun1"), ("usr15", "mun2"), ("usr16", "mun1"), ("usr17", "mun1"),
     ("usr18", "mun4"), ("usr19", "mun5"), ("usr20", "mun4"),
+    ("usr1", "mun6"), ("usr21", "mun6"), ("usr22", "mun6"), ("usr23", "mun6"), ("usr24", "mun6"),
 ]
 
 FAC_ACCESS = [
@@ -191,6 +209,13 @@ FAC_ACCESS = [
     ("usr5",  "fac6",  "manager"),
     ("usr8",  "fac9",  "doctor"),
     ("usr11", "fac9",  "nurse"),
+    # Goianésia
+    ("usr1",  "fac22", "manager"),
+    ("usr21", "fac22", "municipality_admin"), ("usr21", "fac23", "municipality_admin"),
+    ("usr21", "fac24", "municipality_admin"), ("usr21", "fac25", "municipality_admin"),
+    ("usr22", "fac24", "doctor"), ("usr22", "fac23", "doctor"),
+    ("usr23", "fac23", "nurse"),  ("usr23", "fac24", "nurse"), ("usr23", "fac25", "nurse"),
+    ("usr24", "fac23", "receptionist"), ("usr24", "fac25", "receptionist"),
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -254,6 +279,23 @@ PATIENTS = {
         _p("p63", "CAN-0004", "Dona Conceição Ferreira",   cpf="88990011008", cns="700063889900110", sex="F", birth="1935-12-25", mother_unknown=True,             phone="(62) 3535-6363", cep="75250030", end="Rua 5",             num="100", bairro="Setor Industrial",    raca="2", doencas="ICC, Diabetes tipo 2, Artrite"),
         _p("p64", "CAN-0005", "Valentina Costa Silva",                                               sex="F", birth="2026-04-01", mother="Juliana Costa Silva",    cell="(62) 99964-6464", cep="75250010", end="Av. Dom Pedro II",  num="50",  bairro="Jardim das Oliveiras",raca="3"),
     ],
+    "5208608": [  # Goianésia — 15 pacientes
+        _p("p80", "GOI-0001", "João Batista Ferreira",      cpf="10101010101", cns="700080101010101", sex="M", birth="1958-04-22", mother="Maria Ferreira",          phone="(62) 3355-8080", cep="76380000", end="Rua 5",               num="100", bairro="Centro",             raca="3", doencas="Diabetes tipo 2, Hipertensão", alergia="AAS, Metformina"),
+        _p("p81", "GOI-0002", "Ana Carolina Souza Lima",    cpf="20202020202", cns="700081202020202", sex="F", birth="1992-11-15", mother="Sandra Souza",            cell="(62) 99981-8181", cep="76380010", end="Av. Goiás",            num="500", bairro="Setor Universitário", raca="1", gestante=True),
+        _p("p82", "GOI-0003", "Pedro Paulo Alves Ribeiro",  cpf="30303030303", cns="700082303030303", sex="M", birth="2018-06-01", mother="Juliana Alves",           cell="(62) 99982-8282", cep="76380020", end="Rua 10",              num="25",  bairro="Vila Brasília",      raca="3"),
+        _p("p83", "GOI-0004", "Maria Aparecida dos Santos", cpf="40404040404", cns="700083404040404", sex="F", birth="1945-01-30", mother_unknown=True,              phone="(62) 3355-8383", cep="76380000", end="Rua 3",               num="200", bairro="Centro",             raca="2", doencas="DPOC, Osteoporose, ICC", fumante=True),
+        _p("p84", "GOI-0005", "Lucas Gabriel Oliveira",     cpf="50505050505",                        sex="M", birth="2024-08-10", mother="Camila Oliveira",         cell="(62) 99984-8484", cep="76380030", end="Rua 15",              num="10",  bairro="Jardim Goiás",       raca="1"),
+        _p("p85", "GOI-0006", "Francisca Indígena Tapuia",  cpf="60606060606", cns="700085606060606", sex="F", birth="1970-03-08", mother="Raimunda Tapuia",         cell="(62) 99985-8585", cep="76380000", end="Aldeia Carretão",     num="S/N", bairro="Zona Rural",         raca="5", etnia="0245"),
+        _p("p86", "GOI-0007", "Roberto Carlos Mendes",      cpf="70707070707", cns="700086707070707", sex="M", birth="1980-12-25", mother="Neuza Mendes",            cell="(62) 99986-8686", cep="76380010", end="Av. Goiás",            num="300", bairro="Setor Universitário", raca="1", plano="CONVENIO", conv_nome="Unimed", conv_num="GOI-123"),
+        _p("p87", "GOI-0008", "Gestante Helena Rodrigues",  cpf="80808080808", cns="700087808080808", sex="F", birth="2000-05-14", mother="Teresa Rodrigues",        cell="(62) 99987-8787", cep="76380020", end="Rua 12",              num="45",  bairro="Vila Brasília",      raca="3", gestante=True),
+        _p("p88", "GOI-0009", "Antônio José da Silva",      cpf="90909090909", cns="700088909090909", sex="M", birth="1935-07-04", mother_unknown=True,              phone="(62) 3355-8888", cep="76380000", end="Rua 1",               num="5",   bairro="Centro",             raca="3", doencas="Alzheimer, Diabetes, Hipertensão", alergia="Penicilina"),
+        _p("p89", "GOI-0010", "Juliana Cristina Pereira",   cpf="01010101010", cns="700089010101010", sex="F", birth="1998-02-28", mother="Marta Cristina",          cell="(62) 99989-8989", cep="76380030", end="Rua 20",              num="88",  bairro="Jardim Goiás",       raca="1", plano="PARTICULAR"),
+        _p("p90", "GOI-0011", "Marcos Vinícius Costa",      cpf="11110000111", cns="700090111100001", sex="M", birth="1975-09-18", mother="Dalva Costa",             cell="(62) 99990-9090", cep="76380010", end="Av. Goiás",            num="800", bairro="Setor Universitário", raca="3", situacao_rua=True, etilista=True, fumante=True),
+        _p("p91", "GOI-0012", "Recém-nascido Oliveira",                        cns="700091000000000", sex="F", birth="2026-04-15", mother="Ana Carolina Souza Lima", cell="(62) 99981-8181", cep="76380010", end="Av. Goiás",            num="500", bairro="Setor Universitário", raca="1"),
+        _p("p92", "GOI-0013", "Sérgio Luiz Ferreira",       cpf="22220000222", cns="700092222200002", sex="M", birth="1988-10-05", mother="Rosa Ferreira",           cell="(62) 99992-9292", cep="76380020", end="Rua 8",               num="150", bairro="Vila Brasília",      raca="3", doencas="Asma"),
+        _p("p93", "GOI-0014", "Tereza Quilombola Santos",   cpf="33330000333", cns="700093333300003", sex="F", birth="1965-06-20", mother="Benedita Santos",         phone="(62) 3355-9393", cep="76380000", end="Comunidade Quilombola",num="S/N",bairro="Zona Rural",         raca="2"),
+        _p("p94", "GOI-0015", "Valentina Ferreira Costa",   cpf="44440000444",                        sex="F", birth="2025-11-30", mother="Helena Rodrigues",        cell="(62) 99987-8787", cep="76380020", end="Rua 12",              num="45",  bairro="Vila Brasília",      raca="3"),
+    ],
     "5221403": [  # Trindade — 5 pacientes
         _p("p70", "TRI-0001", "Sebastiana Romeira",        cpf="99001122008", cns="700070990011220", sex="F", birth="1965-10-30", mother="Benedita Romeira",       phone="(62) 3636-7070", cep="75380000", end="Rua da Romaria",    num="1",   bairro="Centro",             raca="3"),
         _p("p71", "TRI-0002", "Moisés Aparecido Santos",   cpf="00112233009", cns="700071001122330", sex="M", birth="1978-05-15", mother="Ozana Santos",           cell="(62) 99971-7171", cep="75380010", end="Av. Bernardo Sayão",num="500", bairro="Setor Sul",          raca="3", doencas="Hipertensão"),
@@ -273,6 +315,13 @@ PATIENT_DOCS = {
     "p11": [{"tipo": "CRNM", "numero": "V123456-7",  "emissor": "PF",  "uf": "DF"}],
     "p30": [{"tipo": "RG",   "numero": "9012345",    "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "98765432100", "emissor": "DETRAN", "uf": "GO"}],
     "p50": [{"tipo": "RG",   "numero": "0123456",    "emissor": "SSP", "uf": "GO"}],
+    # Goianésia
+    "p80": [{"tipo": "RG",   "numero": "GO-801234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "80123456789", "emissor": "DETRAN", "uf": "GO"}],
+    "p81": [{"tipo": "RG",   "numero": "GO-811234",  "emissor": "SSP", "uf": "GO"}],
+    "p83": [{"tipo": "RG",   "numero": "GO-831234",  "emissor": "SSP", "uf": "GO"}],
+    "p86": [{"tipo": "RG",   "numero": "GO-861234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CTPS", "numero": "861234", "emissor": "MTE", "uf": "GO"}],
+    "p88": [{"tipo": "RG",   "numero": "GO-881234",  "emissor": "SSP", "uf": "GO"}],
+    "p89": [{"tipo": "RG",   "numero": "GO-891234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "89123456789", "emissor": "DETRAN", "uf": "GO"}, {"tipo": "PASS", "numero": "BR891234", "emissor": "PF", "uf": "DF"}],
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -477,10 +526,13 @@ async def seed_cnes(session: AsyncSession, ibge: str, facilities: list[dict]) ->
             n += 1
     await session.flush()
 
-    # Profissionais (1 médico + 1 enfermeiro por unidade com CNES)
+    # Profissionais (únicos por município: 1 médico + 1 enfermeiro + 1 recepcionista)
+    # id_profissional: max 16 chars, CPF: exactly 11 chars (numérico)
+    s = ibge[-3:]  # 3 dígitos
     profs = [
-        ("med", "Dr. Profissional Médico",   "22510001234567", "12345678901", "225125"),
-        ("enf", "Enf. Profissional Enfermeiro","22310001234568", "23456789012", "223505"),
+        ("med", f"Dr. Médico {ibge}",            f"2251{ibge}00001", f"100{s}00001", "225125"),
+        ("enf", f"Enf. Enfermeiro(a) {ibge}",    f"2231{ibge}00002", f"200{s}00002", "223505"),
+        ("rec", f"Recepcionista {ibge}",          f"4221{ibge}00003", f"300{s}00003", "422105"),
     ]
     for prefix, nome, id_prof, cpf, cbo in profs:
         prof_key = f"cnes_prof_{ibge}_{prefix}"

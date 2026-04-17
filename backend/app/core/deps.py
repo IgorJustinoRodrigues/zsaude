@@ -150,6 +150,9 @@ async def current_user(
 
     update_audit_context(user_id=user.id, user_name=user.name)
 
+    import structlog
+    structlog.contextvars.bind_contextvars(user=user.login)
+
     # Presença: toca last_seen_at da sessão (throttled a 30s). Só funciona
     # para tokens emitidos após a feature de sessões existir (que carregam sid).
     sid = payload.get("sid")
@@ -261,6 +264,12 @@ async def current_context(
         municipality_ibge=ctx.municipality_ibge or None,
         facility_id=ctx.facility_id,
         role=ctx.role,
+    )
+
+    # Injeta município no structlog para todos os logs da request
+    import structlog
+    structlog.contextvars.bind_contextvars(
+        municipality_ibge=ctx.municipality_ibge or "",
     )
 
     # Reemite search_path na conexão atual, já com o ibge resolvido.

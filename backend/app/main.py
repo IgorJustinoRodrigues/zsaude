@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.health import router as health_router
@@ -98,9 +99,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     asyncio.create_task(warm_face())
 
-    # Métricas Prometheus — app info
-    from app.core.metrics import APP_INFO
+    # Métricas Prometheus — app info + municípios
+    from app.core.metrics import APP_INFO, MUNICIPALITY_INFO, ACTIVE_MUNICIPALITIES, ACTIVE_USERS
     APP_INFO.info({"version": "0.1.0", "env": settings.env})
+
+    try:
+        async with sessionmaker()() as session:
+            from app.modules.tenants.models import Municipality
+            from app.modules.users.models import User
+            muns = (await session.scalars(
+                select(Municipality).where(Municipality.archived == False)
+            )).all()
+            for m in muns:
+                MUNICIPALITY_INFO.labels(ibge=m.ibge, name=m.name, state=m.state).set(1)
+            ACTIVE_MUNICIPALITIES.set(len(muns))
+            user_count = (await session.scalars(
+                select(func.count()).select_from(User).where(User.is_active == True)
+            )).one()
+            ACTIVE_USERS.set(user_count)
+    except Exception:
+        pass
 
     try:
         yield

@@ -13,23 +13,24 @@ scrape_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
     relabel_configs:
-      # Usa o nome do container como label
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"
         target_label: "container"
-      # Usa o nome do compose service
       - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
         target_label: "service"
-      # Usa o compose project
       - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
         target_label: "project"
     pipeline_stages:
-      # Tenta parsear JSON (logs do structlog em prod)
+      # Parseia JSON do structlog
       - json:
           expressions:
             level: level
             event: event
             request_id: request_id
+            user: user
+            municipality_ibge: municipality_ibge
       - labels:
           level:
           event:
+          user:
+          municipality_ibge:
