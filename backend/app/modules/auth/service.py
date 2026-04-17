@@ -40,12 +40,15 @@ class AuthService:
     # ── Login ───────────────────────────────────────────────────────────
 
     async def login(self, identifier: str, password: str, ip: str, ua: str) -> TokenPair:
+        from app.core.metrics import AUTH_LOGIN_TOTAL
+
         user = await self.users.get_by_login_or_email(identifier)
         valid = bool(user and user.is_active and verify_password(password, user.password_hash))
 
         await self.repo.record_login_attempt(identifier, ip, valid)
 
         if not valid or user is None:
+            AUTH_LOGIN_TOTAL.labels(status="invalid_credentials" if user is None or user.is_active else "inactive").inc()
             reason = "Credenciais inválidas."
             if user is not None and not user.is_active:
                 reason = "Usuário inativo ou bloqueado."
@@ -102,6 +105,7 @@ class AuthService:
             user.password_hash = hash_password(password)
             await self.users.update(user)
 
+        AUTH_LOGIN_TOTAL.labels(status="success").inc()
         pair = await self._issue_pair(user, ip, ua)
         await write_audit(
             self.session,

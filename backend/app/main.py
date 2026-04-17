@@ -14,6 +14,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.health import router as health_router
+from app.api.metrics import router as metrics_router
 from app.api.v1 import api_v1
 from app.core.config import settings
 from app.core.exceptions import (
@@ -97,6 +98,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     asyncio.create_task(warm_face())
 
+    # Métricas Prometheus — app info
+    from app.core.metrics import APP_INFO
+    APP_INFO.info({"version": "0.1.0", "env": settings.env})
+
     try:
         yield
     finally:
@@ -135,6 +140,9 @@ def create_app() -> FastAPI:
     app.add_middleware(AuditWriterMiddleware)
     app.add_middleware(AuditContextMiddleware)
     app.add_middleware(RequestIdMiddleware)
+    # Métricas Prometheus (primeiro middleware = mede latência total incluindo outros middlewares)
+    from app.middleware.metrics import MetricsMiddleware
+    app.add_middleware(MetricsMiddleware)
 
     # Handlers
     app.add_exception_handler(AppError, app_error_handler)
@@ -144,6 +152,7 @@ def create_app() -> FastAPI:
 
     # Rotas
     app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(api_v1, prefix=settings.api_v1_prefix)
 
     return app
