@@ -1,15 +1,11 @@
-"""Seed completo e robusto para testes end-to-end.
+"""Seed massivo para testes de carga e observabilidade.
 
-Popula:
-- 5 municípios (GO) com bairros
-- 20+ unidades de saúde (todos os tipos)
-- 20 usuários (MASTER, ADMIN, USER, bloqueados, inativos)
-- Acessos complexos (multi-município, multi-unidade, roles variados)
-- 50 pacientes com dados realistas (SUS, convênio, particular,
-  gestantes, idosos, crianças, situação de rua, indígenas, etc.)
-- Documentos de pacientes (RG, CNH, etc.)
-- Dados CNES simulados (unidades, profissionais, equipes, leitos)
-- Roles municipais customizados + overrides de permissão
+Gera:
+- 30 municípios goianos reais (com IBGE, coordenadas, população)
+- 3-8 unidades por município (~150 unidades)
+- 2-5 usuários por município + 5 globais (~100 usuários)
+- 30-50 pacientes por município (~1200 pacientes)
+- Documentos, dados CNES, bairros
 
 Idempotente. Executar:
     docker compose exec app .venv/bin/python scripts/seed_full.py
@@ -18,8 +14,10 @@ Idempotente. Executar:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import random
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +37,7 @@ from app.modules.users.models import User, UserLevel, UserStatus
 
 NS = uuid.UUID("12345678-1234-5678-1234-567812345678")
 DEFAULT_PASSWORD = "Admin@123"
+random.seed(42)  # determinístico para idempotência
 
 
 def fid(key: str) -> uuid.UUID:
@@ -46,125 +45,221 @@ def fid(key: str) -> uuid.UUID:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MUNICÍPIOS + BAIRROS
+# 30 MUNICÍPIOS GOIANOS REAIS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 MUNICIPALITIES = [
-    {"key": "mun1", "name": "Goiânia",              "state": "GO", "ibge": "5208707", "pop": 1437237, "lat": -16.6869, "lng": -49.2648},
-    {"key": "mun2", "name": "Aparecida de Goiânia", "state": "GO", "ibge": "5201405", "pop": 590146,  "lat": -16.8198, "lng": -49.2469},
-    {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108", "pop": 391772,  "lat": -16.3281, "lng": -48.9530},
-    {"key": "mun4", "name": "Senador Canedo",       "state": "GO", "ibge": "5220454", "pop": 127192,  "lat": -16.7082, "lng": -49.0917},
-    {"key": "mun5", "name": "Trindade",             "state": "GO", "ibge": "5221403", "pop": 129823,  "lat": -16.6512, "lng": -49.4884},
-    {"key": "mun6", "name": "Goianésia",            "state": "GO", "ibge": "5208608", "pop": 72681,   "lat": -15.3125, "lng": -49.1172},
+    {"key": "mun01", "name": "Goiânia",              "ibge": "5208707", "pop": 1437237, "lat": -16.6869, "lng": -49.2648},
+    {"key": "mun02", "name": "Aparecida de Goiânia", "ibge": "5201405", "pop": 590146,  "lat": -16.8198, "lng": -49.2469},
+    {"key": "mun03", "name": "Anápolis",             "ibge": "5201108", "pop": 391772,  "lat": -16.3281, "lng": -48.9530},
+    {"key": "mun04", "name": "Rio Verde",            "ibge": "5218805", "pop": 235647,  "lat": -17.7928, "lng": -50.9192},
+    {"key": "mun05", "name": "Luziânia",             "ibge": "5212501", "pop": 209432,  "lat": -16.2528, "lng": -47.9500},
+    {"key": "mun06", "name": "Águas Lindas de Goiás","ibge": "5200258", "pop": 212440,  "lat": -15.7672, "lng": -48.2811},
+    {"key": "mun07", "name": "Valparaíso de Goiás",  "ibge": "5221858", "pop": 164740,  "lat": -16.0681, "lng": -47.9781},
+    {"key": "mun08", "name": "Trindade",             "ibge": "5221403", "pop": 129823,  "lat": -16.6512, "lng": -49.4884},
+    {"key": "mun09", "name": "Senador Canedo",       "ibge": "5220454", "pop": 127192,  "lat": -16.7082, "lng": -49.0917},
+    {"key": "mun10", "name": "Formosa",              "ibge": "5208004", "pop": 119506,  "lat": -15.5372, "lng": -47.3342},
+    {"key": "mun11", "name": "Goianésia",            "ibge": "5208608", "pop": 72681,   "lat": -15.3125, "lng": -49.1172},
+    {"key": "mun12", "name": "Itumbiara",            "ibge": "5211503", "pop": 105234,  "lat": -18.4191, "lng": -49.2158},
+    {"key": "mun13", "name": "Catalão",              "ibge": "5205109", "pop": 110983,  "lat": -18.1661, "lng": -47.9461},
+    {"key": "mun14", "name": "Jataí",                "ibge": "5211909", "pop": 102065,  "lat": -17.8822, "lng": -51.7142},
+    {"key": "mun15", "name": "Planaltina",           "ibge": "5217609", "pop": 95648,   "lat": -15.4528, "lng": -47.6139},
+    {"key": "mun16", "name": "Caldas Novas",         "ibge": "5204507", "pop": 91735,   "lat": -17.7442, "lng": -48.6253},
+    {"key": "mun17", "name": "Novo Gama",            "ibge": "5214838", "pop": 114175,  "lat": -16.0589, "lng": -48.0422},
+    {"key": "mun18", "name": "Inhumas",              "ibge": "5210208", "pop": 53081,   "lat": -16.3561, "lng": -49.4942},
+    {"key": "mun19", "name": "Mineiros",             "ibge": "5213103", "pop": 65417,   "lat": -17.5694, "lng": -52.5508},
+    {"key": "mun20", "name": "Jaraguá",              "ibge": "5211800", "pop": 52452,   "lat": -15.7558, "lng": -49.3344},
+    {"key": "mun21", "name": "Porangatu",            "ibge": "5218003", "pop": 45761,   "lat": -13.4408, "lng": -49.1486},
+    {"key": "mun22", "name": "Morrinhos",            "ibge": "5213806", "pop": 46540,   "lat": -17.7311, "lng": -49.1011},
+    {"key": "mun23", "name": "Uruaçu",               "ibge": "5221601", "pop": 39197,   "lat": -14.5239, "lng": -49.1414},
+    {"key": "mun24", "name": "Goiatuba",             "ibge": "5209150", "pop": 37612,   "lat": -18.0131, "lng": -49.3564},
+    {"key": "mun25", "name": "Ceres",                "ibge": "5205307", "pop": 22570,   "lat": -15.3072, "lng": -49.5958},
+    {"key": "mun26", "name": "Quirinópolis",         "ibge": "5218508", "pop": 47746,   "lat": -18.4483, "lng": -50.4522},
+    {"key": "mun27", "name": "Pirenópolis",          "ibge": "5217302", "pop": 24694,   "lat": -15.8511, "lng": -49.0297},
+    {"key": "mun28", "name": "Goiás",                "ibge": "5208905", "pop": 24727,   "lat": -15.9333, "lng": -49.7142},
+    {"key": "mun29", "name": "Niquelândia",          "ibge": "5214606", "pop": 47450,   "lat": -14.4739, "lng": -48.4594},
+    {"key": "mun30", "name": "Cristalina",           "ibge": "5206206", "pop": 56814,   "lat": -16.7678, "lng": -47.6136},
 ]
 
-NEIGHBORHOODS = {
-    "mun1": [
-        {"key": "bairro1",  "name": "Setor Central",      "pop": 12000},
-        {"key": "bairro2",  "name": "Setor Bueno",        "pop": 35000},
-        {"key": "bairro3",  "name": "Setor Sul",          "pop": 18000},
-        {"key": "bairro4",  "name": "Campinas",           "pop": 42000},
-        {"key": "bairro5",  "name": "Setor Oeste",        "pop": 28000},
-        {"key": "bairro6",  "name": "Jardim América",     "pop": 38000},
-        {"key": "bairro7",  "name": "Setor Marista",      "pop": 22000},
-        {"key": "bairro8",  "name": "Setor Universitário","pop": 15000},
-        {"key": "bairro9",  "name": "Faiçalville",        "pop": 20000},
-        {"key": "bairro10", "name": "Setor Aeroporto",    "pop": 16000},
-    ],
-    "mun2": [
-        {"key": "bairro20", "name": "Jardim Tiradentes",  "pop": 25000},
-        {"key": "bairro21", "name": "Papillon Park",      "pop": 18000},
-        {"key": "bairro22", "name": "Cidade Livre",       "pop": 30000},
-        {"key": "bairro23", "name": "Garavelo",           "pop": 22000},
-        {"key": "bairro24", "name": "Jardim Nova Era",    "pop": 15000},
-    ],
-    "mun3": [
-        {"key": "bairro30", "name": "Centro",             "pop": 10000},
-        {"key": "bairro31", "name": "Jundiaí",            "pop": 35000},
-        {"key": "bairro32", "name": "Vila Santa Isabel",  "pop": 12000},
-    ],
-    "mun6": [
-        {"key": "bairro60", "name": "Centro",             "pop": 8000},
-        {"key": "bairro61", "name": "Setor Universitário","pop": 5000},
-        {"key": "bairro62", "name": "Vila Brasília",      "pop": 6000},
-        {"key": "bairro63", "name": "Jardim Goiás",       "pop": 4000},
-    ],
-}
+# Todos são GO
+for m in MUNICIPALITIES:
+    m["state"] = "GO"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# UNIDADES
+# GERADORES PROGRAMÁTICOS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-FACILITIES = [
-    # Goiânia — completa
-    {"key": "fac1",  "mun": "mun1", "name": "Secretaria Municipal de Saúde",              "short": "SMS Central",      "type": FacilityType.SMS,         "cnes": "2337878"},
-    {"key": "fac2",  "mun": "mun1", "name": "UBS Centro",                                 "short": "UBS Centro",       "type": FacilityType.UBS,         "cnes": "2338009"},
-    {"key": "fac3",  "mun": "mun1", "name": "UPA Norte",                                  "short": "UPA Norte",        "type": FacilityType.UPA,         "cnes": "7210132"},
-    {"key": "fac4",  "mun": "mun1", "name": "Laboratório Municipal",                      "short": "Lab. Municipal",   "type": FacilityType.LAB,         "cnes": "2338017"},
-    {"key": "fac5",  "mun": "mun1", "name": "VISA Municipal",                             "short": "VISA Municipal",   "type": FacilityType.VISA,        "cnes": None},
-    {"key": "fac6",  "mun": "mun1", "name": "Setor de Transportes",                       "short": "Transportes",      "type": FacilityType.TRANSPORTES, "cnes": None},
-    {"key": "fac12", "mun": "mun1", "name": "CEO Centro de Espec. Odontológicas",         "short": "CEO Centro",       "type": FacilityType.CEO,         "cnes": "6543210"},
-    {"key": "fac13", "mun": "mun1", "name": "CAPS II Atenção Psicossocial",               "short": "CAPS II",          "type": FacilityType.CAPS,        "cnes": "5432109"},
-    {"key": "fac15", "mun": "mun1", "name": "UBS Jardim América",                         "short": "UBS Jd América",   "type": FacilityType.UBS,         "cnes": "2338025"},
-    {"key": "fac16", "mun": "mun1", "name": "Hospital Municipal Dr. Alberto Rassi (HGG)", "short": "HGG",              "type": FacilityType.HOSPITAL,    "cnes": "2338033"},
-    # Aparecida
-    {"key": "fac7",  "mun": "mun2", "name": "Secretaria Municipal de Saúde",              "short": "SMS Aparecida",    "type": FacilityType.SMS,         "cnes": "2464705"},
-    {"key": "fac8",  "mun": "mun2", "name": "UBS Jardim Tiradentes",                      "short": "UBS Jardim",       "type": FacilityType.UBS,         "cnes": "2464713"},
-    {"key": "fac9",  "mun": "mun2", "name": "UPA Sul",                                    "short": "UPA Sul",          "type": FacilityType.UPA,         "cnes": "7654321"},
-    {"key": "fac14", "mun": "mun2", "name": "Policlínica Municipal",                      "short": "Policlínica",      "type": FacilityType.POLICLINICA, "cnes": "4321098"},
-    # Anápolis
-    {"key": "fac10", "mun": "mun3", "name": "Secretaria Municipal de Saúde",              "short": "SMS Anápolis",     "type": FacilityType.SMS,         "cnes": "2527901"},
-    {"key": "fac11", "mun": "mun3", "name": "HMU Hospital Municipal de Urgência",         "short": "HMU",              "type": FacilityType.HOSPITAL,    "cnes": "2527928"},
-    {"key": "fac17", "mun": "mun3", "name": "UBS Centro Anápolis",                        "short": "UBS Centro Ana",   "type": FacilityType.UBS,         "cnes": "2527936"},
-    # Senador Canedo
-    {"key": "fac18", "mun": "mun4", "name": "SMS Senador Canedo",                         "short": "SMS S.Canedo",     "type": FacilityType.SMS,         "cnes": "3601234"},
-    {"key": "fac19", "mun": "mun4", "name": "UBS Central Canedo",                         "short": "UBS Canedo",       "type": FacilityType.UBS,         "cnes": "3601242"},
-    # Trindade
-    {"key": "fac20", "mun": "mun5", "name": "SMS Trindade",                               "short": "SMS Trindade",     "type": FacilityType.SMS,         "cnes": "3701234"},
-    {"key": "fac21", "mun": "mun5", "name": "UBS Trindade Centro",                        "short": "UBS Trindade",     "type": FacilityType.UBS,         "cnes": "3701242"},
-    # Goianésia
-    {"key": "fac22", "mun": "mun6", "name": "Secretaria Municipal de Saúde de Goianésia", "short": "SMS Goianésia",    "type": FacilityType.SMS,         "cnes": "2504901"},
-    {"key": "fac23", "mun": "mun6", "name": "UBS Centro Goianésia",                       "short": "UBS Centro Goia",  "type": FacilityType.UBS,         "cnes": "2504928"},
-    {"key": "fac24", "mun": "mun6", "name": "Hospital Municipal de Goianésia",            "short": "HM Goianésia",     "type": FacilityType.HOSPITAL,    "cnes": "2504936"},
-    {"key": "fac25", "mun": "mun6", "name": "UBS Vila Brasília",                          "short": "UBS V.Brasília",   "type": FacilityType.UBS,         "cnes": "2504944"},
+_FIRST_NAMES_M = [
+    "João", "Pedro", "Carlos", "José", "Antônio", "Francisco", "Lucas", "Marcos",
+    "Paulo", "Rafael", "Gabriel", "Mateus", "André", "Thiago", "Felipe", "Bruno",
+    "Diego", "Rodrigo", "Eduardo", "Vinícius", "Henrique", "Gustavo", "Leonardo",
+    "Daniel", "Renato", "Sérgio", "Manoel", "Sebastião", "Joaquim", "Moisés",
+]
+_FIRST_NAMES_F = [
+    "Maria", "Ana", "Francisca", "Juliana", "Patricia", "Carla", "Fernanda",
+    "Sandra", "Luciana", "Beatriz", "Camila", "Raquel", "Tereza", "Helena",
+    "Silvana", "Rosa", "Lúcia", "Ivone", "Cláudia", "Simone", "Larissa",
+    "Amanda", "Bruna", "Valentina", "Isabela", "Letícia", "Mariana", "Tatiana",
+    "Cristina", "Aparecida",
+]
+_LAST_NAMES = [
+    "Silva", "Santos", "Oliveira", "Souza", "Pereira", "Costa", "Ferreira",
+    "Rodrigues", "Almeida", "Nascimento", "Lima", "Araújo", "Fernandes",
+    "Carvalho", "Gomes", "Martins", "Rocha", "Ribeiro", "Alves", "Monteiro",
+    "Mendes", "Barros", "Freitas", "Barbosa", "Pinto", "Moura", "Cavalcanti",
+    "Dias", "Castro", "Campos", "Cardoso", "Correia", "Vieira", "Nunes",
+]
+_STREETS = ["Rua", "Av.", "Travessa", "Alameda", "Praça"]
+_STREET_NAMES = [
+    "das Flores", "Brasil", "Goiás", "15 de Novembro", "7 de Setembro",
+    "Dom Pedro II", "Santos Dumont", "JK", "Anhanguera", "Araguaia",
+    "Tocantins", "Paranaíba", "dos Bandeirantes", "da Liberdade", "Central",
+    "do Comércio", "da Paz", "das Mangueiras", "dos Ipês", "das Palmeiras",
+]
+_BAIRROS = [
+    "Centro", "Setor Central", "Vila Nova", "Jardim das Flores", "Setor Sul",
+    "Setor Norte", "Vila Brasília", "Jardim Goiás", "Setor Universitário",
+    "Vila Santa Maria", "Jardim América", "Setor Industrial", "Vila São José",
+    "Jardim Planalto", "Setor Aeroporto", "Vila Formosa", "Parque das Laranjeiras",
+    "Residencial Canadá", "Jardim Europa", "Setor Oeste",
+]
+_DISEASES = [
+    "Hipertensão arterial", "Diabetes tipo 2", "Diabetes tipo 1", "Asma",
+    "DPOC", "ICC", "Artrose", "Fibrilação atrial", "Hipotireoidismo",
+    "Epilepsia", "Depressão", "Ansiedade", "Osteoporose", "Anemia falciforme",
+    "Alzheimer", "Neuropatia periférica", "Retinopatia diabética",
+]
+_ALLERGIES = ["Dipirona", "AAS", "Penicilina", "Sulfas", "Ibuprofeno", "Látex", "Contraste iodado"]
+_FACILITY_TYPES = [
+    (FacilityType.UBS, "UBS"),
+    (FacilityType.UPA, "UPA"),
+    (FacilityType.HOSPITAL, "Hospital Municipal"),
+    (FacilityType.LAB, "Laboratório Municipal"),
+    (FacilityType.CAPS, "CAPS"),
+    (FacilityType.CEO, "CEO"),
+    (FacilityType.POLICLINICA, "Policlínica"),
 ]
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# USUÁRIOS
-# ═══════════════════════════════════════════════════════════════════════════════
 
-USERS = [
-    # MASTER
-    {"key": "usr1",  "login": "igor.santos",       "email": "igor@zsaude.gov.br",      "name": "Igor Santos",             "cpf": "02134567890", "phone": "(62) 99999-1234", "status": UserStatus.ATIVO,     "level": UserLevel.MASTER,  "birth": "1990-05-15"},
-    # ADMIN por município
-    {"key": "usr2",  "login": "carla.mendonca",    "email": "carla@zsaude.gov.br",     "name": "Carla Mendonça",          "cpf": "13456789012", "phone": "(62) 98888-5678", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1985-11-20"},
-    {"key": "usr13", "login": "admin.aparecida",   "email": "admin@aparecida.gov.br",  "name": "Ana Paula Ribeiro",       "cpf": "11122233344", "phone": "(62) 98111-2222", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1988-03-08"},
-    {"key": "usr14", "login": "admin.anapolis",    "email": "admin@anapolis.gov.br",   "name": "Carlos Eduardo Dias",     "cpf": "55566677788", "phone": "(62) 98333-4444", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1982-07-25"},
-    # Profissionais variados
-    {"key": "usr3",  "login": "diego.figueiredo",  "email": "diego@zsaude.gov.br",     "name": "Diego Figueiredo",        "cpf": "24567890123", "phone": "(62) 97777-9012", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1992-01-10"},
-    {"key": "usr4",  "login": "renata.cabral",     "email": "renata@zsaude.gov.br",    "name": "Renata Cabral",           "cpf": "35678901234", "phone": "(62) 96666-3456", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1995-09-14"},
-    {"key": "usr6",  "login": "simone.araujo",     "email": "simone@zsaude.gov.br",    "name": "Simone Araújo",           "cpf": "57890123456", "phone": "(62) 94444-1234", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1987-06-30"},
-    {"key": "usr7",  "login": "rafael.campos",     "email": "rafael@zsaude.gov.br",    "name": "Dr. Rafael Campos",       "cpf": "68901234567", "phone": "(62) 93333-5678", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1980-12-05"},
-    {"key": "usr9",  "login": "paulo.henrique",    "email": "paulo@zsaude.gov.br",     "name": "Paulo Henrique Silva",    "cpf": "80123456789", "phone": "(62) 91111-3456", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1991-04-18"},
-    {"key": "usr10", "login": "beatriz.nunes",     "email": "beatriz@zsaude.gov.br",   "name": "Beatriz Nunes",           "cpf": "91234567890", "phone": "(62) 90000-7890", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1993-08-22"},
-    {"key": "usr12", "login": "juliana.torres",    "email": "juliana@zsaude.gov.br",   "name": "Juliana Torres",          "cpf": "13456789023", "phone": "(62) 99876-5432", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1996-02-14"},
-    {"key": "usr15", "login": "dra.amanda.souza",  "email": "amanda@zsaude.gov.br",    "name": "Dra. Amanda Souza",       "cpf": "44455566677", "phone": "(62) 98555-6666", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1983-10-01"},
-    {"key": "usr16", "login": "enfermeiro.jose",   "email": "jose.enf@zsaude.gov.br",  "name": "José Carlos Enfermeiro",  "cpf": "66677788899", "phone": "(62) 98777-8888", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1989-05-20"},
-    {"key": "usr17", "login": "farmacia.lucia",    "email": "lucia@zsaude.gov.br",     "name": "Lúcia Farmacêutica",      "cpf": "77788899900", "phone": "(62) 98888-9999", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1994-11-11"},
-    # Inativos e Bloqueados
-    {"key": "usr5",  "login": "thales.marques",    "email": "thales@zsaude.gov.br",    "name": "Thales Marques",          "cpf": "46789012345", "phone": "(62) 95555-7890", "status": UserStatus.INATIVO,   "level": UserLevel.USER,    "birth": "1997-03-03"},
-    {"key": "usr8",  "login": "fernanda.lima",     "email": "fernanda@zsaude.gov.br",  "name": "Fernanda Lima",           "cpf": "79012345678", "phone": "(62) 92222-9012", "status": UserStatus.BLOQUEADO, "level": UserLevel.USER,    "birth": "1986-07-17"},
-    {"key": "usr11", "login": "marcos.vinicius",   "email": "marcos@zsaude.gov.br",    "name": "Marcos Vinicius Costa",   "cpf": "02345678901", "phone": "(62) 98765-4321", "status": UserStatus.INATIVO,   "level": UserLevel.USER,    "birth": "1998-01-28"},
-    # Novos municípios
-    {"key": "usr18", "login": "admin.canedo",      "email": "admin@canedo.gov.br",     "name": "Roberta Alves",           "cpf": "88899900011", "phone": "(62) 98999-0001", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1990-12-12"},
-    {"key": "usr19", "login": "admin.trindade",    "email": "admin@trindade.gov.br",   "name": "Fernando Gomes",          "cpf": "99900011122", "phone": "(62) 99000-1112", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1987-04-05"},
-    {"key": "usr20", "login": "medico.canedo",     "email": "medico@canedo.gov.br",    "name": "Dr. Lucas Pereira",       "cpf": "00011122233", "phone": "(62) 90011-2223", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1979-08-16"},
-    # Goianésia
-    {"key": "usr21", "login": "admin.goianesia",   "email": "admin@goianesia.gov.br",  "name": "Mariana Costa Oliveira",  "cpf": "11100022233", "phone": "(62) 91100-2223", "status": UserStatus.ATIVO,     "level": UserLevel.ADMIN,   "birth": "1991-06-15"},
-    {"key": "usr22", "login": "medico.goianesia",  "email": "medico@goianesia.gov.br", "name": "Dr. Henrique Ferreira",   "cpf": "22200033344", "phone": "(62) 92200-3334", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1976-02-28"},
-    {"key": "usr23", "login": "enf.goianesia",     "email": "enf@goianesia.gov.br",    "name": "Patrícia Enfermeira",     "cpf": "33300044455", "phone": "(62) 93300-4445", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1988-09-10"},
-    {"key": "usr24", "login": "recep.goianesia",   "email": "recep@goianesia.gov.br",  "name": "Cláudia Recepcionista",   "cpf": "44400055566", "phone": "(62) 94400-5556", "status": UserStatus.ATIVO,     "level": UserLevel.USER,    "birth": "1995-12-20"},
-]
+def _gen_cpf(seed: int) -> str:
+    return f"{seed:011d}"
+
+
+def _gen_cns(seed: int) -> str | None:
+    if seed % 5 == 0:  # 20% sem CNS
+        return None
+    return f"7{seed:014d}"
+
+
+def _gen_phone(seed: int) -> str:
+    return f"(62) 9{seed % 10000:04d}-{(seed * 7) % 10000:04d}"
+
+
+def _gen_cep(ibge: str) -> str:
+    h = int(hashlib.md5(ibge.encode()).hexdigest()[:4], 16) % 90000 + 10000
+    return f"7{h:05d}00"
+
+
+def _gen_facilities(mun_key: str, mun_name: str, ibge: str, pop: int) -> list[dict]:
+    """Gera facilities para um município baseado na população."""
+    facs = [{"key": f"{mun_key}_sms", "mun": mun_key, "name": f"Secretaria Municipal de Saúde — {mun_name}",
+             "short": f"SMS {mun_name[:15]}", "type": FacilityType.SMS, "cnes": f"{int(ibge[:5]):07d}"}]
+    n_extra = min(7, max(2, pop // 50000))
+    used = set()
+    for i in range(n_extra):
+        ft, prefix = _FACILITY_TYPES[i % len(_FACILITY_TYPES)]
+        name = f"{prefix} {_BAIRROS[i % len(_BAIRROS)]} — {mun_name}"
+        short = f"{prefix[:3]} {_BAIRROS[i % len(_BAIRROS)][:10]}"
+        cnes_num = f"{int(ibge[:4]) + i + 1:07d}"
+        if cnes_num in used:
+            cnes_num = f"{int(ibge[:4]) + i + 100:07d}"
+        used.add(cnes_num)
+        facs.append({"key": f"{mun_key}_fac{i}", "mun": mun_key, "name": name,
+                      "short": short, "type": ft, "cnes": cnes_num})
+    return facs
+
+
+def _gen_users(mun_key: str, mun_name: str, idx: int) -> list[dict]:
+    """Gera usuários para um município."""
+    base = idx * 10
+    login_prefix = mun_name.lower().replace(" ", "").replace("á", "a").replace("â", "a") \
+        .replace("ã", "a").replace("é", "e").replace("ê", "e").replace("í", "i") \
+        .replace("ó", "o").replace("ô", "o").replace("ú", "u").replace("ç", "c")[:8]
+    users = [
+        {"key": f"{mun_key}_admin", "login": f"admin.{login_prefix}",
+         "email": f"admin@{login_prefix}.gov.br", "name": f"Admin {mun_name}",
+         "cpf": _gen_cpf(80000 + base), "phone": _gen_phone(80000 + base),
+         "status": UserStatus.ATIVO, "level": UserLevel.ADMIN, "birth": "1985-06-15"},
+        {"key": f"{mun_key}_med", "login": f"med.{login_prefix}",
+         "email": f"medico@{login_prefix}.gov.br", "name": f"Dr. Médico {mun_name}",
+         "cpf": _gen_cpf(80001 + base), "phone": _gen_phone(80001 + base),
+         "status": UserStatus.ATIVO, "level": UserLevel.USER, "birth": "1978-03-22"},
+        {"key": f"{mun_key}_enf", "login": f"enf.{login_prefix}",
+         "email": f"enf@{login_prefix}.gov.br", "name": f"Enf. {_FIRST_NAMES_F[idx % len(_FIRST_NAMES_F)]} {_LAST_NAMES[idx % len(_LAST_NAMES)]}",
+         "cpf": _gen_cpf(80002 + base), "phone": _gen_phone(80002 + base),
+         "status": UserStatus.ATIVO, "level": UserLevel.USER, "birth": "1990-08-10"},
+        {"key": f"{mun_key}_rec", "login": f"rec.{login_prefix}",
+         "email": f"recep@{login_prefix}.gov.br", "name": f"{_FIRST_NAMES_F[(idx+5) % len(_FIRST_NAMES_F)]} Recepcionista",
+         "cpf": _gen_cpf(80003 + base), "phone": _gen_phone(80003 + base),
+         "status": UserStatus.ATIVO, "level": UserLevel.USER, "birth": "1995-12-01"},
+    ]
+    return users
+
+
+def _gen_patients(ibge: str, mun_name: str, idx: int, count: int) -> list[dict]:
+    """Gera pacientes para um município."""
+    patients = []
+    prefix = mun_name[:3].upper()
+    cep = _gen_cep(ibge)
+    for i in range(count):
+        seed = idx * 1000 + i
+        sex = "F" if i % 3 != 0 else "M"
+        names = _FIRST_NAMES_F if sex == "F" else _FIRST_NAMES_M
+        name = f"{names[i % len(names)]} {_LAST_NAMES[i % len(_LAST_NAMES)]} {_LAST_NAMES[(i+3) % len(_LAST_NAMES)]}"
+        age_days = random.randint(0, 365 * 95)
+        birth = (date.today() - timedelta(days=age_days)).isoformat()
+        raca = str(random.choice([1, 1, 2, 3, 3, 3, 4, 5]))
+        mother_name = f"{_FIRST_NAMES_F[(i+7) % len(_FIRST_NAMES_F)]} {_LAST_NAMES[(i+2) % len(_LAST_NAMES)]}"
+
+        p = {
+            "key": f"pac_{ibge}_{i:04d}", "pront": f"{prefix}-{i+1:04d}",
+            "name": name, "sex": sex, "birth": birth,
+            "cpf": _gen_cpf(seed + 100000) if i % 8 != 0 else None,
+            "cns": _gen_cns(seed),
+            "mother": mother_name,
+            "cell": _gen_phone(seed), "cep": cep,
+            "end": f"{_STREETS[i % len(_STREETS)]} {_STREET_NAMES[i % len(_STREET_NAMES)]}",
+            "num": str(random.randint(1, 2000)),
+            "bairro": _BAIRROS[i % len(_BAIRROS)],
+            "raca": raca,
+        }
+        # Variações realistas
+        if age_days > 365 * 60 and i % 3 == 0:
+            p["doencas"] = ", ".join(random.sample(_DISEASES, k=random.randint(1, 3)))
+        if i % 12 == 0:
+            p["alergia"] = ", ".join(random.sample(_ALLERGIES, k=random.randint(1, 2)))
+        if sex == "F" and 18 * 365 < age_days < 45 * 365 and i % 7 == 0:
+            p["gestante"] = True
+        if i % 20 == 0 and age_days > 365 * 40:
+            p["fumante"] = True
+        if i % 25 == 0:
+            p["etilista"] = True
+        if i % 50 == 0:
+            p["situacao_rua"] = True
+        if raca == "5":
+            p["etnia"] = "0245"
+        if i % 6 == 0:
+            p["plano"] = random.choice(["SUS", "SUS", "SUS", "CONVENIO", "PARTICULAR"])
+            if p["plano"] == "CONVENIO":
+                p["conv_nome"] = random.choice(["Unimed", "Hapvida", "Amil", "Bradesco Saúde"])
+                p["conv_num"] = f"{seed:09d}"
+        patients.append(p)
+    return patients
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
 
 _ROLE_MAP = {
     "system_admin": "system_admin", "municipality_admin": "municipality_admin",
@@ -173,169 +268,11 @@ _ROLE_MAP = {
     "manager": "manager_base", "visa": "visa_agent_base",
 }
 
-MUN_ACCESS = [
-    ("usr1", "mun1"), ("usr1", "mun2"), ("usr1", "mun3"), ("usr1", "mun4"), ("usr1", "mun5"),
-    ("usr2", "mun1"), ("usr3", "mun1"), ("usr4", "mun1"), ("usr5", "mun1"), ("usr6", "mun1"),
-    ("usr7", "mun1"), ("usr7", "mun3"), ("usr8", "mun2"), ("usr9", "mun1"), ("usr10", "mun2"),
-    ("usr10", "mun3"), ("usr11", "mun2"), ("usr12", "mun1"), ("usr13", "mun2"), ("usr14", "mun3"),
-    ("usr15", "mun1"), ("usr15", "mun2"), ("usr16", "mun1"), ("usr17", "mun1"),
-    ("usr18", "mun4"), ("usr19", "mun5"), ("usr20", "mun4"),
-    ("usr1", "mun6"), ("usr21", "mun6"), ("usr22", "mun6"), ("usr23", "mun6"), ("usr24", "mun6"),
-]
-
-FAC_ACCESS = [
-    # MASTER — acesso amplo
-    ("usr1", "fac1",  "system_admin"), ("usr1", "fac2",  "doctor"),  ("usr1", "fac7",  "manager"),
-    ("usr1", "fac10", "manager"),      ("usr1", "fac18", "manager"), ("usr1", "fac20", "manager"),
-    # ADMINs
-    ("usr2",  "fac1",  "municipality_admin"), ("usr2",  "fac2",  "municipality_admin"),
-    ("usr13", "fac7",  "municipality_admin"), ("usr13", "fac8",  "municipality_admin"), ("usr13", "fac14", "municipality_admin"),
-    ("usr14", "fac10", "municipality_admin"), ("usr14", "fac11", "municipality_admin"), ("usr14", "fac17", "municipality_admin"),
-    ("usr18", "fac18", "municipality_admin"), ("usr18", "fac19", "municipality_admin"),
-    ("usr19", "fac20", "municipality_admin"), ("usr19", "fac21", "municipality_admin"),
-    # Profissionais
-    ("usr3",  "fac4",  "lab_tech"),     # lab
-    ("usr4",  "fac5",  "visa"),         # fiscal
-    ("usr6",  "fac3",  "nurse"),  ("usr6",  "fac13", "nurse"),  ("usr6", "fac16", "nurse"),  # enfermeira multi-unidade
-    ("usr7",  "fac16", "doctor"), ("usr7",  "fac11", "doctor"),  # médico 2 hospitais
-    ("usr9",  "fac2",  "nurse"),        # farmacêutico na UBS
-    ("usr10", "fac8",  "nurse"),  ("usr10", "fac14", "nurse"),   # assistente social
-    ("usr12", "fac2",  "receptionist"), ("usr12", "fac3",  "receptionist"), ("usr12", "fac15", "receptionist"),
-    ("usr15", "fac3",  "doctor"), ("usr15", "fac9",  "doctor"),  # médica em 2 UPAs
-    ("usr16", "fac2",  "nurse"),  ("usr16", "fac15", "nurse"),   # enfermeiro 2 UBS
-    ("usr17", "fac2",  "nurse"),        # farmacêutica
-    ("usr20", "fac19", "doctor"),       # médico canedo
-    # Inativos/Bloqueados (mantêm acessos antigos)
-    ("usr5",  "fac6",  "manager"),
-    ("usr8",  "fac9",  "doctor"),
-    ("usr11", "fac9",  "nurse"),
-    # Goianésia
-    ("usr1",  "fac22", "manager"),
-    ("usr21", "fac22", "municipality_admin"), ("usr21", "fac23", "municipality_admin"),
-    ("usr21", "fac24", "municipality_admin"), ("usr21", "fac25", "municipality_admin"),
-    ("usr22", "fac24", "doctor"), ("usr22", "fac23", "doctor"),
-    ("usr23", "fac23", "nurse"),  ("usr23", "fac24", "nurse"), ("usr23", "fac25", "nurse"),
-    ("usr24", "fac23", "receptionist"), ("usr24", "fac25", "receptionist"),
-]
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PACIENTES — 50 pacientes distribuídos em 5 municípios
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _p(key, pront, name, **kw):
-    return {"key": key, "pront": pront, "name": name, **kw}
-
-PATIENTS = {
-    "5208707": [  # Goiânia — 20 pacientes
-        _p("p01", "GYN-0001", "Maria da Silva Santos",     cpf="12345678901", cns="700001234567890", sex="F", birth="1985-03-15", mother="Ana da Silva",           cell="(62) 99901-1001", cep="74000010", end="Rua 1",             num="100",  bairro="Setor Central",     raca="3"),
-        _p("p02", "GYN-0002", "João Pedro Oliveira",       cpf="23456789012", cns="700002345678901", sex="M", birth="1990-07-22", mother="Maria Oliveira",         cell="(62) 99902-2002", cep="74810100", end="Av. T-63",          num="500",  bairro="Setor Bueno",       raca="1"),
-        _p("p03", "GYN-0003", "Ana Beatriz Ferreira",      cpf="34567890123", cns="700003456789012", sex="F", birth="1978-11-30", mother="Teresa Ferreira",        cell="(62) 99903-3003", cep="74230010", end="Rua 83",            num="45",   bairro="Setor Sul",         raca="1", plano="CONVENIO", conv_nome="Unimed", conv_num="123456"),
-        _p("p04", "GYN-0004", "Carlos Eduardo Rocha",      cpf="45678901234", cns="700004567890123", sex="M", birth="2000-01-10", mother="Lucia Rocha",            cell="(62) 99904-4004", cep="74670010", end="Av. Anhanguera",    num="2000", bairro="Campinas",          raca="2"),
-        _p("p05", "GYN-0005", "Francisca Souza Lima",      cpf="56789012345", cns="700005678901234", sex="F", birth="1955-06-08", mother="Raimunda Souza",         phone="(62) 3333-5005", cep="74475020", end="Rua F-42",          num="12",   bairro="Faiçalville",       raca="3", doencas="Hipertensão arterial, Diabetes tipo 2", alergia="Dipirona"),
-        _p("p06", "GYN-0006", "Pedro Henrique Almeida",    cpf="67890123456",                        sex="M", birth="2023-09-01", mother="Patrícia Almeida",       cell="(62) 99906-6006", cep="74140010", end="Rua 9",             num="88",   bairro="Setor Oeste",       raca="1", plano="PARTICULAR"),
-        _p("p07", "GYN-0007", "Luzia Aparecida Costa",     cpf="78901234567", cns="700007890123456", sex="F", birth="1968-12-25", mother="Conceição Costa",        cell="(62) 99907-7007", cep="74560290", end="Av. Perimetral",    num="350",  bairro="Setor Universitário",raca="2", gestante=True),
-        _p("p08", "GYN-0008", "Antônio José Martins",      cpf="89012345678", cns="700008901234567", sex="M", birth="1942-04-17", mother_unknown=True,             phone="(62) 3333-8008", cep="74023010", end="Rua 3",             num="200",  bairro="Setor Central",     raca="3", doencas="DPOC, ICC", fumante=True),
-        _p("p09", "GYN-0009", "Raquel Nunes Barbosa",      cpf="90123456789", cns="700009012345678", sex="F", birth="1995-08-20", mother="Sandra Nunes",           cell="(62) 99909-9009", cep="74845090", end="Rua T-37",          num="72",   bairro="Setor Marista",     raca="4", plano="CONVENIO", conv_nome="Hapvida", conv_num="789012"),
-        _p("p10", "GYN-0010", "José Ribeiro da Silva",                        cns="700010123456789", sex="M", birth="2024-11-05", mother="Joana Ribeiro da Silva", cell="(62) 99910-0010", cep="74810250", end="Rua 1040",          num="15",   bairro="Setor Marista",     raca="3"),
-        _p("p11", "GYN-0011", "Tereza Cristina Pereira",   cpf="11223344556", cns="700011223344556", sex="F", birth="1970-02-14", mother="Marta Pereira",          cell="(62) 99911-1111", cep="74175120", end="Av. Goiás",          num="1500", bairro="Setor Aeroporto",   raca="5", etnia="0245"),
-        _p("p12", "GYN-0012", "Marcos Aurélio Tavares",    cpf="22334455667", cns="700012233445566", sex="M", birth="1988-06-30", mother="Cleusa Tavares",         cell="(62) 99912-2222", cep="74525010", end="Rua C-152",          num="33",   bairro="Jardim América",    raca="1", situacao_rua=True),
-        _p("p13", "GYN-0013", "Lucinda Maria Gonçalves",   cpf="33445566001", cns="700013334455660", sex="F", birth="1960-09-12", mother="Aparecida Gonçalves",    phone="(62) 3333-1313", cep="74000020", end="Rua 4",             num="55",   bairro="Setor Central",     raca="3", doencas="Asma, Hipotireoidismo"),
-        _p("p14", "GYN-0014", "Gabriel Ferreira Santos",   cpf="44556677002", cns="700014445566770", sex="M", birth="2015-05-20", mother="Juliana Ferreira",       cell="(62) 99914-1414", cep="74810120", end="Av. T-10",          num="220",  bairro="Setor Bueno",       raca="1"),
-        _p("p15", "GYN-0015", "Rosa Maria Indígena",       cpf="55667788003", cns="700015556677880", sex="F", birth="1975-01-01", mother="Iracema",                cell="(62) 99915-1515", cep="74000030", end="Aldeia Carretão",   num="S/N",  bairro="Zona Rural",        raca="5", etnia="0245"),
-        _p("p16", "GYN-0016", "Valentina Oliveira Souza",  cpf="66778899004",                        sex="F", birth="2026-01-15", mother="Camila Oliveira Souza",  cell="(62) 99916-1616", cep="74670020", end="Rua 44",            num="101",  bairro="Campinas",          raca="3"),
-        _p("p17", "GYN-0017", "Hiroshi Tanaka",            cpf="77889900005", cns="700017778899000", sex="M", birth="1965-03-22", mother="Keiko Tanaka",           phone="(62) 3333-1717", cep="74230020", end="Rua 85",            num="12",   bairro="Setor Sul",         raca="4"),
-        _p("p18", "GYN-0018", "Fátima Nascimento",         cpf="88990011006", cns="700018889900110", sex="F", birth="1950-08-10", mother="Sebastiana Nascimento",  phone="(62) 3333-1818", cep="74023020", end="Rua 5",             num="300",  bairro="Setor Central",     raca="2", doencas="Diabetes tipo 1, Neuropatia periférica, Retinopatia", alergia="Penicilina, Sulfas"),
-        _p("p19", "GYN-0019", "Ricardo Souza Mendes",      cpf="99001122007",                        sex="M", birth="1998-12-31", mother="Sandra Souza",           cell="(62) 99919-1919", cep="74560300", end="Rua 235",           num="78",   bairro="Setor Universitário",raca="1", etilista=True, fumante=True),
-        _p("p20", "GYN-0020", "Gestante Maria Aparecida",  cpf="00112233008", cns="700020001122330", sex="F", birth="1999-04-04", mother="Antônia Maria",          cell="(62) 99920-2020", cep="74525020", end="Rua C-200",         num="10",   bairro="Jardim América",    raca="3", gestante=True),
-    ],
-    "5201405": [  # Aparecida — 12 pacientes
-        _p("p30", "APA-0001", "Luciana Martins Pereira",   cpf="33445566778", cns="700030334455667", sex="F", birth="1992-05-10", mother="Rosa Martins",           cell="(62) 99930-3030", cep="74968000", end="Rua das Flores",     num="55",  bairro="Jardim Tiradentes",  raca="3"),
-        _p("p31", "APA-0002", "Roberto Carlos Vieira",     cpf="44556677889", cns="700031445566778", sex="M", birth="1975-09-22", mother="Nair Vieira",            phone="(62) 3344-3131", cep="74935650", end="Av. Independência",  num="180", bairro="Papillon Park",      raca="1", doencas="Hipertensão"),
-        _p("p32", "APA-0003", "Silvana Oliveira Gomes",    cpf="55667788990", cns="700032556677889", sex="F", birth="2001-12-01", mother="Vânia Oliveira",         cell="(62) 99932-3232", cep="74922270", end="Rua J-25",           num="42",  bairro="Jardim Nova Era",    raca="3"),
-        _p("p33", "APA-0004", "Joaquim Pereira Neto",      cpf="66778899001", cns="700033667788990", sex="M", birth="1960-03-08", mother="Antônia Pereira",        phone="(62) 3344-3333", cep="74952210", end="Rua Porto Alegre",   num="230", bairro="Cidade Livre",       raca="2", fumante=True, etilista=True),
-        _p("p34", "APA-0005", "Camila Rodrigues Santos",   cpf="77889900112", cns="700034778899001", sex="F", birth="1998-07-15", mother="Elaine Rodrigues",       cell="(62) 99934-3434", cep="74968570", end="Av. Central",        num="900", bairro="Garavelo",           raca="1", plano="CONVENIO", conv_nome="Amil", conv_num="456789"),
-        _p("p35", "APA-0006", "Matheus Silva Cardoso",     cpf="88990011223", cns="700035889900112", sex="M", birth="2010-02-28", mother="Patrícia Silva",         cell="(62) 99935-3535", cep="74968010", end="Rua 10",             num="22",  bairro="Jardim Tiradentes",  raca="3"),
-        _p("p36", "APA-0007", "Dona Tereza Albuquerque",   cpf="99001122334",                        sex="F", birth="1938-06-20", mother_unknown=True,             phone="(62) 3344-3636", cep="74935660", end="Rua Goiânia",        num="100", bairro="Papillon Park",      raca="1", doencas="Alzheimer, Osteoporose"),
-        _p("p37", "APA-0008", "Gestante Juliana Moraes",   cpf="00112233445", cns="700037001122334", sex="F", birth="1997-10-18", mother="Sandra Moraes",          cell="(62) 99937-3737", cep="74922280", end="Rua J-30",           num="15",  bairro="Jardim Nova Era",    raca="3", gestante=True),
-        _p("p38", "APA-0009", "André Luiz Nascimento",     cpf="11223344556", cns="700038112233445", sex="M", birth="1985-04-05", mother="Maria do Carmo",         cell="(62) 99938-3838", cep="74952220", end="Rua Minas Gerais",   num="50",  bairro="Cidade Livre",       raca="2", situacao_rua=True),
-        _p("p39", "APA-0010", "Beatriz Santos Lima",       cpf="22334455667", cns="700039223344556", sex="F", birth="2020-07-04", mother="Fernanda Santos",        cell="(62) 99939-3939", cep="74968580", end="Av. Central",        num="1200",bairro="Garavelo",           raca="3"),
-        _p("p40", "APA-0011", "Sérgio Roberto Ferreira",   cpf="33445566000", cns="700040334455667", sex="M", birth="1970-11-11", mother="Neuza Ferreira",         phone="(62) 3344-4040", cep="74968020", end="Rua 15",             num="300", bairro="Jardim Tiradentes",  raca="1", doencas="Diabetes tipo 2, Hipertensão", alergia="Ibuprofeno"),
-        _p("p41", "APA-0012", "Clara Valentina Dias",                         cns="700041000000000", sex="F", birth="2025-12-01", mother="Isabela Dias",           cell="(62) 99941-4141", cep="74935670", end="Rua São Paulo",      num="88",  bairro="Papillon Park",      raca="3"),
-    ],
-    "5201108": [  # Anápolis — 8 pacientes
-        _p("p50", "ANA-0001", "Sebastião Alves de Souza",  cpf="88990011223", cns="700050889900112", sex="M", birth="1950-01-20", mother="Benedita Alves",         phone="(62) 3355-5050", cep="75080210", end="Rua Goiás",          num="100", bairro="Centro",             raca="3", doencas="Diabetes tipo 2, Artrose", alergia="AAS"),
-        _p("p51", "ANA-0002", "Larissa Fernandes Costa",   cpf="99001122334", cns="700051990011223", sex="F", birth="1993-10-05", mother="Cristina Fernandes",     cell="(62) 99951-5151", cep="75113430", end="Av. Brasil",         num="500", bairro="Jundiaí",            raca="1", gestante=True),
-        _p("p52", "ANA-0003", "Manoel Ferreira Lima",      cpf="00112233445", cns="700052001122334", sex="M", birth="1982-04-12", mother="Maria Ferreira",         cell="(62) 99952-5252", cep="75064400", end="Rua 15 de Novembro", num="88",  bairro="Vila Santa Isabel", raca="3"),
-        _p("p53", "ANA-0004", "Ivone Batista Ribeiro",     cpf="11223344001", cns="700053112233440", sex="F", birth="1945-07-30", mother="Benedita Batista",       phone="(62) 3355-5353", cep="75080220", end="Rua Mato Grosso",    num="45",  bairro="Centro",             raca="2", doencas="DPOC, Fibrilação atrial"),
-        _p("p54", "ANA-0005", "Felipe Augusto Mendes",     cpf="22334455002", cns="700054223344550", sex="M", birth="2005-11-22", mother="Carla Mendes",           cell="(62) 99954-5454", cep="75113440", end="Av. Brasil Norte",   num="1200",bairro="Jundiaí",            raca="1"),
-        _p("p55", "ANA-0006", "Rosa Indígena Xavante",     cpf="33445566003",                        sex="F", birth="1980-01-01", mother="Waiwai",                 cell="(62) 99955-5555", cep="75064410", end="Aldeia Sangradouro", num="S/N", bairro="Zona Rural",        raca="5", etnia="0245"),
-        _p("p56", "ANA-0007", "Recém-nascido Silva",                          cns="700056000000000", sex="M", birth="2026-04-10", mother="Ana Clara Silva",        cell="(62) 99956-5656", cep="75080230", end="Rua Goiás",          num="200", bairro="Centro",             raca="3"),
-        _p("p57", "ANA-0008", "Gestante Mariana Oliveira", cpf="44556677004", cns="700057445566770", sex="F", birth="2000-06-18", mother="Teresa Oliveira",        cell="(62) 99957-5757", cep="75113450", end="Av. Brasil Sul",     num="800", bairro="Jundiaí",            raca="1", gestante=True),
-    ],
-    "5220454": [  # Senador Canedo — 5 pacientes
-        _p("p60", "CAN-0001", "Jorge Henrique Alves",      cpf="55667788005", cns="700060556677880", sex="M", birth="1972-08-14", mother="Maria Helena Alves",     cell="(62) 99960-6060", cep="75250000", end="Rua 1",             num="50",  bairro="Centro",             raca="3"),
-        _p("p61", "CAN-0002", "Sandra Regina Costa",       cpf="66778899006", cns="700061667788990", sex="F", birth="1988-02-05", mother="Dalva Costa",            cell="(62) 99961-6161", cep="75250010", end="Av. Dom Pedro II",  num="200", bairro="Jardim das Oliveiras",raca="1"),
-        _p("p62", "CAN-0003", "Miguel Santos Pereira",     cpf="77889900007",                        sex="M", birth="2022-03-15", mother="Bruna Santos",           cell="(62) 99962-6262", cep="75250020", end="Rua 3",             num="12",  bairro="Centro",             raca="3"),
-        _p("p63", "CAN-0004", "Dona Conceição Ferreira",   cpf="88990011008", cns="700063889900110", sex="F", birth="1935-12-25", mother_unknown=True,             phone="(62) 3535-6363", cep="75250030", end="Rua 5",             num="100", bairro="Setor Industrial",    raca="2", doencas="ICC, Diabetes tipo 2, Artrite"),
-        _p("p64", "CAN-0005", "Valentina Costa Silva",                                               sex="F", birth="2026-04-01", mother="Juliana Costa Silva",    cell="(62) 99964-6464", cep="75250010", end="Av. Dom Pedro II",  num="50",  bairro="Jardim das Oliveiras",raca="3"),
-    ],
-    "5208608": [  # Goianésia — 15 pacientes
-        _p("p80", "GOI-0001", "João Batista Ferreira",      cpf="10101010101", cns="700080101010101", sex="M", birth="1958-04-22", mother="Maria Ferreira",          phone="(62) 3355-8080", cep="76380000", end="Rua 5",               num="100", bairro="Centro",             raca="3", doencas="Diabetes tipo 2, Hipertensão", alergia="AAS, Metformina"),
-        _p("p81", "GOI-0002", "Ana Carolina Souza Lima",    cpf="20202020202", cns="700081202020202", sex="F", birth="1992-11-15", mother="Sandra Souza",            cell="(62) 99981-8181", cep="76380010", end="Av. Goiás",            num="500", bairro="Setor Universitário", raca="1", gestante=True),
-        _p("p82", "GOI-0003", "Pedro Paulo Alves Ribeiro",  cpf="30303030303", cns="700082303030303", sex="M", birth="2018-06-01", mother="Juliana Alves",           cell="(62) 99982-8282", cep="76380020", end="Rua 10",              num="25",  bairro="Vila Brasília",      raca="3"),
-        _p("p83", "GOI-0004", "Maria Aparecida dos Santos", cpf="40404040404", cns="700083404040404", sex="F", birth="1945-01-30", mother_unknown=True,              phone="(62) 3355-8383", cep="76380000", end="Rua 3",               num="200", bairro="Centro",             raca="2", doencas="DPOC, Osteoporose, ICC", fumante=True),
-        _p("p84", "GOI-0005", "Lucas Gabriel Oliveira",     cpf="50505050505",                        sex="M", birth="2024-08-10", mother="Camila Oliveira",         cell="(62) 99984-8484", cep="76380030", end="Rua 15",              num="10",  bairro="Jardim Goiás",       raca="1"),
-        _p("p85", "GOI-0006", "Francisca Indígena Tapuia",  cpf="60606060606", cns="700085606060606", sex="F", birth="1970-03-08", mother="Raimunda Tapuia",         cell="(62) 99985-8585", cep="76380000", end="Aldeia Carretão",     num="S/N", bairro="Zona Rural",         raca="5", etnia="0245"),
-        _p("p86", "GOI-0007", "Roberto Carlos Mendes",      cpf="70707070707", cns="700086707070707", sex="M", birth="1980-12-25", mother="Neuza Mendes",            cell="(62) 99986-8686", cep="76380010", end="Av. Goiás",            num="300", bairro="Setor Universitário", raca="1", plano="CONVENIO", conv_nome="Unimed", conv_num="GOI-123"),
-        _p("p87", "GOI-0008", "Gestante Helena Rodrigues",  cpf="80808080808", cns="700087808080808", sex="F", birth="2000-05-14", mother="Teresa Rodrigues",        cell="(62) 99987-8787", cep="76380020", end="Rua 12",              num="45",  bairro="Vila Brasília",      raca="3", gestante=True),
-        _p("p88", "GOI-0009", "Antônio José da Silva",      cpf="90909090909", cns="700088909090909", sex="M", birth="1935-07-04", mother_unknown=True,              phone="(62) 3355-8888", cep="76380000", end="Rua 1",               num="5",   bairro="Centro",             raca="3", doencas="Alzheimer, Diabetes, Hipertensão", alergia="Penicilina"),
-        _p("p89", "GOI-0010", "Juliana Cristina Pereira",   cpf="01010101010", cns="700089010101010", sex="F", birth="1998-02-28", mother="Marta Cristina",          cell="(62) 99989-8989", cep="76380030", end="Rua 20",              num="88",  bairro="Jardim Goiás",       raca="1", plano="PARTICULAR"),
-        _p("p90", "GOI-0011", "Marcos Vinícius Costa",      cpf="11110000111", cns="700090111100001", sex="M", birth="1975-09-18", mother="Dalva Costa",             cell="(62) 99990-9090", cep="76380010", end="Av. Goiás",            num="800", bairro="Setor Universitário", raca="3", situacao_rua=True, etilista=True, fumante=True),
-        _p("p91", "GOI-0012", "Recém-nascido Oliveira",                        cns="700091000000000", sex="F", birth="2026-04-15", mother="Ana Carolina Souza Lima", cell="(62) 99981-8181", cep="76380010", end="Av. Goiás",            num="500", bairro="Setor Universitário", raca="1"),
-        _p("p92", "GOI-0013", "Sérgio Luiz Ferreira",       cpf="22220000222", cns="700092222200002", sex="M", birth="1988-10-05", mother="Rosa Ferreira",           cell="(62) 99992-9292", cep="76380020", end="Rua 8",               num="150", bairro="Vila Brasília",      raca="3", doencas="Asma"),
-        _p("p93", "GOI-0014", "Tereza Quilombola Santos",   cpf="33330000333", cns="700093333300003", sex="F", birth="1965-06-20", mother="Benedita Santos",         phone="(62) 3355-9393", cep="76380000", end="Comunidade Quilombola",num="S/N",bairro="Zona Rural",         raca="2"),
-        _p("p94", "GOI-0015", "Valentina Ferreira Costa",   cpf="44440000444",                        sex="F", birth="2025-11-30", mother="Helena Rodrigues",        cell="(62) 99987-8787", cep="76380020", end="Rua 12",              num="45",  bairro="Vila Brasília",      raca="3"),
-    ],
-    "5221403": [  # Trindade — 5 pacientes
-        _p("p70", "TRI-0001", "Sebastiana Romeira",        cpf="99001122008", cns="700070990011220", sex="F", birth="1965-10-30", mother="Benedita Romeira",       phone="(62) 3636-7070", cep="75380000", end="Rua da Romaria",    num="1",   bairro="Centro",             raca="3"),
-        _p("p71", "TRI-0002", "Moisés Aparecido Santos",   cpf="00112233009", cns="700071001122330", sex="M", birth="1978-05-15", mother="Ozana Santos",           cell="(62) 99971-7171", cep="75380010", end="Av. Bernardo Sayão",num="500", bairro="Setor Sul",          raca="3", doencas="Hipertensão"),
-        _p("p72", "TRI-0003", "Luana Cristina Ferreira",   cpf="11223344010", cns="700072112233440", sex="F", birth="1996-09-08", mother="Cristina Ferreira",      cell="(62) 99972-7272", cep="75380020", end="Rua 10",            num="33",  bairro="Jardim Califórnia",  raca="1", gestante=True),
-        _p("p73", "TRI-0004", "José Carlos Oliveira",      cpf="22334455011", cns="700073223344550", sex="M", birth="1955-03-01", mother="Maria Oliveira",         phone="(62) 3636-7373", cep="75380000", end="Rua da Romaria",    num="200", bairro="Centro",             raca="3", fumante=True, doencas="DPOC"),
-        _p("p74", "TRI-0005", "Bebê Ana Luísa",                                                      sex="F", birth="2026-03-20", mother="Luana Cristina Ferreira",cell="(62) 99972-7272", cep="75380020", end="Rua 10",            num="33",  bairro="Jardim Califórnia",  raca="1"),
-    ],
-}
-
-# Documentos por paciente (key paciente → lista de docs)
-PATIENT_DOCS = {
-    "p01": [{"tipo": "RG",   "numero": "1234567",    "emissor": "SSP", "uf": "GO"}],
-    "p02": [{"tipo": "RG",   "numero": "2345678",    "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "12345678900", "emissor": "DETRAN", "uf": "GO"}],
-    "p03": [{"tipo": "RG",   "numero": "3456789",    "emissor": "SSP", "uf": "GO"}, {"tipo": "CTPS","numero": "123456",      "emissor": "MTE",    "uf": "GO"}],
-    "p05": [{"tipo": "RG",   "numero": "5678901",    "emissor": "SSP", "uf": "GO"}],
-    "p08": [{"tipo": "RG",   "numero": "8901234",    "emissor": "SSP", "uf": "GO"}],
-    "p11": [{"tipo": "CRNM", "numero": "V123456-7",  "emissor": "PF",  "uf": "DF"}],
-    "p30": [{"tipo": "RG",   "numero": "9012345",    "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "98765432100", "emissor": "DETRAN", "uf": "GO"}],
-    "p50": [{"tipo": "RG",   "numero": "0123456",    "emissor": "SSP", "uf": "GO"}],
-    # Goianésia
-    "p80": [{"tipo": "RG",   "numero": "GO-801234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "80123456789", "emissor": "DETRAN", "uf": "GO"}],
-    "p81": [{"tipo": "RG",   "numero": "GO-811234",  "emissor": "SSP", "uf": "GO"}],
-    "p83": [{"tipo": "RG",   "numero": "GO-831234",  "emissor": "SSP", "uf": "GO"}],
-    "p86": [{"tipo": "RG",   "numero": "GO-861234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CTPS", "numero": "861234", "emissor": "MTE", "uf": "GO"}],
-    "p88": [{"tipo": "RG",   "numero": "GO-881234",  "emissor": "SSP", "uf": "GO"}],
-    "p89": [{"tipo": "RG",   "numero": "GO-891234",  "emissor": "SSP", "uf": "GO"}, {"tipo": "CNH", "numero": "89123456789", "emissor": "DETRAN", "uf": "GO"}, {"tipo": "PASS", "numero": "BR891234", "emissor": "PF", "uf": "DF"}],
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════════════════
-
 
 async def _get_ref_ids(session: AsyncSession) -> dict[str, dict[str, uuid.UUID]]:
     refs: dict[str, dict[str, uuid.UUID]] = {}
-    tables = [
-        ("ref_racas", "raca"), ("ref_etnias", "etnia"),
-        ("ref_nacionalidades", "nacionalidade"), ("ref_tipos_documento", "tipo_doc"),
-        ("ref_parentescos", "parentesco"),
-    ]
+    tables = [("ref_racas", "raca"), ("ref_etnias", "etnia"),
+              ("ref_nacionalidades", "nacionalidade"), ("ref_tipos_documento", "tipo_doc")]
     dialect = session.bind.dialect.name
     schema_prefix = '"APP".' if dialect == "oracle" else "app."
     for table_name, ref_key in tables:
@@ -350,20 +287,18 @@ async def _get_ref_ids(session: AsyncSession) -> dict[str, dict[str, uuid.UUID]]
 
 
 def _build_patient(p: dict, refs: dict, creator: uuid.UUID) -> dict:
-    raca_id = refs.get("raca", {}).get(p.get("raca"))
-    etnia_id = refs.get("etnia", {}).get(p.get("etnia")) if p.get("etnia") else None
-    nac_id = refs.get("nacionalidade", {}).get("10")
-    plano = p.get("plano", "SUS")
     return {
         "id": fid(p["key"]), "prontuario": p["pront"], "name": p["name"],
         "cpf": p.get("cpf"), "cns": p.get("cns"), "sex": p.get("sex"),
         "birth_date": date.fromisoformat(p["birth"]) if p.get("birth") else None,
         "mother_name": p.get("mother", ""), "mother_unknown": p.get("mother_unknown", False),
-        "nacionalidade_id": nac_id, "raca_id": raca_id, "etnia_id": etnia_id,
+        "nacionalidade_id": refs.get("nacionalidade", {}).get("10"),
+        "raca_id": refs.get("raca", {}).get(p.get("raca")),
+        "etnia_id": refs.get("etnia", {}).get(p.get("etnia")) if p.get("etnia") else None,
         "cep": p.get("cep", ""), "endereco": p.get("end", ""), "numero": p.get("num", ""),
         "bairro": p.get("bairro", ""), "uf": "GO",
         "phone": p.get("phone", ""), "cellphone": p.get("cell", ""),
-        "plano_tipo": plano,
+        "plano_tipo": p.get("plano", "SUS"),
         "convenio_nome": p.get("conv_nome", ""), "convenio_numero_carteirinha": p.get("conv_num", ""),
         "doencas_cronicas": p.get("doencas", ""),
         "tem_alergia": bool(p.get("alergia")), "alergias": p.get("alergia", ""),
@@ -388,89 +323,142 @@ async def _set_tenant(session: AsyncSession, ibge: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-async def seed_app(session: AsyncSession) -> None:
+async def seed_app(session: AsyncSession) -> dict:
     from app.modules.permissions.models import Role
 
-    # Municípios
+    stats = {"municipalities": 0, "neighborhoods": 0, "facilities": 0, "users": 0, "mun_access": 0, "fac_access": 0}
+
+    # ── Global MASTER user ──
+    pwd = hash_password(DEFAULT_PASSWORD)
+    master_users = [
+        {"key": "master1", "login": "igor.santos", "email": "igor@zsaude.gov.br",
+         "name": "Igor Santos", "cpf": "02134567890", "phone": "(62) 99999-1234",
+         "status": UserStatus.ATIVO, "level": UserLevel.MASTER, "birth": "1990-05-15"},
+        {"key": "master2", "login": "admin.global", "email": "admin@zsaude.gov.br",
+         "name": "Administrador Global", "cpf": "98765432100", "phone": "(62) 98888-0000",
+         "status": UserStatus.ATIVO, "level": UserLevel.MASTER, "birth": "1985-01-01"},
+    ]
+    for u in master_users:
+        if not await session.scalar(select(User).where(User.id == fid(u["key"]))):
+            session.add(User(
+                id=fid(u["key"]), login=u["login"], email=u["email"], name=u["name"],
+                cpf=u["cpf"], phone=u["phone"], password_hash=pwd,
+                status=u["status"], level=u["level"],
+                is_active=True, is_superuser=True,
+                birth_date=date.fromisoformat(u["birth"]),
+            ))
+            stats["users"] += 1
+    await session.flush()
+
+    # ── Municípios ──
     for m in MUNICIPALITIES:
         if not await session.scalar(select(Municipality).where(Municipality.id == fid(m["key"]))):
             session.add(Municipality(
                 id=fid(m["key"]), name=m["name"], state=m["state"], ibge=m["ibge"],
                 population=m.get("pop"), center_latitude=m.get("lat"), center_longitude=m.get("lng"),
             ))
+            stats["municipalities"] += 1
     await session.flush()
-    print(f"  Municípios: {len(MUNICIPALITIES)}")
 
-    # Bairros
-    n_bairros = 0
-    for mun_key, bairros in NEIGHBORHOODS.items():
-        for b in bairros:
-            if not await session.scalar(select(Neighborhood).where(Neighborhood.id == fid(b["key"]))):
-                session.add(Neighborhood(
-                    id=fid(b["key"]), municipality_id=fid(mun_key),
-                    name=b["name"], population=b.get("pop"),
-                ))
-                n_bairros += 1
+    # ── MASTER access a todos os municípios ──
+    for mk in [m["key"] for m in MUNICIPALITIES]:
+        for uk in ["master1", "master2"]:
+            if not await session.scalar(select(MunicipalityAccess).where(
+                MunicipalityAccess.user_id == fid(uk), MunicipalityAccess.municipality_id == fid(mk),
+            )):
+                session.add(MunicipalityAccess(user_id=fid(uk), municipality_id=fid(mk)))
+                stats["mun_access"] += 1
     await session.flush()
-    print(f"  Bairros: {n_bairros}")
 
-    # Facilities
-    for f in FACILITIES:
-        if not await session.scalar(select(Facility).where(Facility.id == fid(f["key"]))):
-            session.add(Facility(
-                id=fid(f["key"]), municipality_id=fid(f["mun"]),
-                name=f["name"], short_name=f["short"], type=f["type"], cnes=f.get("cnes"),
-            ))
-    await session.flush()
-    print(f"  Unidades: {len(FACILITIES)}")
-
-    # Users
-    pwd = hash_password(DEFAULT_PASSWORD)
-    for u in USERS:
-        if not await session.scalar(select(User).where(User.id == fid(u["key"]))):
-            session.add(User(
-                id=fid(u["key"]), login=u["login"], email=u["email"], name=u["name"],
-                cpf=u["cpf"], phone=u["phone"], password_hash=pwd,
-                status=u["status"], level=u.get("level", UserLevel.USER),
-                is_active=u["status"] != UserStatus.BLOQUEADO,
-                is_superuser=u.get("level") == UserLevel.MASTER,
-                primary_role=u.get("role", ""),
-                birth_date=date.fromisoformat(u["birth"]) if u.get("birth") else None,
-            ))
-    await session.flush()
-    print(f"  Usuários: {len(USERS)}")
-
-    # Mun Access
-    n = 0
-    for uk, mk in MUN_ACCESS:
-        if not await session.scalar(select(MunicipalityAccess).where(
-            MunicipalityAccess.user_id == fid(uk), MunicipalityAccess.municipality_id == fid(mk),
-        )):
-            session.add(MunicipalityAccess(user_id=fid(uk), municipality_id=fid(mk)))
-            n += 1
-    await session.flush()
-    print(f"  Acessos municípios: {n}")
-
-    # Fac Access
+    # ── Por município: bairros, facilities, users, acessos ──
+    all_facilities = []
     role_ids = {r.code: r.id for r in (await session.scalars(select(Role).where(Role.municipality_id.is_(None)))).all()}
-    fallback = role_ids.get("receptionist_base")
-    n = 0
-    for uk, fk, role_code in FAC_ACCESS:
-        rid = role_ids.get(_ROLE_MAP.get(role_code, role_code), fallback)
-        if not await session.scalar(select(FacilityAccess).where(
-            FacilityAccess.user_id == fid(uk), FacilityAccess.facility_id == fid(fk),
-        )):
-            session.add(FacilityAccess(user_id=fid(uk), facility_id=fid(fk), role_id=rid))
-            n += 1
-    await session.flush()
-    print(f"  Acessos unidades: {n}")
+    fallback_role = role_ids.get("receptionist_base")
+
+    for idx, m in enumerate(MUNICIPALITIES):
+        # Bairros
+        n_bairros = min(5, max(2, m["pop"] // 100000))
+        for bi in range(n_bairros):
+            bk = f"{m['key']}_bairro{bi}"
+            if not await session.scalar(select(Neighborhood).where(Neighborhood.id == fid(bk))):
+                session.add(Neighborhood(
+                    id=fid(bk), municipality_id=fid(m["key"]),
+                    name=_BAIRROS[bi % len(_BAIRROS)], population=random.randint(3000, 40000),
+                ))
+                stats["neighborhoods"] += 1
+
+        # Facilities
+        facs = _gen_facilities(m["key"], m["name"], m["ibge"], m["pop"])
+        all_facilities.extend(facs)
+        for f in facs:
+            if not await session.scalar(select(Facility).where(Facility.id == fid(f["key"]))):
+                session.add(Facility(
+                    id=fid(f["key"]), municipality_id=fid(f["mun"]),
+                    name=f["name"], short_name=f["short"], type=f["type"], cnes=f.get("cnes"),
+                ))
+                stats["facilities"] += 1
+
+        # Users
+        users = _gen_users(m["key"], m["name"], idx)
+        for u in users:
+            if not await session.scalar(select(User).where(User.id == fid(u["key"]))):
+                session.add(User(
+                    id=fid(u["key"]), login=u["login"], email=u["email"], name=u["name"],
+                    cpf=u["cpf"], phone=u["phone"], password_hash=pwd,
+                    status=u["status"], level=u.get("level", UserLevel.USER),
+                    is_active=u["status"] != UserStatus.BLOQUEADO,
+                    birth_date=date.fromisoformat(u["birth"]) if u.get("birth") else None,
+                ))
+                stats["users"] += 1
+
+        await session.flush()
+
+        # Mun Access
+        for u in users:
+            if not await session.scalar(select(MunicipalityAccess).where(
+                MunicipalityAccess.user_id == fid(u["key"]), MunicipalityAccess.municipality_id == fid(m["key"]),
+            )):
+                session.add(MunicipalityAccess(user_id=fid(u["key"]), municipality_id=fid(m["key"])))
+                stats["mun_access"] += 1
+
+        # Fac Access
+        role_assignments = [
+            (f"{m['key']}_admin", "municipality_admin"),
+            (f"{m['key']}_med",   "doctor"),
+            (f"{m['key']}_enf",   "nurse"),
+            (f"{m['key']}_rec",   "receptionist"),
+        ]
+        for user_key, role_code in role_assignments:
+            rid = role_ids.get(_ROLE_MAP.get(role_code, role_code), fallback_role)
+            # Admin acessa todas as facilities, outros acessam a SMS + primeira UBS
+            target_facs = facs if role_code == "municipality_admin" else facs[:2]
+            for f in target_facs:
+                if not await session.scalar(select(FacilityAccess).where(
+                    FacilityAccess.user_id == fid(user_key), FacilityAccess.facility_id == fid(f["key"]),
+                )):
+                    session.add(FacilityAccess(user_id=fid(user_key), facility_id=fid(f["key"]), role_id=rid))
+                    stats["fac_access"] += 1
+
+        # MASTER acessa SMS de cada município
+        for uk in ["master1", "master2"]:
+            sms_key = facs[0]["key"]
+            if not await session.scalar(select(FacilityAccess).where(
+                FacilityAccess.user_id == fid(uk), FacilityAccess.facility_id == fid(sms_key),
+            )):
+                session.add(FacilityAccess(user_id=fid(uk), facility_id=fid(sms_key),
+                                           role_id=role_ids.get("system_admin", fallback_role)))
+                stats["fac_access"] += 1
+
+        await session.flush()
+
+    return stats
 
 
-async def seed_patients(session: AsyncSession, ibge: str, patients: list[dict]) -> int:
-    from app.tenant_models.patients import Patient, PatientDocument
+async def seed_patients(session: AsyncSession, ibge: str, patients: list[dict]) -> tuple[int, int]:
+    from app.tenant_models.patients import Patient
 
     refs = await _get_ref_ids(session)
-    creator = fid("usr1")
+    creator = fid("master1")
     await _set_tenant(session, ibge)
 
     n_patients = 0
@@ -479,46 +467,24 @@ async def seed_patients(session: AsyncSession, ibge: str, patients: list[dict]) 
             session.add(Patient(**_build_patient(p, refs, creator)))
             n_patients += 1
     await session.flush()
-
-    # Documentos
-    n_docs = 0
-    tipo_doc_ids = refs.get("tipo_doc", {})
-    for p in patients:
-        docs = PATIENT_DOCS.get(p["key"], [])
-        for d in docs:
-            doc_id = fid(f"{p['key']}_doc_{d['tipo']}_{d['numero']}")
-            if not await session.scalar(select(PatientDocument).where(PatientDocument.id == doc_id)):
-                session.add(PatientDocument(
-                    id=doc_id, patient_id=fid(p["key"]),
-                    tipo_documento_id=tipo_doc_ids.get(d["tipo"]),
-                    tipo_codigo=d["tipo"], numero=d["numero"],
-                    orgao_emissor=d.get("emissor", ""), uf_emissor=d.get("uf", ""),
-                ))
-                n_docs += 1
-    await session.flush()
-
-    return n_patients, n_docs
+    return n_patients, 0
 
 
 async def seed_cnes(session: AsyncSession, ibge: str, facilities: list[dict]) -> int:
-    """Seed dados CNES simulados para o município."""
     from app.tenant_models.cnes.units import CnesUnit
-    from app.tenant_models.cnes.professionals import CnesProfessional, CnesProfessionalUnit
+    from app.tenant_models.cnes.professionals import CnesProfessional
 
     await _set_tenant(session, ibge)
     competencia = "202604"
     n = 0
-
     for f in facilities:
         if not f.get("cnes"):
             continue
         cnes_code = f["cnes"]
         unit_id = f"{'0' * 24}{cnes_code}"[:31]
-
         if not await session.scalar(select(CnesUnit).where(CnesUnit.cnes == cnes_code)):
             session.add(CnesUnit(
-                id=fid(f"cnes_unit_{cnes_code}"),
-                id_unidade=unit_id, cnes=cnes_code,
+                id=fid(f"cnes_{cnes_code}"), id_unidade=unit_id, cnes=cnes_code,
                 razao_social=f["name"], nome_fantasia=f["short"],
                 tipo_unidade="05", estado="GO", codigo_ibge=ibge,
                 competencia_ultima_importacao=competencia, active=True,
@@ -526,30 +492,24 @@ async def seed_cnes(session: AsyncSession, ibge: str, facilities: list[dict]) ->
             n += 1
     await session.flush()
 
-    # Profissionais (únicos por município: 1 médico + 1 enfermeiro + 1 recepcionista)
-    # id_profissional: max 16 chars, CPF: exactly 11 chars (numérico)
-    s = ibge[-3:]  # 3 dígitos
+    s = ibge[-3:]
     profs = [
-        ("med", f"Dr. Médico {ibge}",            f"2251{ibge}00001", f"100{s}00001", "225125"),
-        ("enf", f"Enf. Enfermeiro(a) {ibge}",    f"2231{ibge}00002", f"200{s}00002", "223505"),
-        ("rec", f"Recepcionista {ibge}",          f"4221{ibge}00003", f"300{s}00003", "422105"),
+        ("med", f"Dr. Médico CNES {ibge}", f"2251{ibge}00001", f"100{s}00001"),
+        ("enf", f"Enf. CNES {ibge}",       f"2231{ibge}00002", f"200{s}00002"),
     ]
-    for prefix, nome, id_prof, cpf, cbo in profs:
-        prof_key = f"cnes_prof_{ibge}_{prefix}"
+    for prefix, nome, id_prof, cpf in profs:
         if not await session.scalar(select(CnesProfessional).where(CnesProfessional.id_profissional == id_prof)):
             session.add(CnesProfessional(
-                id=fid(prof_key), id_profissional=id_prof, cpf=cpf, nome=nome,
-                status="Ativo", competencia_ultima_importacao=competencia,
+                id=fid(f"cnesprof_{ibge}_{prefix}"), id_profissional=id_prof,
+                cpf=cpf, nome=nome, status="Ativo", competencia_ultima_importacao=competencia,
             ))
     await session.flush()
-
     return n
 
 
 async def main() -> None:
     engine()
 
-    # RBAC
     from app.core.permissions.seed import ensure_system_base_roles, sync_permissions
     from app.modules.system.service import SettingsService
 
@@ -565,8 +525,10 @@ async def main() -> None:
     # App schema
     print("Schema app:")
     async with sessionmaker()() as s:
-        await seed_app(s)
+        stats = await seed_app(s)
         await s.commit()
+    for k, v in stats.items():
+        print(f"  {k}: {v}")
 
     # Tenant schemas
     print("\nSchemas tenant:")
@@ -576,32 +538,35 @@ async def main() -> None:
             print(f"  · {m['name']:<25} → {schema}")
         await s.commit()
 
-    # Pacientes + Docs + CNES
+    # Pacientes + CNES
     print("\nPacientes e CNES:")
-    total_p, total_d, total_c = 0, 0, 0
+    total_p, total_c = 0, 0
     mun_fac = {}
-    for f in FACILITIES:
-        mun_fac.setdefault(f["mun"], []).append(f)
-
+    all_facs = []
     for m in MUNICIPALITIES:
+        facs = _gen_facilities(m["key"], m["name"], m["ibge"], m["pop"])
+        mun_fac[m["ibge"]] = facs
+        all_facs.extend(facs)
+
+    for idx, m in enumerate(MUNICIPALITIES):
         ibge = m["ibge"]
-        patients = PATIENTS.get(ibge, [])
-        facs = mun_fac.get(m["key"], [])
+        n_patients = min(50, max(30, m["pop"] // 20000))
+        patients = _gen_patients(ibge, m["name"], idx, n_patients)
+        facs = mun_fac.get(ibge, [])
         async with sessionmaker()() as s:
-            np, nd = await seed_patients(s, ibge, patients) if patients else (0, 0)
-            nc = await seed_cnes(s, ibge, facs) if facs else 0
+            np, _ = await seed_patients(s, ibge, patients)
+            nc = await seed_cnes(s, ibge, facs)
             await s.commit()
-            total_p += np; total_d += nd; total_c += nc
-            print(f"  · {m['name']:<25} → {np} pacientes, {nd} docs, {nc} CNES units")
+            total_p += np
+            total_c += nc
+            print(f"  · {m['name']:<25} → {np:>3} pacientes, {nc} CNES")
 
     print(f"\n{'='*60}")
     print(f"Seed completo!")
     print(f"  Municípios:     {len(MUNICIPALITIES)}")
-    print(f"  Bairros:        {sum(len(b) for b in NEIGHBORHOODS.values())}")
-    print(f"  Unidades:       {len(FACILITIES)}")
-    print(f"  Usuários:       {len(USERS)}")
+    print(f"  Unidades:       {len(all_facs)}")
+    print(f"  Usuários:       {stats['users']}")
     print(f"  Pacientes:      {total_p}")
-    print(f"  Documentos:     {total_d}")
     print(f"  CNES Units:     {total_c}")
     print(f"  Senha:          {DEFAULT_PASSWORD}")
     print(f"{'='*60}")
