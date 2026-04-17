@@ -30,11 +30,10 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampedMixin
-from app.db.types import new_uuid7
+from app.db.types import UUIDType, new_uuid7
 
 
 class RoleScope(str, enum.Enum):
@@ -75,7 +74,7 @@ class Role(Base, TimestampedMixin):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7
+        UUIDType(), primary_key=True, default=new_uuid7
     )
     code: Mapped[str] = mapped_column(String(60), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -87,23 +86,23 @@ class Role(Base, TimestampedMixin):
         index=True,
     )
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("municipalities.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("roles.id", ondelete="RESTRICT"),
+        UUIDType(),
+        ForeignKey("roles.id"),
         nullable=True,
         index=True,
     )
 
     is_system_base: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
+        Boolean, nullable=False, server_default=text("0")
     )
     archived: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false"), index=True
+        Boolean, nullable=False, server_default=text("0"), index=True
     )
     # bumpa em qualquer mudança de permissões/parent — usado para invalidar
     # o cache de resolução em Valkey.
@@ -116,7 +115,7 @@ class RolePermission(Base, TimestampedMixin):
     __tablename__ = "role_permissions"
 
     role_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("roles.id", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -142,10 +141,10 @@ class FacilityAccessPermissionOverride(Base, TimestampedMixin):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7
+        UUIDType(), primary_key=True, default=new_uuid7
     )
     facility_access_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("facility_accesses.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

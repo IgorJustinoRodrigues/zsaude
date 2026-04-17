@@ -48,6 +48,51 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
+# ─── Tenant DB (multi-database) ─────────────────────────────────────────
+
+
+async def get_tenant_db(
+    user: "CurrentUserDep",
+    x_work_context: Annotated[str | None, Header(alias="X-Work-Context")] = None,
+) -> AsyncIterator[AsyncSession]:
+    """Sessão conectada ao banco do município ativo.
+
+    Usa o engine override se configurado, senão o engine principal.
+    O search_path/current_schema é configurado automaticamente.
+    """
+    from app.db.engine_registry import get_registry
+    from app.db.dialect import adapter_for_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker as asm
+
+    # Precisamos do ibge do contexto — decodifica o token sem validação completa
+    # (a validação full é feita pelo current_context quando necessário).
+    ibge: str | None = None
+    if x_work_context:
+        try:
+            payload = decode_token(x_work_context)
+            ibge = str(payload.get("ibge", ""))
+        except Exception:
+            pass
+
+    registry = get_registry()
+    eng = registry.tenant_engine(ibge) if ibge else registry.app_engine
+    adapter = adapter_for_engine(eng)
+
+    async with asm(bind=eng, expire_on_commit=False)() as session:
+        if ibge:
+            conn = await session.connection()
+            await adapter.set_search_path(conn, ibge)
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+TenantDB = Annotated[AsyncSession, Depends(get_tenant_db)]
+
+
 # ─── Valkey ───────────────────────────────────────────────────────────────
 
 
@@ -224,9 +269,10 @@ async def current_context(
     # `app, public`. Forçamos o SET agora para que queries nas tabelas
     # do schema mun_<ibge> sejam resolvidas.)
     if ctx.municipality_ibge:
-        from sqlalchemy import text
-        from app.db.tenant_schemas import search_path_for
-        await db.execute(text(f"SET LOCAL search_path = {search_path_for(ctx.municipality_ibge)}"))
+        from app.db.dialect import adapter_for_engine
+        adapter = adapter_for_engine(db.bind)
+        conn = await db.connection()
+        await adapter.set_search_path(conn, ctx.municipality_ibge)
 
     return ctx
 

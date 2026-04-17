@@ -30,12 +30,10 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampedMixin
-from app.db.types import new_uuid7
+from app.db.types import ArrayAsJSON, JSONType, UUIDType, new_uuid7
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -66,7 +64,7 @@ class AIProvider(Base, TimestampedMixin):
 
     __tablename__ = "ai_providers"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     slug: Mapped[str] = mapped_column(String(40), unique=True, nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     sdk_kind: Mapped[AISdkKind] = mapped_column(
@@ -76,9 +74,9 @@ class AIProvider(Base, TimestampedMixin):
     base_url_default: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
     # Capabilities que o provider suporta (ex: ["chat","chat_vision","embed_text"]).
     capabilities: Mapped[list[str]] = mapped_column(
-        ARRAY(String(30)), nullable=False, server_default=text("'{}'::varchar[]")
+        ArrayAsJSON(String(30)), nullable=False, server_default=text("'[]'")
     )
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
 
 class AIModel(Base, TimestampedMixin):
@@ -89,23 +87,23 @@ class AIModel(Base, TimestampedMixin):
         UniqueConstraint("provider_id", "slug", name="uq_ai_models_provider_slug"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     provider_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("ai_providers.id", ondelete="RESTRICT"),
+        UUIDType(),
+        ForeignKey("ai_providers.id"),
         nullable=False,
         index=True,
     )
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     capabilities: Mapped[list[str]] = mapped_column(
-        ARRAY(String(30)), nullable=False, server_default=text("'{}'::varchar[]")
+        ArrayAsJSON(String(30)), nullable=False, server_default=text("'[]'")
     )
     # Preços em centavos de US$ por 1 milhão de tokens — evita float.
     input_cost_per_mtok: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     output_cost_per_mtok: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     max_context: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
 
 class AIPromptTemplate(Base, TimestampedMixin):
@@ -116,14 +114,14 @@ class AIPromptTemplate(Base, TimestampedMixin):
         UniqueConstraint("slug", "version", name="uq_ai_prompt_slug_version"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     slug: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # JSON schema esperado da resposta (quando operation precisa saída estruturada).
-    response_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    response_schema: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
     description: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
 
 
 # ─── Por-município ────────────────────────────────────────────────────────────
@@ -140,16 +138,16 @@ class AIMunicipalityKey(Base, TimestampedMixin):
 
     __tablename__ = "ai_municipality_keys"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("municipalities.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
     provider_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("ai_providers.id", ondelete="RESTRICT"),
+        UUIDType(),
+        ForeignKey("ai_providers.id"),
         nullable=False,
         index=True,
     )
@@ -161,7 +159,7 @@ class AIMunicipalityKey(Base, TimestampedMixin):
     key_fingerprint: Mapped[str] = mapped_column(String(16), nullable=False, server_default="")
     key_last4: Mapped[str] = mapped_column(String(4), nullable=False, server_default="")
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
 
 class AICapabilityRoute(Base, TimestampedMixin):
@@ -195,7 +193,7 @@ class AICapabilityRoute(Base, TimestampedMixin):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     scope: Mapped[AIRouteScope] = mapped_column(
         # values_callable força gravar o value do enum (ex: "global") em vez
         # do name do membro Python ("global_" — com underscore porque `global`
@@ -208,20 +206,20 @@ class AICapabilityRoute(Base, TimestampedMixin):
         nullable=False,
     )
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("municipalities.id", ondelete="CASCADE"),
         nullable=True,
     )
     module_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     capability: Mapped[str] = mapped_column(String(30), nullable=False)
     model_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("ai_models.id", ondelete="RESTRICT"),
+        UUIDType(),
+        ForeignKey("ai_models.id"),
         nullable=False,
         index=True,
     )
     priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
 
 
 class AIQuota(Base, TimestampedMixin):
@@ -233,9 +231,9 @@ class AIQuota(Base, TimestampedMixin):
 
     __tablename__ = "ai_quotas"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("municipalities.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
@@ -246,7 +244,7 @@ class AIQuota(Base, TimestampedMixin):
     max_cost_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     max_requests: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     max_per_user_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
 
 
 class AIQuotaAlert(Base):
@@ -260,9 +258,9 @@ class AIQuotaAlert(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     municipality_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("municipalities.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -270,7 +268,7 @@ class AIQuotaAlert(Base):
     year_month: Mapped[str] = mapped_column(String(7), nullable=False)  # "YYYY-MM"
     threshold: Mapped[int] = mapped_column(Integer, nullable=False)     # 80, 100
     alerted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
 
 
@@ -306,27 +304,27 @@ class AIUsageLog(Base):
     )
 
     # PK composta (id, at) — at precisa estar na PK em tabelas particionadas.
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), primary_key=True,
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), primary_key=True,
     )
 
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=True
+        UUIDType(), nullable=True
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=True
+        UUIDType(), nullable=True
     )
     module_code: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
     operation_slug: Mapped[str] = mapped_column(String(80), nullable=False)
     capability: Mapped[str] = mapped_column(String(30), nullable=False)
 
     provider_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=True
+        UUIDType(), nullable=True
     )
     provider_slug: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
     model_id: Mapped[uuid.UUID | None] = mapped_column(
-        PG_UUID(as_uuid=True), nullable=True
+        UUIDType(), nullable=True
     )
     model_slug: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
 

@@ -29,8 +29,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copia código
 COPY app ./app
 COPY migrations ./migrations
+COPY migrations_tenant ./migrations_tenant
 COPY scripts ./scripts
-COPY alembic.ini ./
+COPY alembic.ini alembic_tenant.ini ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev || uv sync --no-dev

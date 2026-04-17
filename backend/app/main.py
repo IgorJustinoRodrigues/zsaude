@@ -25,6 +25,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.permissions.seed import ensure_system_base_roles, sync_permissions
+from app.db.engine_registry import get_registry
 from app.db.session import dispose_engine, engine, sessionmaker
 from app.modules.system.service import SettingsService
 from app.middleware.audit_context import AuditContextMiddleware
@@ -39,22 +40,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     log = get_logger("app.lifespan")
     log.info("startup", env=settings.env, api_prefix=settings.api_v1_prefix)
-    # inicializa engine cedo
+    # Inicializa engine registry (multi-database)
+    registry = get_registry()
+    registry.init_app(
+        settings.database_url,
+        pool_size=20,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    # inicializa engine legado (compatibilidade com session.py singleton)
     engine()
     # Sincroniza catálogo de permissões (registry → DB) e SYSTEM roles base.
     # Idempotente — barato o bastante para rodar a cada boot.
     try:
         async with sessionmaker()() as session:
             n_perms = await sync_permissions(session)
+            await session.commit()
+        async with sessionmaker()() as session:
             n_roles = await ensure_system_base_roles(session)
             n_settings = await SettingsService(session).warm_up()
             await session.commit()
-            log.info(
-                "rbac_sync_ok",
-                permissions=n_perms,
-                system_roles=n_roles,
-                settings_loaded=n_settings,
-            )
+        log.info(
+            "rbac_sync_ok",
+            permissions=n_perms,
+            system_roles=n_roles,
+            settings_loaded=n_settings,
+        )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))
     import asyncio
@@ -68,6 +80,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as e:  # noqa: BLE001
         log.warning("ai_partitions_failed", error=str(e))
 
+    # Carrega overrides de banco por município (se tabela existir)
+    n_overrides = await registry.load_overrides_from_db()
+    if n_overrides:
+        log.info("tenant_db_overrides_loaded", count=n_overrides)
+
     # Aquece o modelo de reconhecimento facial em background.
     from app.services.face import warm as warm_face
 
@@ -77,6 +94,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         log.info("shutdown")
+        await registry.dispose_all()
         await dispose_engine()
 
 

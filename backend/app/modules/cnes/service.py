@@ -21,8 +21,9 @@ from difflib import SequenceMatcher
 from typing import Any
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.dialect import get_adapter
 
 from app.core.exceptions import AppError
 from app.core.logging import get_logger
@@ -401,24 +402,17 @@ class CnesImportService:
         self._facility_sync = {"created": created, "updated": updated}
 
     async def _bulk_upsert_units(self, rows: list[dict[str, Any]]) -> None:
-        stmt = pg_insert(CnesUnit).values(rows)
-        stmt = stmt.on_conflict_do_update(
+        adapter = get_adapter(self.db.bind.dialect.name)
+        await adapter.execute_upsert(
+            self.db, CnesUnit, rows,
             index_elements=["cnes"],
-            set_={
-                "id_unidade": stmt.excluded.id_unidade,
-                "cnpj_mantenedora": stmt.excluded.cnpj_mantenedora,
-                "razao_social": stmt.excluded.razao_social,
-                "nome_fantasia": stmt.excluded.nome_fantasia,
-                "cpf": stmt.excluded.cpf,
-                "cnpj": stmt.excluded.cnpj,
-                "tipo_unidade": stmt.excluded.tipo_unidade,
-                "estado": stmt.excluded.estado,
-                "codigo_ibge": stmt.excluded.codigo_ibge,
-                "competencia_ultima_importacao": stmt.excluded.competencia_ultima_importacao,
-                "active": True,
-            },
+            update_columns=[
+                "id_unidade", "cnpj_mantenedora", "razao_social", "nome_fantasia",
+                "cpf", "cnpj", "tipo_unidade", "estado", "codigo_ibge",
+                "competencia_ultima_importacao",
+            ],
+            extra_set={"active": True},
         )
-        await self.db.execute(stmt)
 
     # ─────────────────────────────────────────────────────────────────────
     # lfces018 — profissionais
@@ -485,18 +479,13 @@ class CnesImportService:
                 result.rows_inserted += 1
 
         if rows_to_upsert:
-            stmt = pg_insert(CnesProfessional).values(rows_to_upsert)
-            stmt = stmt.on_conflict_do_update(
+            adapter = get_adapter(self.db.bind.dialect.name)
+            await adapter.execute_upsert(
+                self.db, CnesProfessional, rows_to_upsert,
                 index_elements=["id_profissional"],
-                set_={
-                    "cpf": stmt.excluded.cpf,
-                    "cns": stmt.excluded.cns,
-                    "nome": stmt.excluded.nome,
-                    "status": "Ativo",
-                    "competencia_ultima_importacao": stmt.excluded.competencia_ultima_importacao,
-                },
+                update_columns=["cpf", "cns", "nome", "competencia_ultima_importacao"],
+                extra_set={"status": "Ativo"},
             )
-            await self.db.execute(stmt)
 
     # ─────────────────────────────────────────────────────────────────────
     # lfces021 — vínculo profissional × unidade
@@ -569,19 +558,16 @@ class CnesImportService:
             else:
                 result.rows_inserted += 1
 
-        stmt = pg_insert(CnesProfessionalUnit).values(rows_to_upsert)
-        stmt = stmt.on_conflict_do_update(
+        adapter = get_adapter(self.db.bind.dialect.name)
+        await adapter.execute_upsert(
+            self.db, CnesProfessionalUnit, rows_to_upsert,
             index_elements=["id_profissional", "id_unidade", "id_cbo"],
-            set_={
-                "carga_horaria_ambulatorial": stmt.excluded.carga_horaria_ambulatorial,
-                "carga_horaria_hospitalar": stmt.excluded.carga_horaria_hospitalar,
-                "id_conselho": stmt.excluded.id_conselho,
-                "num_conselho": stmt.excluded.num_conselho,
-                "status": stmt.excluded.status,
-                "competencia_ultima_importacao": stmt.excluded.competencia_ultima_importacao,
-            },
+            update_columns=[
+                "carga_horaria_ambulatorial", "carga_horaria_hospitalar",
+                "id_conselho", "num_conselho", "status",
+                "competencia_ultima_importacao",
+            ],
         )
-        await self.db.execute(stmt)
 
     # ─────────────────────────────────────────────────────────────────────
     # Handlers que fazem DELETE-por-unidade + INSERT
@@ -706,6 +692,6 @@ class CnesImportService:
         # Insert em lote (dedupe por segurança).
         values = [row_to_dict(r, competencia) for r in parsed_rows]
         # Remove duplicatas de chave unique — INSERT ignora dedupe via on conflict.
-        stmt = pg_insert(model).values(values).on_conflict_do_nothing()
-        await self.db.execute(stmt)
+        adapter = get_adapter(self.db.bind.dialect.name)
+        await adapter.execute_upsert_do_nothing(self.db, model, values)
         result.rows_inserted += len(values)

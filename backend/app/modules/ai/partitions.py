@@ -6,6 +6,9 @@ as partições que não existem (``IF NOT EXISTS``).
 Mantém 3 meses à frente do mês atual. Partições do passado NÃO são
 criadas aqui — elas já foram criadas na migration 0019 ou em boots
 anteriores.
+
+Particionamento só funciona em PostgreSQL. Em Oracle, a tabela não é
+particionada — esta função retorna 0 silenciosamente.
 """
 
 from __future__ import annotations
@@ -33,12 +36,14 @@ def _iter_future_months(start: date, count: int):
 
 async def ensure_partitions(db: AsyncSession) -> int:
     """Cria partições mensais futuras que não existem. Retorna quantas criou."""
+    if db.bind.dialect.name != "postgresql":
+        return 0
+
     today = datetime.now(UTC).date()
     created = 0
     for d in _iter_future_months(today, _MONTHS_AHEAD):
         tag = f"{d.year:04d}{d.month:02d}"
         table_name = f"ai_usage_logs_{tag}"
-        # Fim do range: primeiro dia do mês seguinte.
         if d.month == 12:
             ny, nm = d.year + 1, 1
         else:

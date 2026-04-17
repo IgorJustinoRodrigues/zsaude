@@ -7,10 +7,9 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import new_uuid7
+from app.db.types import JSONType, UUIDType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -31,13 +30,13 @@ class CnesImport(TenantBase):
 
     __tablename__ = "cnes_imports"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, index=True)
 
     # snapshot do usuário (sem FK cross-schema — ver comentário do `created_by`
     # em tenant_models/patients.py).
-    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
     uploaded_by_user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
 
     zip_filename: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
@@ -61,7 +60,7 @@ class CnesImport(TenantBase):
     total_rows_processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
@@ -71,16 +70,16 @@ class CnesImport(TenantBase):
 class CnesImportFile(TenantBase):
     """Log por arquivo dentro de uma importação.
 
-    Uma linha para cada LFCES processado. Warnings ficam em JSONB (lista
+    Uma linha para cada LFCES processado. Warnings ficam em JSONType() (lista
     de strings curtas; veja limitações em ``_MAX_WARNINGS_PER_FILE``).
     """
 
     __tablename__ = "cnes_import_files"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     import_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("cnes_imports.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -93,9 +92,9 @@ class CnesImportFile(TenantBase):
     rows_updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_skipped: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    warnings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    warnings: Mapped[list] = mapped_column(JSONType(), nullable=False, server_default="[]")
     error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )

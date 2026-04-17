@@ -14,8 +14,9 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.dialect import get_adapter
 
 # Importa o catálogo para popular o registry antes do sync.
 from app.core.permissions import catalog  # noqa: F401  - side effect
@@ -56,7 +57,10 @@ async def sync_permissions(session: AsyncSession) -> int:
 
     # 2. Upsert das que existem.
     if perms:
-        stmt = pg_insert(Permission).values(
+        adapter = get_adapter(session.bind.dialect.name)
+        await adapter.execute_upsert(
+            session,
+            Permission,
             [
                 {
                     "code": p.code,
@@ -66,18 +70,10 @@ async def sync_permissions(session: AsyncSession) -> int:
                     "description": p.description,
                 }
                 for p in perms
-            ]
+            ],
+            index_elements=["code"],
+            update_columns=["module", "resource", "action", "description"],
         )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[Permission.code],
-            set_={
-                "module": stmt.excluded.module,
-                "resource": stmt.excluded.resource,
-                "action": stmt.excluded.action,
-                "description": stmt.excluded.description,
-            },
-        )
-        await session.execute(stmt)
 
     return len(perms)
 

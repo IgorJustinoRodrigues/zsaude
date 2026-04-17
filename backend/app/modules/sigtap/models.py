@@ -24,11 +24,10 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.types import new_uuid7
+from app.db.types import JSONType, UUIDType, new_uuid7
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -38,7 +37,7 @@ from app.db.types import new_uuid7
 class SigtapProcedure(Base):
     __tablename__ = "sigtap_procedures"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)
     nome: Mapped[str] = mapped_column(String(250), nullable=False, server_default="")
     complexidade: Mapped[str] = mapped_column(String(1), nullable=False, server_default="")
@@ -53,64 +52,64 @@ class SigtapProcedure(Base):
     valor_sp: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, server_default="0")
     id_financiamento: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="", index=True)
-    revogado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    revogado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapCbo(Base):
     __tablename__ = "sigtap_cbos"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(6), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapCid(Base):
     __tablename__ = "sigtap_cids"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     agravo: Mapped[str] = mapped_column(String(1), nullable=False, server_default="")
     sexo: Mapped[str] = mapped_column(String(1), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapModalidade(Base):
     __tablename__ = "sigtap_modalidades"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(2), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapRegistro(Base):
     __tablename__ = "sigtap_registros"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(2), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapService(Base):
     __tablename__ = "sigtap_services"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(3), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapServiceClassification(Base):
@@ -122,24 +121,24 @@ class SigtapServiceClassification(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_servico: Mapped[str] = mapped_column(String(3), nullable=False, index=True)
     codigo_classificacao: Mapped[str] = mapped_column(String(3), nullable=False)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureDescription(Base):
     __tablename__ = "sigtap_procedure_descriptions"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapFormaOrganizacao(Base):
@@ -151,36 +150,36 @@ class SigtapFormaOrganizacao(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_grupo: Mapped[str] = mapped_column(String(2), nullable=False)
     codigo_subgrupo: Mapped[str] = mapped_column(String(2), nullable=False)
     codigo_forma: Mapped[str] = mapped_column(String(2), nullable=False)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapHabilitacao(Base):
     __tablename__ = "sigtap_habilitacoes"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapGrupoHabilitacao(Base):
     __tablename__ = "sigtap_grupos_habilitacao"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo: Mapped[str] = mapped_column(String(4), nullable=False, unique=True)
     nome_grupo: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
     descricao: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -196,12 +195,12 @@ class SigtapProcedureCid(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_cid: Mapped[str] = mapped_column(String(4), nullable=False, index=True)
     principal: Mapped[str] = mapped_column(String(1), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureCbo(Base):
@@ -213,11 +212,11 @@ class SigtapProcedureCbo(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_cbo: Mapped[str] = mapped_column(String(6), nullable=False, index=True)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureModalidade(Base):
@@ -229,11 +228,11 @@ class SigtapProcedureModalidade(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_modalidade: Mapped[str] = mapped_column(String(2), nullable=False)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureRegistro(Base):
@@ -245,11 +244,11 @@ class SigtapProcedureRegistro(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_registro: Mapped[str] = mapped_column(String(2), nullable=False)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureCompatibilidade(Base):
@@ -262,7 +261,7 @@ class SigtapProcedureCompatibilidade(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     registro_principal: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
     codigo_procedimento_secundario: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -270,7 +269,7 @@ class SigtapProcedureCompatibilidade(Base):
     tipo_compatibilidade: Mapped[str] = mapped_column(String(1), nullable=False, server_default="")
     quantidade_permitida: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureDetalhe(Base):
@@ -282,11 +281,11 @@ class SigtapProcedureDetalhe(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_lista_validacao: Mapped[str] = mapped_column(String(3), nullable=False)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureServico(Base):
@@ -298,12 +297,12 @@ class SigtapProcedureServico(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_servico: Mapped[str] = mapped_column(String(3), nullable=False)
     codigo_classificacao: Mapped[str] = mapped_column(String(3), nullable=False)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureLeito(Base):
@@ -315,11 +314,11 @@ class SigtapProcedureLeito(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_tipo_leito: Mapped[str] = mapped_column(String(2), nullable=False)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureRegraCond(Base):
@@ -331,10 +330,10 @@ class SigtapProcedureRegraCond(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     regra_condicionada: Mapped[str] = mapped_column(String(14), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 class SigtapProcedureHabilitacao(Base):
@@ -346,12 +345,12 @@ class SigtapProcedureHabilitacao(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     codigo_procedimento: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     codigo_habilitacao: Mapped[str] = mapped_column(String(4), nullable=False, index=True)
     codigo_grupo_habilitacao: Mapped[str] = mapped_column(String(4), nullable=False, server_default="")
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -376,9 +375,9 @@ class SigtapImport(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     competencia: Mapped[str] = mapped_column(String(6), nullable=False, index=True)
-    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
     uploaded_by_user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     zip_filename: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
     zip_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
@@ -396,7 +395,7 @@ class SigtapImport(Base):
     )
     error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default="")
     total_rows_processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -405,9 +404,9 @@ class SigtapImportFile(Base):
 
     __tablename__ = "sigtap_import_files"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     import_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
+        UUIDType(),
         ForeignKey("app.sigtap_imports.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -417,6 +416,6 @@ class SigtapImportFile(Base):
     rows_inserted: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_skipped: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    warnings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    warnings: Mapped[list] = mapped_column(JSONType(), nullable=False, server_default="[]")
     error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))

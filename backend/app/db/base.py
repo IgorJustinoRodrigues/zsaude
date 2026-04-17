@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import MetaData, func
+from sqlalchemy import MetaData, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -35,11 +35,11 @@ class Base(DeclarativeBase):
 
 TimestampMixinCreatedAt = Annotated[
     datetime,
-    mapped_column(server_default=func.now(), nullable=False),
+    mapped_column(server_default=text("CURRENT_TIMESTAMP"), nullable=False),
 ]
 TimestampMixinUpdatedAt = Annotated[
     datetime,
-    mapped_column(server_default=func.now(), onupdate=func.now(), nullable=False),
+    mapped_column(server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False),
 ]
 
 
@@ -47,8 +47,8 @@ class TimestampedMixin:
     """Adiciona created_at / updated_at com defaults server-side."""
 
     created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
+        server_default=text("CURRENT_TIMESTAMP"), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now(), nullable=False
+        server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now(), nullable=False
     )

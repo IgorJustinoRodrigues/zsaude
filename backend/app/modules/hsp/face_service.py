@@ -19,8 +19,9 @@ from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.dialect import get_adapter
 
 from app.modules.system.service import get_float_sync
 from app.services.face import detect_and_embed
@@ -82,6 +83,14 @@ def _min_detection_score() -> float:
 # ─── Enroll ──────────────────────────────────────────────────────────────────
 
 
+def _is_pgvector_available(db: AsyncSession) -> bool:
+    """Reconhecimento facial requer PostgreSQL + pgvector."""
+    try:
+        return db.bind.dialect.name == "postgresql"
+    except Exception:
+        return False
+
+
 async def enroll_from_photo(
     db: AsyncSession,
     *,
@@ -94,6 +103,9 @@ async def enroll_from_photo(
     Retorna o status pra UI mostrar aviso relevante. Nunca levanta exceção —
     falha não bloqueia o upload da foto.
     """
+    if not _is_pgvector_available(db):
+        return "disabled"
+
     try:
         result = await detect_and_embed(photo_bytes)
     except Exception as e:  # noqa: BLE001
@@ -111,29 +123,26 @@ async def enroll_from_photo(
         )
         return "low_quality"
 
-    stmt = pg_insert(PatientFaceEmbedding).values(
-        patient_id=patient_id,
-        photo_id=photo_id,
-        embedding=result.embedding,
-        detection_score=result.detection_score,
-        bbox=result.bbox,
-        algorithm="insightface/buffalo_l",
-        algorithm_version="v1",
-    )
-    # ON CONFLICT (patient_id) DO UPDATE — um embedding ativo por paciente.
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["patient_id"],
-        set_={
-            "photo_id": stmt.excluded.photo_id,
-            "embedding": stmt.excluded.embedding,
-            "detection_score": stmt.excluded.detection_score,
-            "bbox": stmt.excluded.bbox,
-            "algorithm": stmt.excluded.algorithm,
-            "algorithm_version": stmt.excluded.algorithm_version,
-            "updated_at": datetime.now(UTC),
+    adapter = get_adapter(db.bind.dialect.name)
+    await adapter.execute_upsert(
+        db,
+        PatientFaceEmbedding,
+        {
+            "patient_id": patient_id,
+            "photo_id": photo_id,
+            "embedding": result.embedding,
+            "detection_score": result.detection_score,
+            "bbox": result.bbox,
+            "algorithm": "insightface/buffalo_l",
+            "algorithm_version": "v1",
         },
+        index_elements=["patient_id"],
+        update_columns=[
+            "photo_id", "embedding", "detection_score", "bbox",
+            "algorithm", "algorithm_version",
+        ],
+        extra_set={"updated_at": datetime.now(UTC)},
     )
-    await db.execute(stmt)
     return "ok"
 
 
@@ -148,6 +157,12 @@ async def match(
     limit: int = 5,
 ) -> MatchResponse:
     """Busca top-N candidatos na base de embeddings do município ativo."""
+    if not _is_pgvector_available(db):
+        raise FaceError(
+            "Reconhecimento facial não disponível neste banco de dados.",
+            code="unsupported",
+        )
+
     try:
         result = await detect_and_embed(image_bytes)
     except Exception as e:  # noqa: BLE001

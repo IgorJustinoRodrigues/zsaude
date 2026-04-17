@@ -7,11 +7,10 @@ import uuid
 from datetime import date
 
 from sqlalchemy import Boolean, Date, Enum, Integer, String, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampedMixin
-from app.db.types import new_uuid7
+from app.db.types import UUIDType, new_uuid7
 
 
 class UserStatus(str, enum.Enum):
@@ -37,7 +36,7 @@ class User(Base, TimestampedMixin):
     __tablename__ = "users"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7
+        UUIDType(), primary_key=True, default=new_uuid7
     )
 
     login: Mapped[str] = mapped_column(String(60), unique=True, nullable=False, index=True)
@@ -53,8 +52,8 @@ class User(Base, TimestampedMixin):
         nullable=False,
         server_default=UserStatus.ATIVO.value,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
-    is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
+    is_superuser: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"))
 
     level: Mapped[UserLevel] = mapped_column(
         Enum(

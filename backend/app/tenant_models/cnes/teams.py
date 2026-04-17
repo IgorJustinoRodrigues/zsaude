@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, String, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import new_uuid7
+from app.db.types import UUIDType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -24,7 +24,7 @@ class CnesTeam(TenantBase):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     codigo_ibge: Mapped[str] = mapped_column(String(6), nullable=False, index=True)
     codigo_area: Mapped[str] = mapped_column(String(4), nullable=False)
@@ -37,7 +37,7 @@ class CnesTeam(TenantBase):
     competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -53,7 +53,7 @@ class CnesTeamProfessional(TenantBase):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     codigo_ibge: Mapped[str] = mapped_column(String(6), nullable=False, index=True)
     codigo_area: Mapped[str] = mapped_column(String(4), nullable=False)
@@ -66,5 +66,5 @@ class CnesTeamProfessional(TenantBase):
     competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )

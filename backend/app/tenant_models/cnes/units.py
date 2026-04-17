@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import new_uuid7
+from app.db.types import UUIDType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -23,7 +23,7 @@ class CnesUnit(TenantBase):
 
     __tablename__ = "cnes_units"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     id_unidade: Mapped[str] = mapped_column(String(31), unique=True, nullable=False, index=True)
     cnes: Mapped[str] = mapped_column(String(7), unique=True, nullable=False, index=True)
@@ -42,12 +42,12 @@ class CnesUnit(TenantBase):
     # Competência da última importação que atualizou esta linha (AAAAMM).
     competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
 
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        server_default=text("now()"), onupdate=text("now()"),
+        server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"),
     )

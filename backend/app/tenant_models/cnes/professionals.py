@@ -6,10 +6,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import new_uuid7
+from app.db.types import UUIDType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -18,7 +18,7 @@ class CnesProfessional(TenantBase):
 
     __tablename__ = "cnes_professionals"
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     id_profissional: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
     cpf: Mapped[str] = mapped_column(String(11), nullable=False, server_default="", index=True)
@@ -29,11 +29,11 @@ class CnesProfessional(TenantBase):
     competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        server_default=text("now()"), onupdate=text("now()"),
+        server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -51,7 +51,7 @@ class CnesProfessionalUnit(TenantBase):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=new_uuid7)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     id_profissional: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     id_unidade: Mapped[str] = mapped_column(String(31), nullable=False, index=True)
@@ -69,9 +69,9 @@ class CnesProfessionalUnit(TenantBase):
     competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()"),
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        server_default=text("now()"), onupdate=text("now()"),
+        server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"),
     )

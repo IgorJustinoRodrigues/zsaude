@@ -30,10 +30,10 @@ from datetime import UTC, datetime
 from typing import Any, Callable
 
 from sqlalchemy import delete, not_, or_, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AppError
+from app.db.dialect import get_adapter
 from app.core.logging import get_logger
 from app.modules.sigtap import parsers as P
 from app.modules.sigtap.models import (
@@ -325,17 +325,20 @@ class SigtapImportService:
         update_cols: list[str] | None = None, do_nothing: bool = False,
     ) -> None:
         """Executa INSERT em lotes de _BATCH_SIZE para não ultrapassar o limite de 32.767 params do asyncpg."""
+        adapter = get_adapter(self.db.bind.dialect.name)
         for i in range(0, len(values), _BATCH_SIZE):
             batch = values[i : i + _BATCH_SIZE]
-            stmt = pg_insert(model).values(batch)
             if do_nothing:
-                stmt = stmt.on_conflict_do_nothing()
+                await adapter.execute_upsert_do_nothing(self.db, model, batch)
             elif update_cols:
-                stmt = stmt.on_conflict_do_update(
+                await adapter.execute_upsert(
+                    self.db, model, batch,
                     index_elements=conflict_cols,
-                    set_={c: getattr(stmt.excluded, c) for c in update_cols},
+                    update_columns=update_cols,
                 )
-            await self.db.execute(stmt)
+            else:
+                await self.db.execute(model.__table__.insert().values(batch))
+                continue
 
     async def _upsert_bulk(
         self,
