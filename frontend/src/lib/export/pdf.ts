@@ -39,12 +39,14 @@ export function exportPdf<T>(
     ? opts.rows.map(r => opts.rowHighlight!(r))
     : []
 
-  // Espaço vertical do topo da tabela: depende se é primeira página
-  // (que mostra título grande) ou não (só contexto + zSaúde).
-  // autoTable cuida de repaginar; nosso ``didDrawPage`` re-renderiza
-  // topo/rodapé em todas.
+  // Espaço vertical reservado pelo cabeçalho. Se houver logo/headers
+  // customizados, o bloco cresce — estimamos aqui pra não sobrepor a
+  // tabela.
+  const brand = opts.branding
+  const headerExtraH = computeHeaderExtra(brand)
   const FIRST_PAGE_TITLE_BLOCK_H = opts.subtitle ? 55 : 35
-  const firstPageTableStart = headerY + 22 + FIRST_PAGE_TITLE_BLOCK_H
+  const firstPageTableStart = headerY + 22 + headerExtraH + FIRST_PAGE_TITLE_BLOCK_H
+  const subsequentPagesTop = headerY + 22 + headerExtraH
 
   // ── 1ª página: desenhamos cabeçalho manualmente antes do autoTable
   drawHeader(doc, opts, pageW, marginX, headerY, /* withTitle */ true)
@@ -54,7 +56,7 @@ export function exportPdf<T>(
     margin: {
       left: marginX,
       right: marginX,
-      top: headerY + 22,        // garante espaço do contexto quando quebra página
+      top: subsequentPagesTop,  // garante espaço do cabeçalho nas próximas páginas
       bottom: 40,
     },
     head: [opts.columns.map(c => c.header)],
@@ -110,7 +112,7 @@ export function exportPdf<T>(
       if (data.pageNumber > 1) {
         drawHeader(doc, opts, pageW, marginX, headerY, /* withTitle */ false)
       }
-      drawFooter(doc, pageW, marginX, footerY)
+      drawFooter(doc, pageW, marginX, footerY, opts.branding)
     },
   })
 
@@ -157,36 +159,75 @@ function drawHeader<T>(
   y: number,
   withTitle: boolean,
 ) {
-  // Contexto em caixa alta (esquerda)
+  const brand = opts.branding
+  const displayName = brand?.displayName?.trim() || BRAND.name
+  const primaryRgb = brand?.primaryColor
+    ? hexToRgb(brand.primaryColor) ?? (BRAND.primary as unknown as [number, number, number])
+    : (BRAND.primary as unknown as [number, number, number])
+
+  // Logo (esquerda, acima do contexto — se houver)
+  let logoHeight = 0
+  if (brand?.logoDataUrl) {
+    try {
+      const imgProps = doc.getImageProperties(brand.logoDataUrl)
+      const maxH = 36
+      const ratio = imgProps.width / imgProps.height
+      logoHeight = Math.min(maxH, imgProps.height)
+      const logoW = logoHeight * ratio
+      doc.addImage(brand.logoDataUrl, marginX, y, logoW, logoHeight)
+    } catch {
+      // Imagem inválida — ignora silenciosamente
+    }
+  }
+
+  // Contexto em caixa alta (esquerda, após a logo)
+  const contextY = logoHeight > 0 ? y + logoHeight + 6 : y
   if (opts.context) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
     doc.setTextColor(...BRAND.muted)
-    doc.text(opts.context.toUpperCase(), marginX, y, { baseline: 'top' })
+    doc.text(opts.context.toUpperCase(), marginX, contextY, { baseline: 'top' })
   }
 
-  // Marca zSaúde (direita)
+  // Marca institucional (direita) — customizada ou zSaúde
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
-  doc.setTextColor(...BRAND.primary)
-  doc.text(BRAND.name, pageW - marginX, y, { align: 'right', baseline: 'top' })
-  if (BRAND.tagline) {
+  doc.setTextColor(...primaryRgb)
+  doc.text(displayName, pageW - marginX, y, { align: 'right', baseline: 'top' })
+
+  // Linhas 1 e 2 do cabeçalho (ex.: "Secretaria Municipal..." + "CNPJ...")
+  let rightY = y + 14
+  if (brand?.headerLine1?.trim()) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(...BRAND.body)
+    doc.text(brand.headerLine1, pageW - marginX, rightY, { align: 'right', baseline: 'top' })
+    rightY += 10
+  }
+  if (brand?.headerLine2?.trim()) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(...BRAND.muted)
-    doc.text(BRAND.tagline, pageW - marginX, y + 12, {
-      align: 'right', baseline: 'top',
-    })
+    doc.text(brand.headerLine2, pageW - marginX, rightY, { align: 'right', baseline: 'top' })
+    rightY += 10
+  }
+  // Sem customização, mantém tagline default
+  if (!brand?.headerLine1 && !brand?.headerLine2 && BRAND.tagline) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...BRAND.muted)
+    doc.text(BRAND.tagline, pageW - marginX, rightY, { align: 'right', baseline: 'top' })
   }
 
-  // Divisória
+  // Divisória (posição ajustada se tem logo grande)
+  const dividerY = Math.max(y + 22, contextY + 8, rightY + 4)
   doc.setDrawColor(...BRAND.divider)
   doc.setLineWidth(0.5)
-  doc.line(marginX, y + 22, pageW - marginX, y + 22)
+  doc.line(marginX, dividerY, pageW - marginX, dividerY)
 
   // Título e subtítulo (só na primeira página)
   if (!withTitle) return
-  const titleY = y + 44
+  const titleY = dividerY + 22
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
   doc.setTextColor(...BRAND.heading)
@@ -200,15 +241,48 @@ function drawHeader<T>(
   }
 }
 
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = hex.trim().toLowerCase().match(/^#?([0-9a-f]{6})$/)
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
+}
+
+/** Pontos adicionais reservados pelo cabeçalho, quando há logo / linhas extras. */
+function computeHeaderExtra(brand?: { logoDataUrl?: string | null; headerLine1?: string; headerLine2?: string }): number {
+  if (!brand) return 0
+  let extra = 0
+  if (brand.logoDataUrl) extra += 40        // altura da logo + padding
+  if (brand.headerLine1?.trim()) extra += 10
+  if (brand.headerLine2?.trim()) extra += 10
+  return extra
+}
+
 function drawFooter(
   doc: jsPDF,
   pageW: number,
   marginX: number,
   y: number,
+  branding?: { footerText?: string },
 ) {
+  let baseY = y
+
+  // Texto customizado do rodapé (endereço, contatos) fica ACIMA da linha.
+  if (branding?.footerText?.trim()) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(...BRAND.muted)
+    doc.text(
+      branding.footerText.trim(),
+      pageW / 2, y - 18,
+      { align: 'center' },
+    )
+    baseY = y  // mantém a linha/paginação no mesmo lugar
+  }
+
   doc.setDrawColor(...BRAND.divider)
   doc.setLineWidth(0.5)
-  doc.line(marginX, y - 10, pageW - marginX, y - 10)
+  doc.line(marginX, baseY - 10, pageW - marginX, baseY - 10)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -218,13 +292,13 @@ function drawFooter(
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
-  doc.text(`Gerado em ${now}`, marginX, y)
+  doc.text(`Gerado em ${now}`, marginX, baseY)
 
   const pageInfo = doc.getCurrentPageInfo().pageNumber
   const totalPages = doc.getNumberOfPages()
   doc.text(
     `Página ${pageInfo} de ${totalPages}`,
-    pageW - marginX, y,
+    pageW - marginX, baseY,
     { align: 'right' },
   )
 }

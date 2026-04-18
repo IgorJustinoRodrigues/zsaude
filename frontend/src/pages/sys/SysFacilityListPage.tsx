@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Building2, Search } from 'lucide-react'
+import { Plus, Building2, Search, Palette } from 'lucide-react'
 import { directoryApi, type FacilityDto, type MunicipalityDto } from '../../api/workContext'
 import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
@@ -80,23 +80,35 @@ export function SysFacilityListPage() {
       ) : (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
           {filtered.map(f => (
-            <button key={f.id} onClick={() => navigate(`/sys/unidades/${f.id}`)}
-              className={cn('w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left')}>
-              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                <Building2 size={14} className="text-slate-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{f.name}</p>
-                <p className="text-[11px] text-slate-400">
-                  {f.shortName} · {f.type}
-                  {f.cnes && ` · CNES ${f.cnes}`}
-                </p>
-              </div>
-              <div className="shrink-0 text-right hidden sm:block">
-                <p className="text-xs text-slate-500">{munById[f.municipalityId]?.name ?? '—'}</p>
-                <p className="text-[11px] text-slate-400">{munById[f.municipalityId]?.state}</p>
-              </div>
-            </button>
+            <div key={f.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+              <button
+                onClick={() => navigate(`/sys/unidades/${f.id}`)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                  <Building2 size={14} className="text-slate-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{f.name}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {f.shortName} · {f.type}
+                    {f.cnes && ` · CNES ${f.cnes}`}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right hidden sm:block">
+                  <p className="text-xs text-slate-500">{munById[f.municipalityId]?.name ?? '—'}</p>
+                  <p className="text-[11px] text-slate-400">{munById[f.municipalityId]?.state}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => navigate(`/sys/unidades/${f.id}/personalizar`)}
+                title="Personalizar identidade visual"
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              >
+                <Palette size={12} />
+                <span className="hidden md:inline">Personalizar</span>
+              </button>
+            </div>
           ))}
         </div>
       )}

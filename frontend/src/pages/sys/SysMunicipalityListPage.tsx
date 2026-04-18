@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, MapPin, Search, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, MapPin, Search, Archive, ArchiveRestore, Palette } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -117,6 +117,14 @@ export function SysMunicipalityListPage() {
                   <p className="text-xs text-slate-500">{m.facilityCount} unidade{m.facilityCount !== 1 ? 's' : ''}</p>
                   <p className="text-[11px] text-slate-400">{m.userCount} usuário{m.userCount !== 1 ? 's' : ''}</p>
                 </div>
+                <button
+                  onClick={() => navigate(`/sys/municipios/${m.id}/personalizar`)}
+                  title="Personalizar identidade visual"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                >
+                  <Palette size={12} />
+                  <span className="hidden md:inline">Personalizar</span>
+                </button>
                 <button
                   onClick={() => toggleArchive(m)}
                   disabled={acting === m.id}

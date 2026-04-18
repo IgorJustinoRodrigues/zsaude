@@ -44,6 +44,27 @@ export interface ExportOptions<T> {
    * ou ``null`` para não destacar. No CSV é ignorado.
    */
   rowHighlight?: (row: T) => HighlightTone | null
+  /**
+   * Identidade visual aplicada ao PDF. Sobrescreve os defaults do
+   * sistema. Normalmente vem do ``brandingStore`` (config efetiva
+   * resolvida para o contexto atual). CSV ignora.
+   */
+  branding?: ExportBranding
+}
+
+export interface ExportBranding {
+  /** Nome institucional mostrado no topo direito (ex.: "Prefeitura de Anápolis"). */
+  displayName?: string
+  /** Cor hex (``#RRGGBB``) aplicada no nome + título. */
+  primaryColor?: string
+  /** DataURL da logo (``data:image/png;base64,...``). */
+  logoDataUrl?: string | null
+  /** Linha 1 do cabeçalho (ex.: "Secretaria Municipal de Saúde"). */
+  headerLine1?: string
+  /** Linha 2 (ex.: "CNPJ 00.000.000/0001-00"). */
+  headerLine2?: string
+  /** Texto livre do rodapé (acima do "Gerado em..."). */
+  footerText?: string
 }
 
 export type ExportFormat = 'csv' | 'pdf-portrait' | 'pdf-landscape'

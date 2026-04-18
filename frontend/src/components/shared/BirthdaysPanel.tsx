@@ -6,7 +6,8 @@ import { HttpError } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { initials, cn } from '../../lib/utils'
 import { ExportMenuButton } from '../ui/ExportMenuButton'
-import type { ExportOptions } from '../../lib/export'
+import type { ExportBranding, ExportOptions } from '../../lib/export'
+import { useBranding } from '../../hooks/useBranding'
 
 interface Props {
   /**
@@ -54,6 +55,10 @@ export function BirthdaysPanel({
 }: Props) {
   const navigate = useNavigate()
   const currentUserId = useAuthStore(s => s.user?.id)
+  // Identidade visual do contexto (unidade > cidade > default).
+  // Quando o painel roda em /sys com municipalityId explícito (MASTER),
+  // passamos pro hook pra buscar a config da cidade específica.
+  const branding = useBranding({ municipalityId })
   const today = new Date()
   const [month, setMonth] = useState(today.getMonth() + 1)
   const [items, setItems] = useState<UserBirthdayItem[]>([])
@@ -118,7 +123,7 @@ export function BirthdaysPanel({
 
         {/* Export padrão do sistema — veja docs/exports.md */}
         <ExportMenuButton<UserBirthdayItem>
-          options={buildExportOptions(items, month, contextLabel)}
+          options={buildExportOptions(items, month, contextLabel, branding)}
         />
       </div>
 
@@ -259,6 +264,7 @@ function buildExportOptions(
   items: UserBirthdayItem[],
   month: number,
   contextLabel?: string,
+  branding?: ExportBranding,
 ): ExportOptions<UserBirthdayItem> {
   return {
     title: 'Aniversariantes',
@@ -274,5 +280,6 @@ function buildExportOptions(
       { header: 'Idade',  get: u => `${u.age} anos`, align: 'right', width: 65 },
     ],
     rowHighlight: u => u.isToday ? 'pink' : null,
+    branding,
   }
 }

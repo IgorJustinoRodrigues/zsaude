@@ -6,13 +6,29 @@ import { Upload, X, Check, RotateCcw } from 'lucide-react'
 interface Props {
   onConfirm: (dataUrl: string) => void
   onClose: () => void
+  /** Proporção largura/altura. Default 1 (quadrado). Use 3 para logo horizontal. */
+  aspect?: number
+  /** Recorte circular (só faz sentido com aspect=1). Default true. */
+  circularCrop?: boolean
+  /** Lado maior do output em pixels. Default 400. Para logo use 600-1200. */
+  outputSize?: number
+  /** Título do modal. Default "Adicionar foto". */
+  title?: string
+  /** Texto do botão final. Default "Usar esta foto". */
+  confirmLabel?: string
+  /** Tipos aceitos no file input. Default 'image/*'. */
+  accept?: string
+  /** Qualidade JPEG (0-1). Default 0.92. Use 1 para logos com fundo branco. */
+  quality?: number
+  /** Saída como PNG (fundo transparente preservado). Default false (JPEG). */
+  outputPng?: boolean
 }
 
 type Mode = 'select' | 'crop'
 
-function centerAspectCrop(w: number, h: number): Crop {
+function centerAspectCrop(w: number, h: number, aspect: number): Crop {
   return centerCrop(
-    makeAspectCrop({ unit: '%', width: 80 }, 1, w, h),
+    makeAspectCrop({ unit: '%', width: 80 }, aspect, w, h),
     w, h,
   )
 }
@@ -20,28 +36,50 @@ function centerAspectCrop(w: number, h: number): Crop {
 async function getCroppedDataUrl(
   image: HTMLImageElement,
   crop: PixelCrop,
+  aspect: number,
+  outputSize: number,
+  quality: number,
+  outputPng: boolean,
 ): Promise<string> {
-  const canvas  = document.createElement('canvas')
-  const size    = 400
-  canvas.width  = size
-  canvas.height = size
+  const canvas = document.createElement('canvas')
+  // Maior dimensão fica com ``outputSize``; a outra é proporcional.
+  const outW = aspect >= 1 ? outputSize : Math.round(outputSize * aspect)
+  const outH = aspect >= 1 ? Math.round(outputSize / aspect) : outputSize
+  canvas.width  = outW
+  canvas.height = outH
 
   const scaleX = image.naturalWidth  / image.width
   const scaleY = image.naturalHeight / image.height
 
   const ctx = canvas.getContext('2d')!
+  // PNG mantém transparência; JPEG recebe fundo branco (melhor pra logo
+  // sobre fundo escuro).
+  if (!outputPng) {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, outW, outH)
+  }
   ctx.drawImage(
     image,
     crop.x      * scaleX,
     crop.y      * scaleY,
     crop.width  * scaleX,
     crop.height * scaleY,
-    0, 0, size, size,
+    0, 0, outW, outH,
   )
-  return canvas.toDataURL('image/jpeg', 0.92)
+  return canvas.toDataURL(outputPng ? 'image/png' : 'image/jpeg', quality)
 }
 
-export function PhotoCropModal({ onConfirm, onClose }: Props) {
+export function PhotoCropModal({
+  onConfirm, onClose,
+  aspect = 1,
+  circularCrop = true,
+  outputSize = 400,
+  title = 'Adicionar foto',
+  confirmLabel = 'Usar esta foto',
+  accept = 'image/*',
+  quality = 0.92,
+  outputPng = false,
+}: Props) {
   const [mode,           setMode]           = useState<Mode>('select')
   const [imgSrc,         setImgSrc]         = useState<string | null>(null)
   const [crop,           setCrop]           = useState<Crop>()
@@ -68,12 +106,14 @@ export function PhotoCropModal({ onConfirm, onClose }: Props) {
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget
-    setCrop(centerAspectCrop(width, height))
+    setCrop(centerAspectCrop(width, height, aspect))
   }
 
   const handleConfirm = async () => {
     if (!imgRef.current || !completedCrop) return
-    const dataUrl = await getCroppedDataUrl(imgRef.current, completedCrop)
+    const dataUrl = await getCroppedDataUrl(
+      imgRef.current, completedCrop, aspect, outputSize, quality, outputPng,
+    )
     onConfirm(dataUrl)
   }
 

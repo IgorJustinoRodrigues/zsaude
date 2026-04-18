@@ -89,6 +89,7 @@ import { SysImportSigtapPage } from '../pages/sys/SysImportSigtapPage'
 import { SysReferencePage } from '../pages/sys/SysReferencePage'
 import { SysCadsusPage } from '../pages/sys/SysCadsusPage'
 import { SysAiPage } from '../pages/sys/SysAiPage'
+import { SysMunicipalityBrandingPage, SysFacilityBrandingPage } from '../pages/sys/SysBrandingPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -127,13 +128,15 @@ export const router = createBrowserRouter([
             element: <SysShell />,
             children: [
               { path: '/sys',                       element: <SysDashboardPage /> },
-              { path: '/sys/municipios',            element: <SysMunicipalityListPage /> },
-              { path: '/sys/municipios/novo',       element: <SysMunicipalityFormPage /> },
-              { path: '/sys/municipios/:id',        element: <SysMunicipalityViewPage /> },
-              { path: '/sys/municipios/:id/editar', element: <SysMunicipalityFormPage /> },
-              { path: '/sys/unidades',              element: <SysFacilityListPage /> },
-              { path: '/sys/unidades/novo',         element: <SysFacilityFormPage /> },
-              { path: '/sys/unidades/:id',          element: <SysFacilityFormPage /> },
+              { path: '/sys/municipios',                  element: <SysMunicipalityListPage /> },
+              { path: '/sys/municipios/novo',             element: <SysMunicipalityFormPage /> },
+              { path: '/sys/municipios/:id',              element: <SysMunicipalityViewPage /> },
+              { path: '/sys/municipios/:id/editar',       element: <SysMunicipalityFormPage /> },
+              { path: '/sys/municipios/:id/personalizar', element: <SysMunicipalityBrandingPage /> },
+              { path: '/sys/unidades',                    element: <SysFacilityListPage /> },
+              { path: '/sys/unidades/novo',               element: <SysFacilityFormPage /> },
+              { path: '/sys/unidades/:id',                element: <SysFacilityFormPage /> },
+              { path: '/sys/unidades/:id/personalizar',   element: <SysFacilityBrandingPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
               { path: '/sys/usuarios/novo',         element: <OpsUserFormPage /> },
               { path: '/sys/usuarios/:id',          element: <OpsUserViewPage /> },
