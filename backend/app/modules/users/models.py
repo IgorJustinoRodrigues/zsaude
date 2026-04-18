@@ -42,6 +42,9 @@ class User(Base, TimestampedMixin):
     login: Mapped[str] = mapped_column(String(60), unique=True, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Nome social — como a pessoa quer ser chamada. Opcional, editado
+    # pelo próprio usuário em "Minha Conta". Quando vazio, usamos ``name``.
+    social_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
     cpf: Mapped[str] = mapped_column(String(11), unique=True, nullable=False, index=True)
     phone: Mapped[str] = mapped_column(String(20), nullable=False, server_default=" ")
 

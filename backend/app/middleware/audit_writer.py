@@ -48,6 +48,8 @@ SKIP_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"/api/v1/admin/users/[^/]+/accesses/[^/]+/permissions$"),
     # PATCH de usuário tem log detalhado no UserService.update.
     re.compile(r"/api/v1/users/[^/]+$"),
+    # Auto-edição ("Minha Conta") tem audit no UserService.update_me.
+    re.compile(r"/api/v1/users/me$"),
     re.compile(r"/api/v1/admin/municipalities/[^/]+$"),
     re.compile(r"/api/v1/admin/facilities/[^/]+$"),
     # Work-context select: serviço grava audit com nomes + módulos concedidos.

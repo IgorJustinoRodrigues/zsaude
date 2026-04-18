@@ -94,6 +94,7 @@ export const ACTION_LABELS: Record<string, string> = {
   user_create:                'Cadastro de usuário',
   user_edit:                  'Edição de usuário',
   user_update:                'Edição de usuário',
+  user_self_update:           'Atualização do próprio perfil',
   user_delete:                'Exclusão de usuário',
   user_activate:              'Ativação de usuário',
   user_deactivate:            'Desativação de usuário',

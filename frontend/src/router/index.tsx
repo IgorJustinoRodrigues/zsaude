@@ -17,6 +17,7 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 // Shared
 import { UsersPage } from '../pages/shared/UsersPage'
 import { NotificationsPage } from '../pages/shared/NotificationsPage'
+import { MinhaContaPage } from '../pages/shared/MinhaContaPage'
 
 // CLN – Clínica
 import { GAHomePage } from '../pages/cln/GAHomePage'
@@ -144,6 +145,7 @@ export const router = createBrowserRouter([
               { path: '/sys/ia',                    element: <SysAiPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
+              { path: '/sys/minha-conta',           element: <MinhaContaPage /> },
             ],
           },
         ],
@@ -162,6 +164,7 @@ export const router = createBrowserRouter([
               // Compartilhadas (ainda exigem contexto, mas não módulo específico)
               { path: '/usuarios',           element: <UsersPage /> },
               { path: '/notificacoes',       element: <NotificationsPage /> },
+              { path: '/minha-conta',        element: <MinhaContaPage /> },
               { path: '/shared/perfis',      element: <RoleListPage /> },
               { path: '/shared/perfis/novo', element: <RoleFormPage /> },
               { path: '/shared/perfis/:id',  element: <RoleDetailPage /> },

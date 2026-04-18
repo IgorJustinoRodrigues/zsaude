@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
   LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download, Database,
-  Sparkles,
+  Sparkles, User,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useTheme } from '../../hooks/useTheme'
@@ -77,7 +77,12 @@ export function SysShell() {
           </button>
 
           {/* Usuário */}
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg">
+          <button
+            type="button"
+            onClick={() => navigate('/sys/minha-conta')}
+            title="Minha conta"
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-violet-900/40 transition-colors text-left"
+          >
             <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-[11px] font-bold text-white shrink-0">
               {user ? initials(user.name) : 'M'}
             </div>
@@ -85,14 +90,15 @@ export function SysShell() {
               <p className="text-xs font-semibold text-white truncate">{user?.name}</p>
               <p className="text-[10px] text-violet-300 tracking-widest uppercase">Administrador</p>
             </div>
-            <button
-              onClick={handleLogout}
-              title="Sair"
-              className="p-1.5 rounded-lg text-violet-400 hover:text-white hover:bg-violet-900/40 transition-colors"
-            >
-              <LogOut size={14} />
-            </button>
-          </div>
+            <User size={14} className="text-violet-400" />
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-violet-300 hover:text-white hover:bg-violet-900/40 transition-colors text-xs"
+          >
+            <LogOut size={14} />
+            Sair
+          </button>
         </div>
       </aside>
 

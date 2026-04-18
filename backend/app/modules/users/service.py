@@ -106,11 +106,25 @@ class UserService:
                 )
 
     async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> User:
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change, diff_fields, snapshot_fields
+        from app.modules.audit.writer import write_audit
+
         user = await self.get_or_404(user_id)
+        before = snapshot_fields(
+            user, ["name", "social_name", "phone", "email", "birth_date", "face_opt_in"]
+        )
+
         if payload.name is not None:
             user.name = payload.name
+        if payload.social_name is not None:
+            user.social_name = payload.social_name
         if payload.phone is not None:
             user.phone = payload.phone
+        if payload.birth_date is not None:
+            user.birth_date = payload.birth_date
+        if payload.face_opt_in is not None:
+            user.face_opt_in = payload.face_opt_in
         if payload.email is not None:
             # checa colisão
             other = await self.repo.get_by_email(payload.email)
@@ -118,6 +132,26 @@ class UserService:
                 raise ConflictError("E-mail já cadastrado para outro usuário.")
             user.email = payload.email
         await self.repo.update(user)
+
+        after = snapshot_fields(
+            user, ["name", "social_name", "phone", "email", "birth_date", "face_opt_in"]
+        )
+        changes = diff_fields(before, after)
+        if changes:
+            actor = get_audit_context().user_name or user.name
+            await write_audit(
+                self.session,
+                module="users",
+                action="user_self_update",
+                severity="info",
+                resource="User",
+                resource_id=str(user.id),
+                description=describe_change(
+                    actor=actor, verb="atualizou os próprios dados",
+                    changed_fields=[c.label for c in changes],
+                ),
+                details={"changes": [c.as_dict() for c in changes]},
+            )
         return user
 
     # ─── Admin: listagem ─────────────────────────────────────────────────────

@@ -23,12 +23,15 @@ class UserRead(CamelModel):
     login: str
     email: EmailStr
     name: str
+    social_name: str = ""
     cpf: str
     phone: str
     status: str
     level: UserLevelLiteral
     primary_role: str
     birth_date: date | None = None
+    current_photo_id: UUID | None = None
+    face_opt_in: bool = True
     created_at: datetime
 
 
@@ -85,6 +88,7 @@ class UserDetail(CamelModel):
     login: str
     email: EmailStr
     name: str
+    social_name: str = ""
     cpf: str
     phone: str
     status: str
@@ -93,6 +97,8 @@ class UserDetail(CamelModel):
     is_active: bool
     is_superuser: bool
     birth_date: date | None = None
+    current_photo_id: UUID | None = None
+    face_opt_in: bool = True
     created_at: datetime
     updated_at: datetime
     municipalities: list[MunicipalityAccessDetail]
@@ -137,9 +143,14 @@ class UserUpdate(CamelModel):
 
 
 class UserUpdateMe(CamelModel):
+    """Campos que o próprio usuário pode editar em "Minha Conta"."""
+
     name: str | None = Field(default=None, min_length=2, max_length=200)
+    social_name: str | None = Field(default=None, max_length=200)
     phone: str | None = Field(default=None, max_length=20)
     email: EmailStr | None = None
+    birth_date: date | None = None
+    face_opt_in: bool | None = None
 
 
 class AdminResetPasswordRequest(CamelModel):
