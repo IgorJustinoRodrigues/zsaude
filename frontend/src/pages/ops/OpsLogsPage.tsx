@@ -10,23 +10,40 @@ import { auditApi, type AuditLogItem } from '../../api/audit'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import {
+  ACTION_LABELS, MODULE_LABELS,
+  labelAction, labelModule, labelSeverity,
+} from '../../lib/auditLabels'
 import { AuditDetails } from '../../components/shared/AuditDetails'
 
 // ─── Meta ─────────────────────────────────────────────────────────────────────
 
-const ACTION_META: Record<string, { label: string; icon: React.ReactNode }> = {
-  login:             { label: 'Login',           icon: <LogIn size={12} /> },
-  logout:            { label: 'Saída',          icon: <LogOut size={12} /> },
-  login_failed:      { label: 'Falha de entrada',    icon: <AlertTriangle size={12} /> },
-  view:              { label: 'Visualização',    icon: <Eye size={12} /> },
-  create:            { label: 'Criação',         icon: <FilePlus size={12} /> },
-  edit:              { label: 'Edição',          icon: <FileEdit size={12} /> },
-  delete:            { label: 'Exclusão',        icon: <Trash2 size={12} /> },
-  export:            { label: 'Exportação',      icon: <Download size={12} /> },
-  print:             { label: 'Impressão',       icon: <Printer size={12} /> },
-  permission_change: { label: 'Permissão',       icon: <ShieldAlert size={12} /> },
-  password_reset:    { label: 'Reset de senha',  icon: <KeyRound size={12} /> },
-  block_user:        { label: 'Bloqueio',        icon: <ShieldOff size={12} /> },
+// Mapa de ícone por ação (visual). Labels vêm de auditLabels.ts.
+const ACTION_ICON: Record<string, React.ReactNode> = {
+  login:                 <LogIn size={12} />,
+  logout:                <LogOut size={12} />,
+  login_failed:          <AlertTriangle size={12} />,
+  view:                  <Eye size={12} />,
+  patient_view:          <Eye size={12} />,
+  patient_search:        <Search size={12} />,
+  patient_lookup:        <Search size={12} />,
+  patient_history_view:  <Eye size={12} />,
+  patient_create:        <FilePlus size={12} />,
+  user_create:           <FilePlus size={12} />,
+  municipality_create:   <FilePlus size={12} />,
+  facility_create:       <FilePlus size={12} />,
+  create:                <FilePlus size={12} />,
+  patient_update:        <FileEdit size={12} />,
+  edit:                  <FileEdit size={12} />,
+  patient_deactivate:    <Trash2 size={12} />,
+  patient_photo_remove:  <Trash2 size={12} />,
+  delete:                <Trash2 size={12} />,
+  patient_photo_download:<Download size={12} />,
+  export:                <Download size={12} />,
+  print:                 <Printer size={12} />,
+  permission_change:     <ShieldAlert size={12} />,
+  password_reset:        <KeyRound size={12} />,
+  block_user:            <ShieldOff size={12} />,
 }
 
 const SEVERITY_STYLE: Record<string, string> = {
@@ -36,33 +53,45 @@ const SEVERITY_STYLE: Record<string, string> = {
   critical: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 font-semibold',
 }
 
-const SEVERITY_LABEL: Record<string, string> = {
-  info: 'Info', warning: 'Aviso', error: 'Erro', critical: 'Crítico',
-}
-
 const ACTION_COLOR: Record<string, string> = {
-  login:             'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
-  logout:            'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800',
-  login_failed:      'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
-  view:              'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
-  create:            'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
-  edit:              'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
-  delete:            'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
-  export:            'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40',
-  print:             'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800',
-  permission_change: 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40',
-  password_reset:    'text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40',
-  block_user:        'text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/60',
+  login:                  'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40',
+  logout:                 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800',
+  login_failed:           'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
+  view:                   'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
+  patient_view:           'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
+  patient_search:         'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
+  patient_lookup:         'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
+  patient_history_view:   'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40',
+  patient_photo_download: 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40',
+  patient_create:         'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
+  user_create:            'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
+  municipality_create:    'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
+  facility_create:        'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
+  create:                 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40',
+  patient_update:         'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
+  edit:                   'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
+  patient_deactivate:     'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
+  patient_photo_remove:   'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
+  delete:                 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40',
+  cadsus_search:          'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40',
+  export:                 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40',
+  print:                  'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800',
+  permission_change:      'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40',
+  password_reset:         'text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-950/40',
+  block_user:             'text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/60',
 }
 
+// Mantém cores por módulo (lowercase — padrão novo do backend).
 const MODULE_COLOR: Record<string, string> = {
-  CLN: '#0ea5e9', DGN: '#8b5cf6', HSP: '#f59e0b',
-  PLN: '#10b981', FSC: '#f97316', OPS: '#6b7280',
-  SYS: '#8b5cf6', AUTH: '#0ea5e9', API: '#64748b',
+  cln: '#0ea5e9', dgn: '#8b5cf6', hsp: '#f59e0b',
+  pln: '#10b981', fsc: '#f97316', ops: '#6b7280',
+  sys: '#8b5cf6', auth: '#0ea5e9', users: '#6366f1',
+  tenants: '#10b981', roles: '#f59e0b', reference: '#8b5cf6',
+  sigtap: '#ec4899', cnes: '#14b8a6', ai: '#d946ef',
 }
 
-const ALL_MODULES = ['SYS', 'AUTH', 'CLN', 'DGN', 'HSP', 'PLN', 'FSC', 'OPS']
-const ALL_ACTIONS = Object.keys(ACTION_META)
+const ALL_MODULES = Object.keys(MODULE_LABELS).filter(m => m === m.toLowerCase())
+const ALL_ACTIONS = Object.keys(ACTION_LABELS)
 const ALL_SEVERITIES = ['info', 'warning', 'error', 'critical']
 const PAGE_SIZE = 20
 
@@ -186,13 +215,13 @@ export function OpsLogsPage() {
         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
           <FilterGroup label="Módulo">
             {['Todos', ...ALL_MODULES].map(m => (
-              <Pill key={m} active={filterModule === m} onClick={() => setFilterModule(m)}>{m}</Pill>
+              <Pill key={m} active={filterModule === m} onClick={() => setFilterModule(m)}>{labelModule(m)}</Pill>
             ))}
           </FilterGroup>
-          <FilterGroup label="Severidade">
+          <FilterGroup label="Gravidade">
             {['Todos', ...ALL_SEVERITIES].map(s => (
               <Pill key={s} active={filterSeverity === s} onClick={() => setFilterSeverity(s)}>
-                {s === 'Todos' ? 'Todos' : SEVERITY_LABEL[s]}
+                {s === 'Todos' ? 'Todos' : labelSeverity(s)}
               </Pill>
             ))}
           </FilterGroup>
@@ -200,7 +229,7 @@ export function OpsLogsPage() {
             <Pill active={filterAction === 'Todos'} onClick={() => setFilterAction('Todos')}>Todas</Pill>
             {ALL_ACTIONS.map(a => (
               <Pill key={a} active={filterAction === a} onClick={() => setFilterAction(a)}>
-                {ACTION_META[a].label}
+                {labelAction(a)}
               </Pill>
             ))}
           </FilterGroup>
@@ -291,8 +320,9 @@ export function OpsLogsPage() {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 function LogDetailModal({ log, onClose }: { log: AuditLogItem; onClose: () => void }) {
-  const actMeta = ACTION_META[log.action] ?? { label: log.action, icon: null }
-  const modColor = MODULE_COLOR[log.module] ?? '#6b7280'
+  const actIcon = ACTION_ICON[log.action] ?? null
+  const actLabel = labelAction(log.action)
+  const modColor = MODULE_COLOR[log.module?.toLowerCase()] ?? '#6b7280'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -300,10 +330,10 @@ function LogDetailModal({ log, onClose }: { log: AuditLogItem; onClose: () => vo
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0', ACTION_COLOR[log.action] ?? 'bg-slate-100 text-slate-500')}>
-              {actMeta.icon}
+              {actIcon}
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{actMeta.label}</h2>
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{actLabel}</h2>
               <p className="text-[11px] text-slate-400">{log.description}</p>
             </div>
           </div>
@@ -315,13 +345,13 @@ function LogDetailModal({ log, onClose }: { log: AuditLogItem; onClose: () => vo
         <div className="p-5 space-y-5 overflow-y-auto max-h-[70vh]">
           <div className="flex items-center gap-2">
             <span className={cn('text-xs font-medium px-2.5 py-1 rounded-full', SEVERITY_STYLE[log.severity] ?? '')}>
-              {SEVERITY_LABEL[log.severity] ?? log.severity}
+              {labelSeverity(log.severity)}
             </span>
             <span
               className="text-xs font-bold px-2.5 py-1 rounded-full"
               style={{ backgroundColor: modColor + '1a', color: modColor }}
             >
-              {log.module}
+              {labelModule(log.module)}
             </span>
           </div>
 
@@ -393,35 +423,35 @@ function Th({ children }: { children: React.ReactNode }) {
 }
 
 function LogRow({ log, onView }: { log: AuditLogItem; onView: () => void }) {
-  const actMeta = ACTION_META[log.action] ?? { label: log.action, icon: null }
-  const modColor = MODULE_COLOR[log.module] ?? '#6b7280'
+  const actIcon = ACTION_ICON[log.action] ?? null
+  const actLabel = labelAction(log.action)
+  const modColor = MODULE_COLOR[log.module?.toLowerCase()] ?? '#6b7280'
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
       <td className="px-4 py-3 whitespace-nowrap">
         <p className="text-xs text-slate-700 dark:text-slate-200">{fmtDateTime(log.at)}</p>
       </td>
       <td className="px-4 py-3">
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{log.userName || '—'}</p>
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[160px]">{log.userName || 'Sistema'}</p>
         <p className="text-[10px] font-mono text-slate-400">{log.ip || '—'}</p>
       </td>
       <td className="px-4 py-3">
         <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium', ACTION_COLOR[log.action] ?? 'bg-slate-100 text-slate-500')}>
-          {actMeta.icon}
-          {actMeta.label}
+          {actIcon}
+          {actLabel}
         </div>
       </td>
       <td className="px-4 py-3">
         <p className="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[200px]">{log.description}</p>
-        <p className="text-[10px] text-slate-400 font-mono">{log.resource}</p>
       </td>
       <td className="px-4 py-3">
         <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: modColor + '1a', color: modColor }}>
-          {log.module}
+          {labelModule(log.module)}
         </span>
       </td>
       <td className="px-4 py-3">
         <span className={cn('text-xs px-2 py-0.5 rounded-full', SEVERITY_STYLE[log.severity] ?? '')}>
-          {SEVERITY_LABEL[log.severity] ?? log.severity}
+          {labelSeverity(log.severity)}
         </span>
       </td>
       <td className="px-4 py-3 text-right">
@@ -434,18 +464,19 @@ function LogRow({ log, onView }: { log: AuditLogItem; onView: () => void }) {
 }
 
 function MobileLogCard({ log, onView }: { log: AuditLogItem; onView: () => void }) {
-  const actMeta = ACTION_META[log.action] ?? { label: log.action, icon: null }
-  const modColor = MODULE_COLOR[log.module] ?? '#6b7280'
+  const actIcon = ACTION_ICON[log.action] ?? null
+  const actLabel = labelAction(log.action)
+  const modColor = MODULE_COLOR[log.module?.toLowerCase()] ?? '#6b7280'
   return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5 min-w-0">
           <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5', ACTION_COLOR[log.action] ?? 'bg-slate-100 text-slate-500')}>
-            {actMeta.icon}
+            {actIcon}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{log.description}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{log.userName || '—'} · {log.ip || '—'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{log.userName || 'Sistema'} · {log.ip || '—'}</p>
           </div>
         </div>
         <button onClick={onView} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
@@ -453,11 +484,12 @@ function MobileLogCard({ log, onView }: { log: AuditLogItem; onView: () => void 
         </button>
       </div>
       <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <span className="text-[10px] text-slate-400">{actLabel}</span>
         <span className={cn('text-xs px-2 py-0.5 rounded-full', SEVERITY_STYLE[log.severity] ?? '')}>
-          {SEVERITY_LABEL[log.severity] ?? log.severity}
+          {labelSeverity(log.severity)}
         </span>
         <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ backgroundColor: modColor + '1a', color: modColor }}>
-          {log.module}
+          {labelModule(log.module)}
         </span>
         <span className="text-[10px] text-slate-400 ml-auto">{fmtDateTime(log.at)}</span>
       </div>

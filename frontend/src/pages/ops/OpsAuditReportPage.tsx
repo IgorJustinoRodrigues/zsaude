@@ -47,10 +47,10 @@ const ACTION_COLOR: Record<LogAction, string> = {
 }
 
 const SEVERITY_META: Record<LogSeverity, { label: string; badge: string; icon: React.ReactNode }> = {
-  info:     { label: 'Info',    badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 border-sky-200 dark:border-sky-800',           icon: <Info size={13} /> },
-  warning:  { label: 'Aviso',  badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800', icon: <TriangleAlert size={13} /> },
-  error:    { label: 'Erro',   badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-800',             icon: <TriangleAlert size={13} /> },
-  critical: { label: 'Crítico',badge: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border-red-300 dark:border-red-700',           icon: <Flame size={13} /> },
+  info:     { label: 'Informativo', badge: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 border-sky-200 dark:border-sky-800',           icon: <Info size={13} /> },
+  warning:  { label: 'Atenção',     badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800', icon: <TriangleAlert size={13} /> },
+  error:    { label: 'Erro',        badge: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-800',             icon: <TriangleAlert size={13} /> },
+  critical: { label: 'Crítico',     badge: 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border-red-300 dark:border-red-700',           icon: <Flame size={13} /> },
 }
 
 const MODULE_COLOR: Record<string, string> = {
