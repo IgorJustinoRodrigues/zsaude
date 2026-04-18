@@ -123,23 +123,34 @@ async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
     )
 
     def _do_create(connection):
-        result = connection.execute(
+        from app.db.schema_migrator import evolve_schema
+
+        count_tables = connection.execute(
             text("SELECT COUNT(*) FROM user_tables"),
-        )
-        if result.scalar() > 0:
-            log.info("tenant_tables_exist_skip", schema=schema)
-            return
-        TenantBase.metadata.create_all(connection)
-        # Índice vetorial (AI Vector Search) — não é parte da metadata
-        # SQLAlchemy; criamos via SQL do adapter.
-        try:
-            connection.execute(text(vector_index_sql))
-        except Exception as e:  # noqa: BLE001 - índice é opcional pra startup
-            log.warning(
-                "tenant_vector_index_create_failed",
-                schema=schema,
-                error=str(e),
-            )
+        ).scalar() or 0
+
+        if count_tables == 0:
+            TenantBase.metadata.create_all(connection)
+            try:
+                connection.execute(text(vector_index_sql))
+            except Exception as e:  # noqa: BLE001 - índice é opcional pra startup
+                log.warning(
+                    "tenant_vector_index_create_failed",
+                    schema=schema,
+                    error=str(e),
+                )
+        else:
+            # Já existe — aplica diff pra pegar colunas novas nos models.
+            result = evolve_schema(connection, TenantBase.metadata)
+            if result.added_columns:
+                log.info(
+                    "tenant_schema_evolved",
+                    schema=schema,
+                    added=result.added_columns,
+                )
+            if result.warnings:
+                for w in result.warnings:
+                    log.warning("tenant_evolve_warning", schema=schema, msg=w)
 
     try:
         async with tmp_eng.begin() as conn:
@@ -147,6 +158,29 @@ async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
         log.info("tenant_tables_created_oracle", schema=schema)
     finally:
         await tmp_eng.dispose()
+
+    # Registra versão do tenant em APP.SCHEMA_VERSION — conecta com o user
+    # admin (da URL original) que tem privilégio de escrever em APP.*.
+    from app.db.schema_version import compute_fingerprint, write_schema_record
+    admin_eng = _create(
+        app_settings.database_url,
+        pool_size=1, max_overflow=0,
+        execution_options={"schema_translate_map": {"app": None}},
+    )
+    try:
+        async with admin_eng.begin() as conn:
+            await conn.run_sync(
+                lambda c: write_schema_record(
+                    c, schema,
+                    fingerprint=compute_fingerprint(TenantBase.metadata),
+                    table_count=len(TenantBase.metadata.tables),
+                    details={"kind": "tenant", "vector_index": "ix_pfe_embedding_hnsw"},
+                )
+            )
+    except Exception as e:  # noqa: BLE001
+        log.warning("schema_version_record_failed", schema=schema, error=str(e))
+    finally:
+        await admin_eng.dispose()
 
 
 def _run_alembic_upgrade_sync(schema: str, revision: str = "head") -> None:

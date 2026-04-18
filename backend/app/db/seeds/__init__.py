@@ -20,6 +20,8 @@ Uso::
 
 from __future__ import annotations
 
+import time
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -30,16 +32,26 @@ from app.db.seeds.system_settings import apply as apply_system_settings
 log = get_logger(__name__)
 
 
+async def _time(name: str, session: AsyncSession, fn) -> int:
+    """Cronometra a execução de um seed e loga estruturado."""
+    t0 = time.monotonic()
+    rows = await fn(session)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    log.info("seed_applied", name=name, rows=rows, duration_ms=duration_ms)
+    return rows
+
+
 async def apply_all_seeds(session: AsyncSession) -> dict[str, int]:
     """Aplica todos os seeds do schema app em ordem. Idempotente.
 
     Retorna dict com a contagem de linhas inseridas/atualizadas por seed.
+    Loga ``seed_applied`` com ``name``, ``rows``, ``duration_ms`` por item.
     """
     result: dict[str, int] = {}
-    result["system_settings"] = await apply_system_settings(session)
-    result["reference_tables"] = await apply_reference_tables(session)
-    result["ai_catalog"] = await apply_ai_catalog(session)
-    log.info("seeds_applied", **result)
+    result["system_settings"] = await _time("system_settings", session, apply_system_settings)
+    result["reference_tables"] = await _time("reference_tables", session, apply_reference_tables)
+    result["ai_catalog"] = await _time("ai_catalog", session, apply_ai_catalog)
+    log.info("seeds_applied_all", **result)
     return result
 
 
