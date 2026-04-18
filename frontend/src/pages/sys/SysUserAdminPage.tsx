@@ -10,6 +10,9 @@ import { toast } from '../../store/toastStore'
 import { useAuthStore } from '../../store/authStore'
 import { initials, cn } from '../../lib/utils'
 import { BirthdaysPanel } from '../../components/shared/BirthdaysPanel'
+import { ExportMenuButton } from '../../components/ui/ExportMenuButton'
+import type { ExportBranding, ExportOptions } from '../../lib/export'
+import { useBranding } from '../../hooks/useBranding'
 
 type LevelFilter = 'master' | 'admin' | 'all'
 type Tab = 'users' | 'birthdays'
@@ -90,6 +93,7 @@ function UsersTab({
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [level, setLevel] = useState<LevelFilter>('all')
+  const branding = useBranding()
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -128,6 +132,10 @@ function UsersTab({
             </button>
           ))}
         </div>
+        <ExportMenuButton<UserListItem>
+          options={buildExportOptions(filtered, level, branding)}
+          pdfOrientation="landscape"
+        />
       </div>
 
       {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">{error}</p>}
@@ -166,6 +174,32 @@ function UsersTab({
       )}
     </div>
   )
+}
+
+// ─── Export padrão do sistema ─────────────────────────────────────────────────
+
+function buildExportOptions(
+  items: UserListItem[],
+  level: LevelFilter,
+  branding?: ExportBranding,
+): ExportOptions<UserListItem> {
+  const levelLabel = level === 'all' ? 'MASTER + ADMIN' : level.toUpperCase()
+  return {
+    title: 'Administradores da plataforma',
+    subtitle: `${levelLabel} · ${items.length} ${items.length === 1 ? 'usuário' : 'usuários'}`,
+    filename: `administradores-${level}`,
+    rows: items,
+    columns: [
+      { header: 'Nome',    get: u => u.name },
+      { header: 'E-mail',  get: u => u.email ?? '—' },
+      { header: 'CPF',     get: u => u.cpf ?? '—', width: 110 },
+      { header: 'Telefone', get: u => u.phone || '—', width: 110 },
+      { header: 'Perfil',  get: u => u.primaryRole || '—' },
+      { header: 'Nível',   get: u => u.level.toUpperCase(), align: 'center', width: 70 },
+      { header: 'Status',  get: u => u.status, align: 'center', width: 70 },
+    ],
+    branding,
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

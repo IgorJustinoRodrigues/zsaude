@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
-  Eye, EyeOff, RefreshCw, Check, X,
+  Eye, EyeOff, RefreshCw, Check, X, Shield, Info,
 } from 'lucide-react'
 import { userApi, type UserDetail, type UserStatus, type UserLevel } from '../../api/users'
 import { rolesAdminApi, type RoleSummary } from '../../api/roles'
@@ -12,6 +12,7 @@ import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 import { UserPhotoField } from './components/UserPhotoField'
+import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
 
 const STATUSES: UserStatus[] = ['Ativo', 'Inativo', 'Bloqueado']
 const LEVELS: UserLevel[] = ['master', 'admin', 'user']
@@ -242,24 +243,45 @@ export function OpsUserFormPage() {
       else if (!pwdValid) e.password = 'A senha não atende aos requisitos'
     }
 
-    // Validação flexível: permite salvar sem vínculos (usuário sem acessos).
-    accesses.forEach((m, mi) => {
-      if (!m.municipalityId) {
-        const hasValue = m.facilities.some(f => f.facilityId || f.roleId)
-        if (hasValue) e[`mun-${mi}`] = 'Selecione o município'
-        return
-      }
-      m.facilities.forEach((f, fi) => {
-        if (!f.facilityId && !f.roleId) return // placeholder
-        if (!f.facilityId) e[`fac-${mi}-${fi}`]  = 'Selecione a unidade'
-        if (!f.roleId)     e[`role-${mi}-${fi}`] = 'Selecione o perfil'
+    // MASTER não tem vínculos operacionais — pula validação de acessos.
+    // ADMIN exige só município (sem unidade/perfil operacional).
+    // USER exige o triplo município + unidade + perfil.
+    if (level === 'admin') {
+      const seen = new Set<string>()
+      accesses.forEach((m, mi) => {
+        if (!m.municipalityId) return
+        if (seen.has(m.municipalityId)) e[`mun-${mi}`] = 'Município já selecionado'
+        seen.add(m.municipalityId)
       })
-    })
+    } else if (level === 'user') {
+      accesses.forEach((m, mi) => {
+        if (!m.municipalityId) {
+          const hasValue = m.facilities.some(f => f.facilityId || f.roleId)
+          if (hasValue) e[`mun-${mi}`] = 'Selecione o município'
+          return
+        }
+        m.facilities.forEach((f, fi) => {
+          if (!f.facilityId && !f.roleId) return // placeholder
+          if (!f.facilityId) e[`fac-${mi}-${fi}`]  = 'Selecione a unidade'
+          if (!f.roleId)     e[`role-${mi}-${fi}`] = 'Selecione o perfil'
+        })
+      })
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   const buildPayloadAccesses = () => {
+    // MASTER: sem vínculos operacionais — enxerga tudo.
+    if (level === 'master') return []
+    // ADMIN: só vínculo de município (sem unidade/perfil operacional).
+    if (level === 'admin') {
+      const uniqueMunIds = Array.from(
+        new Set(accesses.filter(m => m.municipalityId).map(m => m.municipalityId)),
+      )
+      return uniqueMunIds.map(id => ({ municipalityId: id, facilities: [] }))
+    }
+    // USER: município + unidades com perfil operacional.
     return accesses
       .filter(m => m.municipalityId)
       .map(m => ({
@@ -503,7 +525,95 @@ export function OpsUserFormPage() {
         </FormSection>
       )}
 
-      {/* Acessos */}
+      {/* Acessos — varia por nível:
+          · MASTER: sem vínculos (enxerga tudo).
+          · ADMIN:  só lista de municípios administrados.
+          · USER:   município + unidade + perfil operacional. */}
+      {level === 'master' ? (
+        <FormSection
+          title="Acesso à plataforma"
+          subtitle="Usuário MASTER administra a plataforma inteira."
+        >
+          <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/60 dark:bg-violet-950/30">
+            <Shield size={15} className="text-violet-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              MASTER enxerga todos os municípios, unidades e módulos sem
+              restrição. Não é necessário (nem recomendado) vincular a unidades
+              ou perfis operacionais — as permissões são implícitas ao nível.
+            </p>
+          </div>
+        </FormSection>
+      ) : level === 'admin' ? (
+        (() => {
+          const selectedMunIds = accesses.map(m => m.municipalityId).filter(Boolean)
+          const allPicked = selectedMunIds.length >= municipalities.length
+          return (
+        <FormSection
+          title="Municípios administrados"
+          subtitle="Municípios que este administrador pode gerenciar. Permissões operacionais não se aplicam ao nível ADMIN."
+          action={
+            <button type="button" onClick={addMunicipality} disabled={allPicked}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Plus size={13} />
+              Adicionar município
+            </button>
+          }
+        >
+          <div className="space-y-2">
+            {accesses.map((mun, mi) => (
+              <div key={mi} className="flex items-center gap-3 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/40 dark:bg-slate-800/30">
+                <div className="flex-1 min-w-0">
+                  <ComboBox
+                    value={mun.municipalityId || null}
+                    onChange={val => setMunicipality(mi, val ?? '')}
+                    invalid={!!errors[`mun-${mi}`]}
+                    placeholder="Selecione o município..."
+                    options={municipalities
+                      .filter(m => !selectedMunIds.includes(m.id) || m.id === mun.municipalityId)
+                      .map<ComboBoxOption>(m => ({ value: m.id, label: m.name, hint: m.state }))}
+                  />
+                  {errors[`mun-${mi}`] && <p className="text-[11px] text-red-500 mt-1">{errors[`mun-${mi}`]}</p>}
+                </div>
+                {accesses.length > 1 && (
+                  <button type="button" onClick={() => removeMunicipality(mi)}
+                    className="p-2 rounded-lg text-slate-300 dark:text-slate-600 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            <div className="flex items-start gap-2 text-[11px] text-slate-500 px-1 pt-1">
+              <Info size={12} className="mt-0.5 shrink-0" />
+              <p>
+                Pode ficar vazio — um ADMIN sem municípios não consegue
+                gerenciar ninguém até ser vinculado.
+              </p>
+            </div>
+
+            {outOfScope.length > 0 && (
+              <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/60 dark:bg-slate-900/40">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                  Municípios fora do seu escopo
+                </p>
+                <p className="text-xs text-slate-500 mb-3">
+                  Este usuário também administra os municípios abaixo. Você não
+                  pode editá-los; eles serão preservados como estão.
+                </p>
+                <ul className="space-y-1">
+                  {outOfScope.map(m => (
+                    <li key={m.municipalityId} className="text-xs text-slate-600 dark:text-slate-300">
+                      · <span className="font-medium">{m.municipalityName}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </FormSection>
+          )
+        })()
+      ) : (
       <FormSection
         title="Acessos por município"
         subtitle="Defina as unidades e módulos acessíveis. Pode ficar vazio para cadastrar sem acessos."
@@ -530,14 +640,18 @@ export function OpsUserFormPage() {
                     {mun.expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <select value={mun.municipalityId} onChange={e => setMunicipality(mi, e.target.value)}
-                      className={cn('w-full bg-transparent text-sm font-semibold outline-none',
-                        mun.municipalityId ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500')}>
-                      <option value="">Selecione o município...</option>
-                      {municipalities.map(m => (
-                        <option key={m.id} value={m.id}>{m.name} – {m.state}</option>
-                      ))}
-                    </select>
+                    <ComboBox
+                      value={mun.municipalityId || null}
+                      onChange={val => setMunicipality(mi, val ?? '')}
+                      invalid={!!errors[`mun-${mi}`]}
+                      placeholder="Selecione o município..."
+                      options={municipalities
+                        .filter(m =>
+                          !accesses.some((a, ai) => ai !== mi && a.municipalityId === m.id)
+                          || m.id === mun.municipalityId,
+                        )
+                        .map<ComboBoxOption>(m => ({ value: m.id, label: m.name, hint: m.state }))}
+                    />
                     {errors[`mun-${mi}`] && <p className="text-[11px] text-red-500 mt-0.5">{errors[`mun-${mi}`]}</p>}
                   </div>
                   {accesses.length > 1 && (
@@ -554,25 +668,27 @@ export function OpsUserFormPage() {
                       <div key={fi} className="px-4 py-4">
                         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-start">
                           <Field label="Unidade" error={errors[`fac-${mi}-${fi}`]}>
-                            <select value={fac.facilityId}
-                              onChange={e => setFacilityField(mi, fi, 'facilityId', e.target.value)}
-                              disabled={!mun.municipalityId} className={inputCls(!!errors[`fac-${mi}-${fi}`])}>
-                              <option value="">Selecione...</option>
-                              {availableFacilities
+                            <ComboBox
+                              value={fac.facilityId || null}
+                              onChange={val => setFacilityField(mi, fi, 'facilityId', val ?? '')}
+                              disabled={!mun.municipalityId}
+                              invalid={!!errors[`fac-${mi}-${fi}`]}
+                              placeholder="Selecione..."
+                              options={availableFacilities
                                 .filter(f => !selectedFacIds.includes(f.id) || f.id === fac.facilityId)
-                                .map(f => <option key={f.id} value={f.id}>{f.shortName}</option>)}
-                            </select>
+                                .map<ComboBoxOption>(f => ({ value: f.id, label: f.shortName }))}
+                            />
                           </Field>
                           <Field label="Perfil" error={errors[`role-${mi}-${fi}`]}>
-                            <select value={fac.roleId}
-                              onChange={e => setFacilityField(mi, fi, 'roleId', e.target.value)}
+                            <ComboBox
+                              value={fac.roleId || null}
+                              onChange={val => setFacilityField(mi, fi, 'roleId', val ?? '')}
                               disabled={!mun.municipalityId}
-                              className={inputCls(!!errors[`role-${mi}-${fi}`])}>
-                              <option value="">Selecione...</option>
-                              {rolesForMunicipality(mun.municipalityId).map(r => (
-                                <option key={r.id} value={r.id}>{r.name}</option>
-                              ))}
-                            </select>
+                              invalid={!!errors[`role-${mi}-${fi}`]}
+                              placeholder="Selecione..."
+                              options={rolesForMunicipality(mun.municipalityId)
+                                .map<ComboBoxOption>(r => ({ value: r.id, label: r.name }))}
+                            />
                           </Field>
                           <div className="flex items-end pb-0.5">
                             {mun.facilities.length > 1
@@ -628,6 +744,7 @@ export function OpsUserFormPage() {
           )}
         </div>
       </FormSection>
+      )}
 
       {/* Ações */}
       <div className="flex items-center justify-end gap-3 pt-6 pb-6 border-t border-slate-100 dark:border-slate-800 mt-2">
