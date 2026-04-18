@@ -22,7 +22,7 @@
  */
 
 import { exportCsv } from './csv'
-import { exportPdf } from './pdf'
+import { exportPdf, buildPdfBlob } from './pdf'
 import type { ExportFormat, ExportOptions } from './types'
 
 export function exportData<T>(
@@ -35,6 +35,9 @@ export function exportData<T>(
   // TS cobre isso; em runtime, silenciosamente não faz nada.
 }
 
-export type { ExportColumn, ExportOptions, ExportFormat, Align } from './types'
+/** Retorna o PDF como Blob (sem side-effect) — use pra preview em iframe. */
+export { buildPdfBlob }
+
+export type { ExportColumn, ExportOptions, ExportBranding, ExportFormat, Align } from './types'
 export type { HighlightTone } from './brand'
 export { BRAND } from './brand'

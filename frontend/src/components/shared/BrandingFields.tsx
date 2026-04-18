@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Upload, Trash2, Loader2, Image as ImageIcon, Info } from 'lucide-react'
 import {
   brandingApi, type BrandingRaw, type BrandingScope, type BrandingUpdateInput,
@@ -6,36 +6,55 @@ import {
 import { HttpError, apiFetchBlob } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { PhotoCropModal } from '../ui/PhotoCropModal'
 
 interface Props {
   scope: BrandingScope
   /** ID do município ou unidade. ``null`` = recurso ainda não salvo (esconde a seção). */
   scopeId: string | null
-  /**
-   * Na unidade, texto de ajuda indicando que campos em branco herdam da cidade.
-   * Na cidade, texto explicando que a config é base pra todas as unidades.
-   */
+  /** Texto explicando a herança (opcional). */
   inheritHint?: string
+  /**
+   * Callback chamado a cada mudança no form (sem precisar salvar).
+   * Usado pela página de personalização pra atualizar a pré-visualização
+   * do PDF ao vivo.
+   */
+  onDraftChange?: (draft: BrandingDraft) => void
 }
 
-const LOGO_MIMES = 'image/jpeg,image/png,image/webp,image/svg+xml'
-const LOGO_MAX_BYTES = 5 * 1024 * 1024
-const LOGO_MAX_DIM = 160  // preview em pixels
+export interface BrandingDraft {
+  displayName: string
+  headerLine1: string
+  headerLine2: string
+  footerText: string
+  primaryColor: string
+  /** DataURL da logo atual (do servidor ou do crop, antes de upload). */
+  logoDataUrl: string | null
+}
+
+// Proporção retangular — logos institucionais são tipicamente horizontais.
+// 3:1 casa bem com o cabeçalho do PDF e segue o padrão do mercado.
+const LOGO_ASPECT = 3
 
 /**
- * Seção "Identidade visual" usada nos forms de Município e Unidade.
+ * Seção "Identidade visual" usada na tela dedicada de personalização.
  *
- * Reusa a API ``brandingApi`` — busca a config do escopo ao montar,
- * mantém estado local dos campos, grava via PATCH ao clicar em "Salvar
- * identidade". Campos em branco significam "herdar" (cidade herda do
- * sistema; unidade herda da cidade).
+ * - Upload de logo vai por um modal de crop retangular (3:1) com fundo
+ *   branco (JPEG). Se o usuário preferir preservar transparência,
+ *   subir PNG/SVG direto via arrastar.
+ * - Campos textuais (nome, cor, cabeçalho, rodapé) são controlados
+ *   localmente; ``onDraftChange`` notifica o pai a cada tecla.
+ * - "Salvar identidade" grava via PATCH.
  */
-export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
+export function BrandingFields({
+  scope, scopeId, inheritHint, onDraftChange,
+}: Props) {
   const [raw, setRaw] = useState<BrandingRaw | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [logoUploading, setLogoUploading] = useState(false)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [showCrop, setShowCrop] = useState(false)
 
   // Campos controlados
   const [displayName, setDisplayName] = useState('')
@@ -44,7 +63,13 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
   const [footerText, setFooterText] = useState('')
   const [primaryColor, setPrimaryColor] = useState('')
 
-  const fileRef = useRef<HTMLInputElement>(null)
+  // Propaga draft a cada mudança — usado pela preview ao vivo do PDF.
+  useEffect(() => {
+    onDraftChange?.({
+      displayName, headerLine1, headerLine2, footerText, primaryColor,
+      logoDataUrl: logoPreview,
+    })
+  }, [onDraftChange, displayName, headerLine1, headerLine2, footerText, primaryColor, logoPreview])
 
   const load = useCallback(async () => {
     if (!scopeId) { setLoading(false); return }
@@ -75,8 +100,15 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
     apiFetchBlob(brandingApi.logoUrl(raw.logoFileId))
       .then(blob => {
         if (!alive) return
-        url = URL.createObjectURL(blob)
-        setLogoPreview(url)
+        // Converte pra dataURL pra preview + pra passar pro PDF de preview
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (alive && typeof reader.result === 'string') {
+            setLogoPreview(reader.result)
+          }
+        }
+        reader.readAsDataURL(blob)
+        url = URL.createObjectURL(blob)  // mantém referência pra cleanup
       })
       .catch(() => { if (alive) setLogoPreview(null) })
     return () => {
@@ -112,18 +144,23 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
     } finally { setSaving(false) }
   }
 
-  async function handleLogoPicked(file: File) {
+  /** Recebe o dataURL já cropado pelo modal e faz upload. */
+  async function handleCropConfirm(dataUrl: string) {
+    setShowCrop(false)
     if (!scopeId) return
-    if (file.size > LOGO_MAX_BYTES) {
-      toast.error('Logo muito grande', 'Máximo 5 MB.')
-      return
-    }
     setLogoUploading(true)
+    // Atualização otimista — preview já mostra imediato
+    setLogoPreview(dataUrl)
     try {
+      // Converte dataURL → Blob pra subir como file
+      const blob = dataUrlToBlob(dataUrl)
+      const file = new File([blob], 'logo.jpg', { type: blob.type })
       const res = await brandingApi.uploadLogo(scope, scopeId, file)
       setRaw(r => r ? { ...r, logoFileId: res.logoFileId } : r)
       toast.success('Logo atualizada')
     } catch (e) {
+      // Rollback do preview se falhar
+      setLogoPreview(raw?.logoFileId ? logoPreview : null)
       const msg = e instanceof HttpError ? e.message : 'Falha ao enviar logo.'
       toast.error('Erro', msg)
     } finally { setLogoUploading(false) }
@@ -161,71 +198,61 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
         </div>
       )}
 
-      {/* Logo */}
-      <div className="flex items-start gap-5">
-        <div className="relative shrink-0">
+      {/* Logo — preview retangular 3:1 */}
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Logo</label>
+        <div className="relative">
           <div
-            className="w-40 h-40 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden"
-            style={{ maxWidth: LOGO_MAX_DIM, maxHeight: LOGO_MAX_DIM }}
+            className={cn(
+              'w-full h-24 rounded-xl bg-white border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden',
+              'dark:bg-slate-800/30',
+            )}
           >
             {logoPreview ? (
               <img src={logoPreview} alt="Logo" className="max-w-full max-h-full object-contain" />
             ) : (
-              <ImageIcon size={36} className="text-slate-300 dark:text-slate-600" />
+              <div className="flex items-center gap-2 text-slate-300 dark:text-slate-600">
+                <ImageIcon size={28} />
+                <span className="text-xs">Nenhuma logo</span>
+              </div>
             )}
           </div>
           {logoUploading && (
-            <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/30 rounded-xl flex items-center justify-center">
               <Loader2 size={18} className="text-white animate-spin" />
             </div>
           )}
         </div>
-        <div className="flex-1 space-y-2">
-          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-            Logo exibida nos PDFs e (futuramente) nos painéis desta {scope === 'municipality' ? 'cidade' : 'unidade'}.
-            <br />
-            Formatos: JPEG, PNG, WEBP ou SVG · Máx. 5 MB.
-            <br />
-            Recomendado: <strong>SVG</strong> ou PNG com fundo transparente.
-          </p>
-          <div className="flex gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept={LOGO_MIMES}
-              hidden
-              onChange={e => {
-                const f = e.target.files?.[0]
-                if (f) void handleLogoPicked(f)
-                e.target.value = ''
-              }}
-            />
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            onClick={() => setShowCrop(true)}
+            disabled={logoUploading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+          >
+            <Upload size={13} />
+            {raw?.logoFileId ? 'Trocar logo' : 'Enviar logo'}
+          </button>
+          {raw?.logoFileId && (
             <button
               type="button"
-              onClick={() => fileRef.current?.click()}
+              onClick={handleLogoRemove}
               disabled={logoUploading}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
             >
-              <Upload size={13} />
-              {raw?.logoFileId ? 'Trocar logo' : 'Enviar logo'}
+              <Trash2 size={12} />
+              Remover
             </button>
-            {raw?.logoFileId && (
-              <button
-                type="button"
-                onClick={handleLogoRemove}
-                disabled={logoUploading}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
-              >
-                <Trash2 size={12} />
-                Remover
-              </button>
-            )}
-          </div>
+          )}
+          <p className="text-[11px] text-slate-400 leading-tight">
+            Proporção 3:1 (horizontal) · máx. 5 MB · fundo branco ou PNG transparente.
+          </p>
         </div>
       </div>
 
       {/* Campos textuais */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <FormField label="Nome institucional" hint="Ex: Prefeitura de Anápolis — Secretaria de Saúde">
           <input
             value={displayName}
@@ -234,7 +261,8 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
             className={inputCls}
           />
         </FormField>
-        <FormField label="Cor primária" hint="Hex, ex: #10b981">
+
+        <FormField label="Cor primária" hint="Aplicada no nome e destaques do PDF">
           <div className="flex gap-2 items-center">
             <input
               type="color"
@@ -251,14 +279,16 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
           </div>
         </FormField>
 
-        <FormField label="Cabeçalho — linha 1" hint="Aparece no topo dos PDFs">
-          <input value={headerLine1} onChange={e => setHeaderLine1(e.target.value)} className={inputCls} />
-        </FormField>
-        <FormField label="Cabeçalho — linha 2" hint="CNPJ, inscrição, etc.">
-          <input value={headerLine2} onChange={e => setHeaderLine2(e.target.value)} className={inputCls} />
-        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Cabeçalho — linha 1" hint="Topo do PDF (à direita)">
+            <input value={headerLine1} onChange={e => setHeaderLine1(e.target.value)} className={inputCls} />
+          </FormField>
+          <FormField label="Cabeçalho — linha 2" hint="CNPJ, inscrição, etc.">
+            <input value={headerLine2} onChange={e => setHeaderLine2(e.target.value)} className={inputCls} />
+          </FormField>
+        </div>
 
-        <FormField label="Rodapé" hint="Endereço, contatos, observações" className="sm:col-span-2">
+        <FormField label="Rodapé" hint="Endereço, contatos, observações (centralizado)">
           <textarea
             value={footerText}
             onChange={e => setFooterText(e.target.value)}
@@ -279,6 +309,20 @@ export function BrandingFields({ scope, scopeId, inheritHint }: Props) {
           Salvar identidade
         </button>
       </div>
+
+      {showCrop && (
+        <PhotoCropModal
+          onConfirm={handleCropConfirm}
+          onClose={() => setShowCrop(false)}
+          aspect={LOGO_ASPECT}
+          circularCrop={false}
+          outputSize={900}          // 900x300 dá boa qualidade sem inchar upload
+          quality={0.95}
+          title="Enviar logo"
+          confirmLabel="Usar esta logo"
+          accept="image/jpeg,image/png,image/webp"
+        />
+      )}
     </div>
   )
 }
@@ -298,4 +342,13 @@ function FormField({
       {hint && <p className="text-[11px] text-slate-400 leading-relaxed">{hint}</p>}
     </div>
   )
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, b64] = dataUrl.split(',', 2)
+  const mime = header.match(/^data:([^;]+);base64$/)?.[1] || 'image/jpeg'
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
 }

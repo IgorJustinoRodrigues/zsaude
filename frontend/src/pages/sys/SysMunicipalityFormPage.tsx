@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, MapPin, Pencil, Check, X, Plus, Trash2, Crosshair, Hexagon, Users,
+  ArrowLeft, MapPin, Pencil, Check, Plus, Trash2, Crosshair, Hexagon, Users,
 } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail, type NeighborhoodInput } from '../../api/sys'
 import { ibgeApi, type IbgeEstado, type IbgeMunicipio } from '../../api/ibge'

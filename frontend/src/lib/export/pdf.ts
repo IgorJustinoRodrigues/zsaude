@@ -18,10 +18,16 @@ type Orientation = 'portrait' | 'landscape'
  *
  * ``orientation='landscape'`` quando a tabela tem muitas colunas.
  */
-export function exportPdf<T>(
+/**
+ * Monta o documento jsPDF aplicando layout padronizado + branding.
+ *
+ * Separado de ``exportPdf`` pra permitir usos sem side-effect (preview
+ * em iframe, testes, anexar em e-mail, etc.).
+ */
+export function buildPdfDoc<T>(
   opts: ExportOptions<T>,
   orientation: Orientation = 'portrait',
-): void {
+): jsPDF {
   const doc = new jsPDF({ orientation, unit: 'pt', format: 'a4' })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
@@ -68,21 +74,21 @@ export function exportPdf<T>(
       font: 'helvetica',
       fontSize: 9.5,
       cellPadding: { top: 7, bottom: 7, left: 10, right: 10 },
-      lineColor: BRAND.divider as unknown as number[],
+      lineColor: [...BRAND.divider] as [number, number, number],
       lineWidth: 0.5,
-      textColor: BRAND.body as unknown as number[],
+      textColor: [...BRAND.body] as [number, number, number],
       overflow: 'linebreak',
     },
     headStyles: {
-      fillColor: BRAND.headerBg as unknown as number[],
-      textColor: BRAND.headerFg as unknown as number[],
+      fillColor: [...BRAND.headerBg] as [number, number, number],
+      textColor: [...BRAND.headerFg] as [number, number, number],
       fontStyle: 'bold',
       fontSize: 9,
       halign: 'left',
       cellPadding: { top: 8, bottom: 8, left: 10, right: 10 },
     },
     alternateRowStyles: {
-      fillColor: BRAND.stripe as unknown as number[],
+      fillColor: [...BRAND.stripe] as [number, number, number],
     },
 
     // Alinhamento + largura + bold por coluna
@@ -101,8 +107,8 @@ export function exportPdf<T>(
       const tone = highlights[data.row.index]
       if (!tone) return
       const hl = HIGHLIGHT_STYLES[tone]
-      data.cell.styles.fillColor = hl.fill as unknown as number[]
-      data.cell.styles.textColor = hl.text as unknown as number[]
+      data.cell.styles.fillColor = [...hl.fill] as [number, number, number]
+      data.cell.styles.textColor = [...hl.text] as [number, number, number]
       data.cell.styles.fontStyle = 'bold'
     },
 
@@ -128,16 +134,31 @@ export function exportPdf<T>(
     drawFooter(doc, pageW, marginX, footerY)
   }
 
-  // Abre em nova aba — preview nativo do browser. Usuário pode ler, imprimir
-  // ou salvar pelo próprio viewer (Ctrl+S / botão de download).
-  // Chamada precisa rodar síncrona dentro do click handler pra não ser
-  // bloqueada pelo popup blocker.
+  return doc
+}
+
+/** Retorna o PDF como Blob pronto pra usar em URL/iframe/upload. */
+export function buildPdfBlob<T>(
+  opts: ExportOptions<T>,
+  orientation: Orientation = 'portrait',
+): Blob {
+  return buildPdfDoc(opts, orientation).output('blob')
+}
+
+/**
+ * Gera o PDF e abre em nova aba no viewer nativo do browser.
+ * Fallback pra download tradicional se o popup for bloqueado.
+ */
+export function exportPdf<T>(
+  opts: ExportOptions<T>,
+  orientation: Orientation = 'portrait',
+): void {
+  const doc = buildPdfDoc(opts, orientation)
   const filename = buildFilename(opts.filename, 'pdf')
   const blob = doc.output('blob')
   const url = URL.createObjectURL(blob)
   const win = window.open(url, '_blank')
   if (!win) {
-    // Popup bloqueado — fallback pra download tradicional.
     const a = document.createElement('a')
     a.href = url
     a.download = filename
@@ -145,7 +166,6 @@ export function exportPdf<T>(
     a.click()
     document.body.removeChild(a)
   }
-  // Libera a URL depois que a aba teve tempo de carregar.
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 

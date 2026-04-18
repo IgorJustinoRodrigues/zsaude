@@ -4,7 +4,7 @@ import { Plus, Building2, Search, Palette } from 'lucide-react'
 import { directoryApi, type FacilityDto, type MunicipalityDto } from '../../api/workContext'
 import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
-import { normalize, cn } from '../../lib/utils'
+import { normalize } from '../../lib/utils'
 
 export function SysFacilityListPage() {
   const navigate = useNavigate()

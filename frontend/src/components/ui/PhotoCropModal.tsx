@@ -140,7 +140,7 @@ export function PhotoCropModal({
               </button>
             )}
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {mode === 'select' ? 'Adicionar foto' : 'Ajustar recorte'}
+              {mode === 'select' ? title : 'Ajustar recorte'}
             </h2>
           </div>
           <button type="button" onClick={onClose}
@@ -165,7 +165,7 @@ export function PhotoCropModal({
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Clique para selecionar</p>
                 <p className="text-xs text-slate-400 mt-1">PNG, JPG, WEBP — até 10 MB</p>
               </div>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+              <input ref={fileRef} type="file" accept={accept} className="hidden" onChange={handleFile} />
             </div>
           )}
 
@@ -180,8 +180,8 @@ export function PhotoCropModal({
                   crop={crop}
                   onChange={c => setCrop(c)}
                   onComplete={c => setCompletedCrop(c)}
-                  aspect={1}
-                  circularCrop
+                  aspect={aspect}
+                  circularCrop={circularCrop && aspect === 1}
                   minWidth={60}
                   className="max-h-72 rounded-lg overflow-hidden"
                 >
@@ -208,7 +208,7 @@ export function PhotoCropModal({
             <button type="button" onClick={handleConfirm}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors">
               <Check size={14} />
-              Usar esta foto
+              {confirmLabel}
             </button>
           </div>
         )}
