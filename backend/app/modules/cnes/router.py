@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from sqlalchemy import desc, select
 from sqlalchemy.orm import selectinload
 
+from app.core.audit import get_audit_context
 from app.core.deps import DB, WorkContext, requires
 from app.core.exceptions import AppError
 from app.modules.audit.writer import write_audit
@@ -61,16 +62,17 @@ async def import_cnes(
         raise HTTPException(status_code=500, detail=f"Falha na importação: {exc}") from exc
 
     # Audit log global no schema `app`.
+    actor = get_audit_context().user_name or "Sistema"
     await write_audit(
         db,
-        module="OPS",
-        action="cnes_import",
-        severity="warning",
-        resource="cnes_import",
-        resource_id=str(import_row.id),
-        description=f"Importação CNES {import_row.competencia} no município {ctx.municipality_ibge}",
+        module="ops", action="cnes_import", severity="info",
+        resource="cnes_import", resource_id=str(import_row.id),
+        description=(
+            f"{actor} importou CNES da competência {import_row.competencia} "
+            f"(município IBGE {ctx.municipality_ibge} · "
+            f"{import_row.total_rows_processed} linhas · status: {import_row.status.value})"
+        ),
         details={
-            "importId": str(import_row.id),
             "ibge": ctx.municipality_ibge,
             "competencia": import_row.competencia,
             "status": import_row.status.value,

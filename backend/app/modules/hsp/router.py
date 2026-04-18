@@ -9,9 +9,12 @@ from uuid import UUID
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy import select
 
+from app.core.audit import get_audit_context
 from app.core.config import settings
 from app.core.deps import DB, WorkContext, requires
 from app.core.pagination import Page
+from app.modules.audit.helpers import describe_change
+from app.modules.audit.writer import write_audit
 from app.modules.hsp.cadsus import client as cadsus_client
 from app.modules.hsp.cadsus import mock as cadsus_mock
 from app.modules.hsp.cadsus.schemas import CadsusSearchResponse
@@ -36,6 +39,12 @@ _ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp"}
 async def _user_name(db, ctx: WorkContext) -> str:
     u = await db.scalar(select(User).where(User.id == ctx.user_id))
     return u.name if u else ""
+
+
+async def _patient_name(db, patient_id: UUID) -> str:
+    """Resolve ``patient.name`` para uso em audits legíveis."""
+    name = await db.scalar(select(Patient.name).where(Patient.id == patient_id))
+    return name or "(desconhecido)"
 
 
 def _patient_to_read(p: Patient, docs: list | None = None) -> PatientRead:
@@ -86,6 +95,18 @@ async def list_patients(
         search=search, active=active, page=page, page_size=page_size,
         sort=sort, dir_=dir,
     )
+    # Audit só quando houve filtro intencional (evita ruído em navegação padrão).
+    if search:
+        actor = get_audit_context().user_name
+        await write_audit(
+            db, module="hsp", action="patient_search", severity="info",
+            resource="patient", resource_id="",
+            description=describe_change(
+                actor=actor, verb="pesquisou pacientes",
+                extra=f'termo "{search}" · {total} resultado(s)',
+            ),
+            details={"search": search, "total": total, "page": page},
+        )
     return Page(items=[_patient_to_item(p) for p in rows], total=total,
                 page=page, page_size=page_size)
 
@@ -111,6 +132,31 @@ async def lookup_patients(
         name=name, birth_date=birth_date,
         mother_name=mother_name, father_name=father_name,
         limit=limit,
+    )
+    # Lookup é sempre intencional (cadastro/deduplicação) — audita com
+    # os critérios usados (CPF mascarado pra LGPD).
+    actor = get_audit_context().user_name
+    criteria: list[str] = []
+    if cpf:         criteria.append(f"CPF ***{cpf[-2:] if len(cpf) >= 2 else ''}")
+    if cns:         criteria.append(f"CNS ***{cns[-4:] if len(cns) >= 4 else ''}")
+    if documento:   criteria.append(f'documento "{documento}"')
+    if name:        criteria.append(f'nome "{name}"')
+    if mother_name: criteria.append(f'nome da mãe "{mother_name}"')
+    if father_name: criteria.append(f'nome do pai "{father_name}"')
+    if birth_date:  criteria.append(f"nascimento {birth_date.isoformat()}")
+    criteria_str = " · ".join(criteria) or "(sem critério)"
+    await write_audit(
+        db, module="hsp", action="patient_lookup", severity="info",
+        resource="patient", resource_id="",
+        description=describe_change(
+            actor=actor, verb="consultou pré-cadastro",
+            extra=f"{criteria_str} · {len(rows)} resultado(s)",
+        ),
+        details={
+            "hasCpf": bool(cpf), "hasCns": bool(cns),
+            "hasDocumento": bool(documento), "hasName": bool(name),
+            "hasBirthDate": bool(birth_date), "results": len(rows),
+        },
     )
     return [_patient_to_item(p) for p in rows]
 
@@ -178,6 +224,24 @@ async def search_cadsus(
     except cadsus_client.CadsusError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
+    # PHI externa — severidade "warning" pra destacar na revisão de auditoria.
+    actor = get_audit_context().user_name
+    search_summary: list[str] = []
+    if cpf:              search_summary.append(f"CPF ***{cpf[-2:] if len(cpf) >= 2 else ''}")
+    if cns:              search_summary.append(f"CNS ***{cns[-4:] if len(cns) >= 4 else ''}")
+    if nome:             search_summary.append(f'nome "{nome}"')
+    if data_nascimento:  search_summary.append(f"nasc. {data_nascimento}")
+    if nome_mae:         search_summary.append(f'mãe "{nome_mae}"')
+    await write_audit(
+        db, module="hsp", action="cadsus_search", severity="warning",
+        resource="cadsus", resource_id="",
+        description=describe_change(
+            actor=actor, verb="pesquisou CadSUS",
+            extra=f"{' · '.join(search_summary) or '(sem critério)'} · {len(items)} resultado(s)",
+        ),
+        details={"criteria": search_summary, "results": len(items), "source": "pdq"},
+    )
+
     return CadsusSearchResponse(items=items, source="pdq")
 
 
@@ -204,6 +268,16 @@ async def get_patient(
     svc = PatientService(db, ctx)
     patient = await svc.get_patient(patient_id)
     docs = await svc.list_documents(patient_id)
+    await write_audit(
+        db, module="hsp", action="patient_view", severity="info",
+        resource="patient", resource_id=str(patient.id),
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb="consultou o prontuário de",
+            target_name=patient.name,
+        ),
+        details={"patientName": patient.name, "prontuario": patient.prontuario},
+    )
     return _patient_to_read(patient, docs)
 
 
@@ -296,6 +370,18 @@ async def get_current_photo(
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, None)
     data = await load_photo_bytes(db, photo)
+    patient_name = await _patient_name(db, patient_id)
+    await write_audit(
+        db, module="hsp", action="patient_photo_download", severity="info",
+        resource="patient_photo", resource_id=str(photo.id),
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb="baixou a foto de",
+            target_name=patient_name,
+            extra="foto atual",
+        ),
+        details={"patientName": patient_name, "photoId": str(photo.id), "size": len(data)},
+    )
     return Response(
         content=data,
         media_type=photo.mime_type,
@@ -312,6 +398,18 @@ async def list_patient_photos(
     """Lista todas as fotos já enviadas pro paciente, da mais recente."""
     svc = PatientService(db, ctx)
     rows = await svc.list_photos(patient_id)
+    patient_name = await _patient_name(db, patient_id)
+    await write_audit(
+        db, module="hsp", action="patient_photos_list", severity="info",
+        resource="patient", resource_id=str(patient_id),
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb="listou as fotos de",
+            target_name=patient_name,
+            extra=f"{len(rows)} foto(s)",
+        ),
+        details={"patientName": patient_name, "count": len(rows)},
+    )
     return [PatientPhotoOut.model_validate(p, from_attributes=True) for p in rows]
 
 
@@ -325,6 +423,17 @@ async def get_specific_photo(
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, photo_id)
     data = await load_photo_bytes(db, photo)
+    patient_name = await _patient_name(db, patient_id)
+    await write_audit(
+        db, module="hsp", action="patient_photo_download", severity="info",
+        resource="patient_photo", resource_id=str(photo.id),
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb="baixou foto antiga de",
+            target_name=patient_name,
+        ),
+        details={"patientName": patient_name, "photoId": str(photo.id), "size": len(data)},
+    )
     return Response(
         content=data,
         media_type=photo.mime_type,
@@ -371,6 +480,19 @@ async def list_patient_history(
 ) -> Page[PatientFieldHistoryOut]:
     svc = PatientService(db, ctx)
     rows, total = await svc.list_history(patient_id, field=field, page=page, page_size=page_size)
+    patient_name = await _patient_name(db, patient_id)
+    extra = f"{total} entrada(s)" + (f" · campo {field}" if field else "")
+    await write_audit(
+        db, module="hsp", action="patient_history_view", severity="info",
+        resource="patient", resource_id=str(patient_id),
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb="consultou o histórico de",
+            target_name=patient_name,
+            extra=extra,
+        ),
+        details={"patientName": patient_name, "field": field or "", "total": total},
+    )
     return Page(
         items=[PatientFieldHistoryOut.model_validate(r, from_attributes=True) for r in rows],
         total=total, page=page, page_size=page_size,

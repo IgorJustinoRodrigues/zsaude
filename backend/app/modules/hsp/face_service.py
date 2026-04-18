@@ -107,20 +107,34 @@ async def enroll_from_photo(
     if not _is_vector_available(db):
         return "disabled"
 
+    # Nome do paciente pra aparecer em logs de erro (facilita triagem
+    # sem precisar ir no banco buscar quem é o UUID).
+    patient_name = await db.scalar(
+        select(Patient.name).where(Patient.id == patient_id)
+    ) or "(desconhecido)"
+
     try:
         result = await detect_and_embed(photo_bytes)
     except Exception as e:  # noqa: BLE001
-        log.warning("face_enroll_error", extra={"patient_id": str(patient_id), "error": str(e)})
+        log.warning(
+            "face_enroll_error",
+            patient_name=patient_name, patient_id=str(patient_id),
+            error=str(e),
+        )
         return "error"
 
     if result is None:
-        log.info("face_enroll_no_face", extra={"patient_id": str(patient_id)})
+        log.info(
+            "face_enroll_no_face",
+            patient_name=patient_name, patient_id=str(patient_id),
+        )
         return "no_face"
 
     if result.detection_score < _min_detection_score():
         log.info(
             "face_enroll_low_quality",
-            extra={"patient_id": str(patient_id), "score": result.detection_score},
+            patient_name=patient_name, patient_id=str(patient_id),
+            score=result.detection_score,
         )
         return "low_quality"
 
@@ -167,7 +181,7 @@ async def match(
     try:
         result = await detect_and_embed(image_bytes)
     except Exception as e:  # noqa: BLE001
-        log.warning("face_match_error", extra={"error": str(e)})
+        log.warning("face_match_error", error=str(e))
         raise FaceError("Falha ao processar imagem.", code="face_error") from e
 
     if result is None:
@@ -339,7 +353,14 @@ async def reindex_all(
             else:
                 status.errors += 1
         except Exception as e:  # noqa: BLE001
-            log.warning("face_reindex_error", extra={"patient_id": str(patient_id), "error": str(e)})
+            patient_name = await db.scalar(
+                select(Patient.name).where(Patient.id == patient_id)
+            ) or "(desconhecido)"
+            log.warning(
+                "face_reindex_error",
+                patient_name=patient_name, patient_id=str(patient_id),
+                error=str(e),
+            )
             status.errors += 1
 
         # Flush em batches pra não segurar transação gigante.

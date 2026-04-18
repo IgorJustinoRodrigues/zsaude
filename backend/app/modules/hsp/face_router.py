@@ -13,10 +13,15 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import Field
 
+from sqlalchemy import select
+
+from app.core.audit import get_audit_context
 from app.core.schema_base import CamelModel
 from app.core.deps import DB, MasterDep, WorkContext, requires
+from app.modules.audit.helpers import describe_change
 from app.modules.audit.writer import write_audit
 from app.modules.hsp import face_service
+from app.tenant_models.patients import Patient
 
 
 router = APIRouter(prefix="/hsp", tags=["hsp-face"])
@@ -70,6 +75,12 @@ def _mask_cpf(cpf: str | None) -> str | None:
     return f"***.***.***-{digits[-2:]}"
 
 
+async def _resolve_patient_name(db, patient_id: UUID) -> str:
+    """Resolve ``patient_id`` → ``patient.name`` pra audit legível."""
+    name = await db.scalar(select(Patient.name).where(Patient.id == patient_id))
+    return name or "(desconhecido)"
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 
@@ -94,20 +105,34 @@ async def match_face(
         # Mapeia erros de negócio pra 422 (sem rosto / baixa qualidade).
         raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)}) from e
 
-    # Audit: quem consultou, quantos bateram, melhor score.
-    best = resp.candidates[0].similarity if resp.candidates else 0.0
+    # Audit humano: quem consultou, quantos bateram, nome do melhor match.
+    best = resp.candidates[0] if resp.candidates else None
+    best_name = best.name if best else ""
+    best_sim = best.similarity if best else 0.0
+    user_name = get_audit_context().user_name
+
+    if best:
+        extra = f"{len(resp.candidates)} candidatos, melhor: {best_name} ({best_sim:.0%})"
+    else:
+        extra = "nenhum candidato encontrado"
+
     await write_audit(
         db,
-        module="HSP",
+        module="hsp",
         action="face_match",
         severity="info",
-        resource="Patient",
-        resource_id="",
-        description=f"Face match consultado ({len(resp.candidates)} candidatos, melhor: {best:.3f})",
+        resource="patient",
+        resource_id=str(best.patient_id) if best else "",
+        description=describe_change(
+            actor=user_name,
+            verb="consultou reconhecimento facial",
+            extra=extra,
+        ),
         details={
-            "candidates": len(resp.candidates),
-            "best_similarity": best,
-            "detection_score": resp.detection["score"],
+            "candidatesCount": len(resp.candidates),
+            "bestMatchName": best_name,
+            "bestSimilarity": round(best_sim, 4),
+            "detectionScore": round(resp.detection["score"], 4),
         },
     )
 
@@ -141,15 +166,22 @@ async def delete_face_embedding(
     """Opt-out: remove o embedding facial do paciente. Idempotente."""
     removed = await face_service.delete_embedding(db, patient_id)
     if removed:
+        patient_name = await _resolve_patient_name(db, patient_id)
+        user_name = get_audit_context().user_name
         await write_audit(
             db,
-            module="HSP",
+            module="hsp",
             action="face_embedding_delete",
             severity="info",
-            resource="Patient",
+            resource="patient",
             resource_id=str(patient_id),
-            description="Embedding facial removido",
-            details={},
+            description=describe_change(
+                actor=user_name,
+                verb="removeu o reconhecimento facial",
+                target_kind="paciente",
+                target_name=patient_name,
+            ),
+            details={"patientName": patient_name},
         )
 
 
@@ -173,21 +205,27 @@ async def reindex_face_embeddings(
     levar alguns minutos em municípios grandes. Futuramente virá via job.
     """
     status = await face_service.reindex_all(db, force=payload.force)
+    user_name = get_audit_context().user_name
+    extra = (
+        f"{status.enrolled} de {status.total} pacientes reindexados · "
+        f"{status.no_face} sem rosto · {status.errors} erro(s)"
+    )
     await write_audit(
         db,
-        module="HSP",
+        module="hsp",
         action="face_reindex",
         severity="info",
-        resource="FaceIndex",
+        resource="face_index",
         resource_id="",
-        description=(
-            f"Reindex facial: {status.enrolled}/{status.total} ok, "
-            f"{status.no_face} sem rosto, {status.errors} erros"
+        description=describe_change(
+            actor=user_name,
+            verb="reindexou o reconhecimento facial do município",
+            extra=extra,
         ),
         details={
             "total": status.total,
             "enrolled": status.enrolled,
-            "no_face": status.no_face,
+            "noFace": status.no_face,
             "errors": status.errors,
             "force": payload.force,
         },

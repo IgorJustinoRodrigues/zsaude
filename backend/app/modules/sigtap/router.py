@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from sqlalchemy import desc, select
 
+from app.core.audit import get_audit_context
 from app.core.deps import DB, MasterDep
 from app.core.exceptions import AppError
 from app.modules.audit.writer import write_audit
@@ -56,16 +57,17 @@ async def import_sigtap(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Falha na importação: {exc}") from exc
 
+    actor = get_audit_context().user_name or "Sistema"
     await write_audit(
         db,
-        module="SYS",
-        action="sigtap_import",
-        severity="warning",
-        resource="sigtap_import",
-        resource_id=str(import_row.id),
-        description=f"Importação SIGTAP {import_row.competencia}",
+        module="sys", action="sigtap_import", severity="info",
+        resource="sigtap_import", resource_id=str(import_row.id),
+        description=(
+            f"{actor} importou a tabela SIGTAP da competência "
+            f"{import_row.competencia} ({import_row.total_rows_processed} linhas · "
+            f"status: {import_row.status.value})"
+        ),
         details={
-            "importId": str(import_row.id),
             "competencia": import_row.competencia,
             "status": import_row.status.value,
             "totalRows": import_row.total_rows_processed,

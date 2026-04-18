@@ -25,6 +25,7 @@ from app.core.audit import get_audit_context
 from app.core.deps import WorkContext
 from app.db.file_model import TenantFile
 from app.db.types import new_uuid7
+from app.modules.audit.helpers import describe_change
 from app.modules.audit.writer import write_audit
 from app.modules.hsp.schemas import DocumentInput, PatientCreate, PatientUpdate
 from app.services.storage import get_storage
@@ -347,13 +348,19 @@ class PatientService:
 
         await write_audit(
             self.db,
-            module="hsp",
-            action="patient_create",
-            severity="info",
-            resource="patient",
-            resource_id=str(patient.id),
-            description=f"Criou paciente {patient.name} (prontuário {prontuario})",
-            details={"prontuario": prontuario, "cpf": cpf or "", "documents": len(payload.documents)},
+            module="hsp", action="patient_create", severity="info",
+            resource="patient", resource_id=str(patient.id),
+            description=describe_change(
+                actor=self.user_name, verb="cadastrou o paciente",
+                target_name=patient.name,
+                extra=f"prontuário {prontuario}",
+            ),
+            details={
+                "patientName": patient.name,
+                "prontuario": prontuario,
+                "cpf": cpf or "",
+                "documentsCount": len(payload.documents),
+            },
         )
 
         return patient
@@ -430,16 +437,31 @@ class PatientService:
             doc_changes = await self._reconcile_documents(patient.id, documents_payload, reason)
 
         if changes or doc_changes:
+            from app.modules.audit.helpers import humanize_field, humanize_value
+            changed_labels = [humanize_field(f) for f in changes.keys()]
+            if doc_changes:
+                changed_labels.append(f"{doc_changes} documento(s)")
             await write_audit(
                 self.db,
-                module="hsp",
-                action="patient_update",
-                severity="info",
-                resource="patient",
-                resource_id=str(patient.id),
-                description=f"Atualizou paciente {patient.name}",
+                module="hsp", action="patient_update", severity="info",
+                resource="patient", resource_id=str(patient.id),
+                description=describe_change(
+                    actor=self.user_name, verb="editou o paciente",
+                    target_name=patient.name,
+                    changed_fields=changed_labels,
+                    extra=(f"motivo: {reason}" if reason else ""),
+                ),
                 details={
-                    "changedFields": list(changes.keys()),
+                    "patientName": patient.name,
+                    "changes": [
+                        {
+                            "field": field,
+                            "label": humanize_field(field),
+                            "before": humanize_value(old),
+                            "after": humanize_value(new),
+                        }
+                        for field, (old, new) in changes.items()
+                    ],
                     "documentChanges": doc_changes,
                     "reason": reason or "",
                 },
@@ -468,8 +490,12 @@ class PatientService:
         await write_audit(
             self.db, module="hsp", action="patient_deactivate", severity="warning",
             resource="patient", resource_id=str(patient.id),
-            description=f"Desativou paciente {patient.name}",
-            details={"reason": reason or ""},
+            description=describe_change(
+                actor=self.user_name, verb="desativou o paciente",
+                target_name=patient.name,
+                extra=(f"motivo: {reason}" if reason else ""),
+            ),
+            details={"patientName": patient.name, "reason": reason or ""},
         )
         return patient
 
@@ -494,8 +520,12 @@ class PatientService:
         await write_audit(
             self.db, module="hsp", action="patient_reactivate", severity="info",
             resource="patient", resource_id=str(patient.id),
-            description=f"Reativou paciente {patient.name}",
-            details={"reason": reason or ""},
+            description=describe_change(
+                actor=self.user_name, verb="reativou o paciente",
+                target_name=patient.name,
+                extra=(f"motivo: {reason}" if reason else ""),
+            ),
+            details={"patientName": patient.name, "reason": reason or ""},
         )
         return patient
 
@@ -582,9 +612,13 @@ class PatientService:
         await write_audit(
             self.db, module="hsp", action="patient_photo_upload", severity="info",
             resource="patient_photo", resource_id=str(photo.id),
-            description=f"Nova foto para {patient.name}",
+            description=describe_change(
+                actor=self.user_name, verb="enviou nova foto para",
+                target_name=patient.name,
+                extra=f"reconhecimento facial: {face_status}",
+            ),
             details={
-                "patientId": str(patient.id),
+                "patientName": patient.name,
                 "size": len(content),
                 "mime": mime_type,
                 "storageKey": storage_key,
@@ -614,8 +648,11 @@ class PatientService:
         await write_audit(
             self.db, module="hsp", action="patient_photo_remove", severity="warning",
             resource="patient_photo", resource_id=str(old_id),
-            description=f"Removeu foto de {patient.name}",
-            details={"patientId": str(patient.id)},
+            description=describe_change(
+                actor=self.user_name, verb="removeu a foto de",
+                target_name=patient.name,
+            ),
+            details={"patientName": patient.name},
         )
 
     async def list_photos(self, patient_id: UUID) -> list[PatientPhoto]:
@@ -661,8 +698,11 @@ class PatientService:
         await write_audit(
             self.db, module="hsp", action="patient_photo_restore", severity="info",
             resource="patient_photo", resource_id=str(photo.id),
-            description=f"Restaurou foto antiga de {patient.name}",
-            details={"patientId": str(patient.id), "photoId": str(photo.id)},
+            description=describe_change(
+                actor=self.user_name, verb="restaurou foto antiga de",
+                target_name=patient.name,
+            ),
+            details={"patientName": patient.name, "photoId": str(photo.id)},
         )
         return photo
 
