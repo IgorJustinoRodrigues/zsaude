@@ -25,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.db.session import dispose_engine, engine, sessionmaker
 from app.db.tenant_schemas import ensure_municipality_schema
+from app.modules.audit.helpers import describe_change
+from app.modules.audit.writer import write_audit
 from app.modules.tenants.models import (
     Facility,
     FacilityAccess,
@@ -34,6 +36,37 @@ from app.modules.tenants.models import (
     Neighborhood,
 )
 from app.modules.users.models import User, UserLevel, UserStatus
+
+
+async def _seed_audit(
+    session: AsyncSession,
+    *,
+    module: str,
+    action: str,
+    resource: str,
+    resource_id: str,
+    target_kind: str,
+    target_name: str,
+    extra: str = "",
+) -> None:
+    """Registra em ``audit_logs`` que o seed criou uma entidade.
+
+    Actor = ``"Sistema"`` (seed não tem user humano). Descrição humana:
+    ``"Sistema cadastrou o paciente João Silva — via seed"``.
+    """
+    await write_audit(
+        session,
+        module=module, action=action, severity="info",
+        resource=resource, resource_id=resource_id,
+        description=describe_change(
+            actor="Sistema", verb="cadastrou",
+            target_kind=target_kind, target_name=target_name,
+            extra=("via seed" if not extra else f"via seed · {extra}"),
+        ),
+        details={"seed": True, "targetName": target_name, **({"note": extra} if extra else {})},
+        # User_id None pra marcar como ação do sistema.
+        user_id=None, user_name="Sistema",
+    )
 
 NS = uuid.UUID("12345678-1234-5678-1234-567812345678")
 DEFAULT_PASSWORD = "Admin@123"
@@ -347,6 +380,13 @@ async def seed_app(session: AsyncSession) -> dict:
                 is_active=True, is_superuser=True,
                 birth_date=date.fromisoformat(u["birth"]),
             ))
+            await session.flush()
+            await _seed_audit(
+                session, module="users", action="user_create",
+                resource="user", resource_id=str(fid(u["key"])),
+                target_kind="usuário", target_name=u["name"],
+                extra=f"nível {u['level'].value if hasattr(u['level'], 'value') else u['level']}",
+            )
             stats["users"] += 1
     await session.flush()
 
@@ -357,6 +397,14 @@ async def seed_app(session: AsyncSession) -> dict:
                 id=fid(m["key"]), name=m["name"], state=m["state"], ibge=m["ibge"],
                 population=m.get("pop"), center_latitude=m.get("lat"), center_longitude=m.get("lng"),
             ))
+            await session.flush()
+            await _seed_audit(
+                session, module="tenants", action="municipality_create",
+                resource="municipality", resource_id=str(fid(m["key"])),
+                target_kind="município",
+                target_name=f"{m['name']}/{m['state']}",
+                extra=f"IBGE {m['ibge']}",
+            )
             stats["municipalities"] += 1
     await session.flush()
 
@@ -396,6 +444,13 @@ async def seed_app(session: AsyncSession) -> dict:
                     id=fid(f["key"]), municipality_id=fid(f["mun"]),
                     name=f["name"], short_name=f["short"], type=f["type"], cnes=f.get("cnes"),
                 ))
+                await session.flush()
+                await _seed_audit(
+                    session, module="tenants", action="facility_create",
+                    resource="facility", resource_id=str(fid(f["key"])),
+                    target_kind="unidade", target_name=f["name"],
+                    extra=f"{m['name']}/{m['state']}",
+                )
                 stats["facilities"] += 1
 
         # Users
@@ -409,6 +464,14 @@ async def seed_app(session: AsyncSession) -> dict:
                     is_active=u["status"] != UserStatus.BLOQUEADO,
                     birth_date=date.fromisoformat(u["birth"]) if u.get("birth") else None,
                 ))
+                await session.flush()
+                level = u.get("level", UserLevel.USER)
+                await _seed_audit(
+                    session, module="users", action="user_create",
+                    resource="user", resource_id=str(fid(u["key"])),
+                    target_kind="usuário", target_name=u["name"],
+                    extra=f"{m['name']} · nível {level.value if hasattr(level, 'value') else level}",
+                )
                 stats["users"] += 1
 
         await session.flush()
@@ -465,6 +528,13 @@ async def seed_patients(session: AsyncSession, ibge: str, patients: list[dict]) 
     for p in patients:
         if not await session.scalar(select(Patient).where(Patient.id == fid(p["key"]))):
             session.add(Patient(**_build_patient(p, refs, creator)))
+            await session.flush()
+            await _seed_audit(
+                session, module="hsp", action="patient_create",
+                resource="patient", resource_id=str(fid(p["key"])),
+                target_kind="paciente", target_name=p["name"],
+                extra=f"prontuário {p.get('pront', '-')} · município IBGE {ibge}",
+            )
             n_patients += 1
     await session.flush()
     return n_patients, 0
