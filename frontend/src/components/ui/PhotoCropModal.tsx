@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
-import { Upload, X, Check, RotateCcw } from 'lucide-react'
+import { Upload, X, Check, RotateCcw, Wand2, Loader2, ZoomOut } from 'lucide-react'
 
 interface Props {
   onConfirm: (dataUrl: string) => void
@@ -22,6 +22,10 @@ interface Props {
   quality?: number
   /** Saída como PNG (fundo transparente preservado). Default false (JPEG). */
   outputPng?: boolean
+  /** Exibe botão "Remover fundo com IA". Default false. */
+  allowBgRemoval?: boolean
+  /** Exibe slider de zoom (para caber imagens fora do aspect). Default false. */
+  allowZoom?: boolean
 }
 
 type Mode = 'select' | 'crop'
@@ -79,11 +83,23 @@ export function PhotoCropModal({
   accept = 'image/*',
   quality = 0.92,
   outputPng = false,
+  allowBgRemoval = false,
+  allowZoom = false,
 }: Props) {
   const [mode,           setMode]           = useState<Mode>('select')
+  /** Imagem "base" sem padding — upload original ou versão após remoção de fundo. */
+  const [baseSrc,        setBaseSrc]        = useState<string | null>(null)
+  /** Imagem exibida no ReactCrop — baseSrc com eventual padding de zoom. */
   const [imgSrc,         setImgSrc]         = useState<string | null>(null)
+  /** Zoom-out: 1 = sem padding; 0.4 = imagem ocupa 40% do frame (padding ao redor). */
+  const [zoom,           setZoom]           = useState(1)
   const [crop,           setCrop]           = useState<Crop>()
-  const [completedCrop,  setCompletedCrop]  = useState<PixelCrop>()
+
+  // Remoção de fundo: quando concluída, a imagem fica transparente —
+  // forçamos saída PNG no confirm pra preservar a transparência.
+  const [bgRemoved, setBgRemoved] = useState(false)
+  const [bgLoading, setBgLoading] = useState(false)
+  const [bgProgress, setBgProgress] = useState<string | null>(null)
 
   const imgRef  = useRef<HTMLImageElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -95,33 +111,124 @@ export function PhotoCropModal({
     if (!file) return
     const reader = new FileReader()
     reader.onload = ev => {
-      setImgSrc(ev.target?.result as string)
+      setBaseSrc(ev.target?.result as string)
+      setZoom(1)
+      setBgRemoved(false)
+      setCrop(undefined)
       setMode('crop')
     }
     reader.readAsDataURL(file)
     e.target.value = ''
   }
 
+  // ── Derivar imgSrc a partir de baseSrc + zoom ─────────────────────────────
+
+  useEffect(() => {
+    if (!baseSrc) { setImgSrc(null); return }
+    if (zoom >= 0.999) { setImgSrc(baseSrc); return }
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  / zoom)
+      canvas.height = Math.round(img.height / zoom)
+      const ctx = canvas.getContext('2d')!
+      // Saída final será PNG (com transparência) quando o fundo foi removido
+      // ou quando ``outputPng`` estiver ativo — nesse caso o padding fica
+      // transparente. Senão, fundo branco (para o JPEG não ficar preto).
+      const transparent = bgRemoved || outputPng
+      if (!transparent) {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
+      const x = (canvas.width  - img.width)  / 2
+      const y = (canvas.height - img.height) / 2
+      ctx.drawImage(img, x, y)
+      setImgSrc(canvas.toDataURL(transparent ? 'image/png' : 'image/jpeg', 1))
+    }
+    img.src = baseSrc
+    return () => { cancelled = true }
+  }, [baseSrc, zoom, bgRemoved, outputPng])
+
   // ── Crop ──────────────────────────────────────────────────────────────────
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget
-    setCrop(centerAspectCrop(width, height, aspect))
+    // Só recria o crop se ainda não há um (preserva ajuste do usuário entre
+    // mudanças de zoom, já que o crop é armazenado em %).
+    if (!crop) setCrop(centerAspectCrop(width, height, aspect))
   }
 
   const handleConfirm = async () => {
-    if (!imgRef.current || !completedCrop) return
+    if (!imgRef.current || !crop) return
+    const img = imgRef.current
+    // Converte o crop (em %) para px usando as dimensões ATUAIS da imagem
+    // renderizada — evita usar um ``completedCrop`` desatualizado após zoom.
+    const pixelCrop: PixelCrop = crop.unit === 'px'
+      ? (crop as PixelCrop)
+      : {
+          unit:   'px',
+          x:      Math.round(crop.x      / 100 * img.width),
+          y:      Math.round(crop.y      / 100 * img.height),
+          width:  Math.round(crop.width  / 100 * img.width),
+          height: Math.round(crop.height / 100 * img.height),
+        }
+    // Se a IA removeu o fundo, saída precisa ser PNG pra manter transparência.
+    const asPng = outputPng || bgRemoved
     const dataUrl = await getCroppedDataUrl(
-      imgRef.current, completedCrop, aspect, outputSize, quality, outputPng,
+      img, pixelCrop, aspect, outputSize, quality, asPng,
     )
     onConfirm(dataUrl)
   }
 
   const handleReset = () => {
+    setBaseSrc(null)
     setImgSrc(null)
+    setZoom(1)
     setCrop(undefined)
-    setCompletedCrop(undefined)
+    setBgRemoved(false)
+    setBgLoading(false)
+    setBgProgress(null)
     setMode('select')
+  }
+
+  /**
+   * Remove fundo via @imgly/background-removal (WASM, roda no browser).
+   * No primeiro uso baixa modelo (~30MB) — mostramos progresso.
+   */
+  const handleRemoveBg = async () => {
+    if (!baseSrc || bgLoading) return
+    setBgLoading(true)
+    setBgProgress('Preparando...')
+    try {
+      const { removeBackground } = await import('@imgly/background-removal')
+      const resultBlob = await removeBackground(baseSrc, {
+        progress: (key, current, total) => {
+          // keys: fetch:*, compute:*, etc. Mostramos um texto amigável.
+          const pct = total > 0 ? Math.round((current / total) * 100) : 0
+          if (key.startsWith('fetch:')) setBgProgress(`Baixando modelo... ${pct}%`)
+          else if (key.startsWith('compute:')) setBgProgress(`Processando... ${pct}%`)
+          else setBgProgress(`${pct}%`)
+        },
+      })
+      const reader = new FileReader()
+      reader.onload = () => {
+        const url = reader.result as string
+        setBaseSrc(url)       // base atualizada → effect re-renderiza imgSrc
+        setBgRemoved(true)
+        setBgLoading(false)
+        setBgProgress(null)
+        // Conteúdo mudou — libera o auto-center crop no próximo onImageLoad
+        setCrop(undefined)
+      }
+      reader.readAsDataURL(resultBlob)
+    } catch (err) {
+      console.error('background removal failed', err)
+      setBgLoading(false)
+      setBgProgress(null)
+      alert('Não foi possível remover o fundo. Tente novamente ou use uma imagem diferente.')
+    }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -175,15 +282,22 @@ export function PhotoCropModal({
               <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
                 Arraste e redimensione para ajustar o recorte
               </p>
-              <div className="flex justify-center">
+              <div
+                className="flex justify-center rounded-lg overflow-hidden"
+                style={bgRemoved ? {
+                  // Xadrez pra evidenciar transparência
+                  backgroundImage: 'linear-gradient(45deg, #e2e8f0 25%, transparent 25%), linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e8f0 75%), linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)',
+                  backgroundSize: '16px 16px',
+                  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
+                } : undefined}
+              >
                 <ReactCrop
                   crop={crop}
                   onChange={c => setCrop(c)}
-                  onComplete={c => setCompletedCrop(c)}
                   aspect={aspect}
                   circularCrop={circularCrop && aspect === 1}
                   minWidth={60}
-                  className="max-h-72 rounded-lg overflow-hidden"
+                  className="max-h-72"
                 >
                   <img
                     ref={imgRef}
@@ -194,6 +308,52 @@ export function PhotoCropModal({
                   />
                 </ReactCrop>
               </div>
+
+              {allowZoom && (
+                <div className="flex items-center gap-3 px-1">
+                  <ZoomOut size={14} className="text-slate-400 shrink-0" />
+                  <input
+                    type="range"
+                    min={0.35}
+                    max={1}
+                    step={0.01}
+                    value={zoom}
+                    onChange={e => setZoom(parseFloat(e.target.value))}
+                    className="flex-1 accent-sky-500"
+                  />
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums w-10 text-right">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                </div>
+              )}
+
+              {allowBgRemoval && (
+                <div className="flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={handleRemoveBg}
+                    disabled={bgLoading || bgRemoved}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 text-xs font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {bgLoading ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        {bgProgress || 'Processando...'}
+                      </>
+                    ) : bgRemoved ? (
+                      <>
+                        <Check size={13} />
+                        Fundo removido
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={13} />
+                        Remover fundo com IA
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

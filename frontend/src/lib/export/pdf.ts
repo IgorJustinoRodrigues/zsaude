@@ -6,6 +6,30 @@ import { buildFilename, formatCell } from './shared'
 
 type Orientation = 'portrait' | 'landscape'
 
+/** Altura de linha usada no bloco de rodapé customizado (fonte 8pt). */
+const FOOTER_LINE_H = 10
+
+/**
+ * Converte o texto livre do rodapé em linhas já quebradas na largura da
+ * página. Preserva quebras manuais (``\n``) e usa ``splitTextToSize``
+ * pra nunca ultrapassar a margem lateral.
+ */
+function wrapFooterLines(
+  doc: jsPDF,
+  text: string | undefined,
+  maxW: number,
+): string[] {
+  if (!text?.trim()) return []
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  return text.trim()
+    .split(/\r?\n/)
+    .flatMap(line => {
+      const wrapped = doc.splitTextToSize(line || ' ', maxW)
+      return Array.isArray(wrapped) ? wrapped : [wrapped]
+    })
+}
+
 /**
  * Gera PDF padronizado (fundo branco).
  *
@@ -54,6 +78,16 @@ export function buildPdfDoc<T>(
   const firstPageTableStart = headerY + 22 + headerExtraH + FIRST_PAGE_TITLE_BLOCK_H
   const subsequentPagesTop = headerY + 22 + headerExtraH
 
+  // Pré-quebra o texto do rodapé customizado já na largura útil da página —
+  // preserva ``\n`` do usuário e quebra linhas longas pra nunca invadir a
+  // margem lateral. A altura total reserva espaço abaixo da tabela.
+  const footerLines = wrapFooterLines(doc, brand?.footerText, pageW - 2 * marginX)
+  const FOOTER_BASE_H = 40  // divisória + "Gerado em"/"Página" + margem inferior
+  const footerExtraH = footerLines.length > 0
+    ? footerLines.length * FOOTER_LINE_H + 6
+    : 0
+  const tableBottomMargin = FOOTER_BASE_H + footerExtraH
+
   // ── 1ª página: desenhamos cabeçalho manualmente antes do autoTable
   drawHeader(doc, opts, pageW, marginX, headerY, /* withTitle */ true)
 
@@ -63,7 +97,7 @@ export function buildPdfDoc<T>(
       left: marginX,
       right: marginX,
       top: subsequentPagesTop,  // garante espaço do cabeçalho nas próximas páginas
-      bottom: 40,
+      bottom: tableBottomMargin,
     },
     head: [opts.columns.map(c => c.header)],
     body,
@@ -118,7 +152,7 @@ export function buildPdfDoc<T>(
       if (data.pageNumber > 1) {
         drawHeader(doc, opts, pageW, marginX, headerY, /* withTitle */ false)
       }
-      drawFooter(doc, pageW, marginX, footerY, opts.branding)
+      drawFooter(doc, pageW, marginX, footerY, footerLines)
     },
   })
 
@@ -131,7 +165,7 @@ export function buildPdfDoc<T>(
       'Nenhum registro para exportar.',
       pageW / 2, firstPageTableStart + 40, { align: 'center' },
     )
-    drawFooter(doc, pageW, marginX, footerY)
+    drawFooter(doc, pageW, marginX, footerY, footerLines)
   }
 
   return doc
@@ -283,26 +317,30 @@ function drawFooter(
   pageW: number,
   marginX: number,
   y: number,
-  branding?: { footerText?: string },
+  footerLines: string[] = [],
 ) {
-  let baseY = y
+  const dividerY = y - 10
 
-  // Texto customizado do rodapé (endereço, contatos) fica ACIMA da linha.
-  if (branding?.footerText?.trim()) {
+  // Texto customizado (endereço, contatos) fica ACIMA da divisória,
+  // já pré-quebrado pelo ``wrapFooterLines`` na largura da página.
+  if (footerLines.length > 0) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(...BRAND.muted)
-    doc.text(
-      branding.footerText.trim(),
-      pageW / 2, y - 18,
-      { align: 'center' },
-    )
-    baseY = y  // mantém a linha/paginação no mesmo lugar
+    const GAP = 4
+    const blockBottom = dividerY - GAP
+    const blockTop = blockBottom - footerLines.length * FOOTER_LINE_H
+    for (let i = 0; i < footerLines.length; i++) {
+      // Baseline ≈ topo + (i+1)*line_h - descent. Mantém espaçamento
+      // uniforme e alinhado à divisória.
+      const ly = blockTop + (i + 1) * FOOTER_LINE_H - 2
+      doc.text(footerLines[i], pageW / 2, ly, { align: 'center' })
+    }
   }
 
   doc.setDrawColor(...BRAND.divider)
   doc.setLineWidth(0.5)
-  doc.line(marginX, baseY - 10, pageW - marginX, baseY - 10)
+  doc.line(marginX, dividerY, pageW - marginX, dividerY)
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -312,13 +350,13 @@ function drawFooter(
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
-  doc.text(`Gerado em ${now}`, marginX, baseY)
+  doc.text(`Gerado em ${now}`, marginX, y)
 
   const pageInfo = doc.getCurrentPageInfo().pageNumber
   const totalPages = doc.getNumberOfPages()
   doc.text(
     `Página ${pageInfo} de ${totalPages}`,
-    pageW - marginX, baseY,
+    pageW - marginX, y,
     { align: 'right' },
   )
 }

@@ -154,7 +154,8 @@ export function BrandingFields({
     try {
       // Converte dataURL → Blob pra subir como file
       const blob = dataUrlToBlob(dataUrl)
-      const file = new File([blob], 'logo.jpg', { type: blob.type })
+      const ext = blob.type === 'image/png' ? 'png' : 'jpg'
+      const file = new File([blob], `logo.${ext}`, { type: blob.type })
       const res = await brandingApi.uploadLogo(scope, scopeId, file)
       setRaw(r => r ? { ...r, logoFileId: res.logoFileId } : r)
       toast.success('Logo atualizada')
@@ -321,6 +322,8 @@ export function BrandingFields({
           title="Enviar logo"
           confirmLabel="Usar esta logo"
           accept="image/jpeg,image/png,image/webp"
+          allowBgRemoval
+          allowZoom
         />
       )}
     </div>
