@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound, Cake } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -18,9 +18,14 @@ const MODULE_COLORS: Record<SystemId, string> = {
   ind: '#ec4899', cha: '#14b8a6', esu: '#6366f1',
 }
 
-interface Props { module: SystemId | null }
+interface Props {
+  module: SystemId | null
+  /** Quando ``true``, mostra o ícone de bolo pra reabrir o modal de aniversário. */
+  birthday?: boolean
+  onBirthdayClick?: () => void
+}
 
-export function TopBar({ module }: Props) {
+export function TopBar({ module, birthday, onBirthdayClick }: Props) {
   const { user, context, contextOptions, logout } = useAuthStore()
   const can = useAuthStore(s => s.can)
   const canManageRoles = can('roles.role.view')
@@ -175,6 +180,20 @@ export function TopBar({ module }: Props) {
             </div>
           )}
         </div>
+
+        {/* Aniversário — só aparece no dia */}
+        {birthday && (
+          <button
+            type="button"
+            onClick={onBirthdayClick}
+            title="Hoje é seu aniversário! 🎉"
+            aria-label="Abrir mensagem de aniversário"
+            className="relative flex items-center justify-center w-8 h-8 rounded-lg text-pink-500 hover:text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-950/40 transition-colors"
+          >
+            <Cake size={16} />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+          </button>
+        )}
 
         {/* Acessibilidade */}
         <AccessibilityMenu />

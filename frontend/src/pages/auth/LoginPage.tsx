@@ -11,7 +11,9 @@ export function LoginPage() {
   const { login, autoSelectContext, selectSystem } = useAuthStore()
   const navigate = useNavigate()
   const { theme, toggle } = useTheme()
-  const [form, setForm] = useState({ login: 'igor.santos', password: 'Admin@123' })
+  // Dev: pré-preenche com Igor Justino (MASTER) pra agilizar os testes.
+  // Remover antes de ir pra produção.
+  const [form, setForm] = useState({ login: '75696860125', password: 'Admin@123' })
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)

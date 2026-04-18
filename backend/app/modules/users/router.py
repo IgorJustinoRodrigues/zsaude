@@ -17,6 +17,8 @@ from app.modules.users.schemas import (
     AdminResetPasswordRequest,
     AdminResetPasswordResponse,
     MessageResponse,
+    UserAnniversaryResponse,
+    UserBirthdayItem,
     UserCreate,
     UserDetail,
     UserListItem,
@@ -50,6 +52,19 @@ async def update_me(payload: UserUpdateMe, db: DB, user: CurrentUserDep) -> User
     return user_read_from_orm(record)
 
 
+@router.get("/me/anniversary", response_model=UserAnniversaryResponse)
+async def my_anniversary(db: DB, user: CurrentUserDep) -> UserAnniversaryResponse:
+    """Retorna se hoje é o aniversário do usuário + estatísticas do último ano.
+
+    O frontend consome isso pra abrir o modal comemorativo (confetti + bolo)
+    uma vez por dia quando ``is_birthday=true``.
+    """
+    svc = UserService(db)
+    record = await svc.get_or_404(user.id)
+    data = await svc.anniversary(record)
+    return UserAnniversaryResponse.model_validate(data)
+
+
 # ─── Admin endpoints ──────────────────────────────────────────────────────────
 
 
@@ -72,6 +87,41 @@ def _check_create_level(actor: User, target_level: UserLevel) -> None:
     if actor.level == UserLevel.ADMIN and target_level == UserLevel.USER:
         return
     raise ForbiddenError("Você não tem permissão para criar usuário desse nível.")
+
+
+@router.get("/birthdays", response_model=list[UserBirthdayItem])
+async def list_birthdays(
+    db: DB,
+    actor: AdminDep,
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    municipality_id: Annotated[UUID | None, Query(alias="municipalityId")] = None,
+) -> list[UserBirthdayItem]:
+    """Aniversariantes do mês. Sem ``month`` usa o mês atual.
+
+    - ``municipalityId`` opcional restringe aos usuários com acesso a esse
+      município — usado em /ops pra listar só quem está vinculado à
+      cidade ativa. ADMIN só pode consultar municípios do seu escopo.
+    - Sem ``municipalityId``: ADMIN vê todos os usuários dos municípios
+      que administra; MASTER vê todos do sistema.
+
+    Apenas MASTER/ADMIN podem consultar (PII). ``is_today=true`` destaca
+    quem faz aniversário hoje; ``age`` é a idade que a pessoa completa
+    neste ano.
+    """
+    from datetime import date as _date
+    if month is None:
+        month = _date.today().month
+    svc = UserService(db)
+    actor_scope = await svc.actor_scope(actor)
+    if municipality_id is not None:
+        # ADMIN só pode filtrar por município dentro do seu escopo.
+        if actor_scope is not None and municipality_id not in actor_scope:
+            raise ForbiddenError("Você não pode consultar aniversariantes deste município.")
+        effective_scope: set[UUID] | None = {municipality_id}
+    else:
+        effective_scope = actor_scope
+    rows = await svc.birthdays(month, scope=effective_scope)
+    return [UserBirthdayItem.model_validate(r) for r in rows]
 
 
 @router.get("/stats", response_model=UserStats)

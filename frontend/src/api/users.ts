@@ -172,8 +172,29 @@ export interface UserPhotoListItem {
   uploadedByName: string
 }
 
+export interface UserBirthdayItem {
+  id: string
+  name: string
+  socialName: string
+  level: UserLevel
+  primaryRole: string
+  birthDate: string  // YYYY-MM-DD
+  day: number
+  month: number
+  isToday: boolean
+  age: number
+}
+
 export const userApi = {
   stats: () => api.get<UserStats>('/api/v1/users/stats'),
+
+  /**
+   * Aniversariantes do mês (1-12). Omita ``month`` pro mês atual.
+   * Opcional ``municipalityId`` filtra por município — usado em /ops
+   * pra listar só quem está vinculado à cidade ativa.
+   */
+  birthdays: (month?: number, municipalityId?: string) =>
+    api.get<UserBirthdayItem[]>(`/api/v1/users/birthdays${qs({ month, municipalityId })}`),
 
   list: (params: UserListParams = {}) =>
     api.get<PageResponse<UserListItem>>(

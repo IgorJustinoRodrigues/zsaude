@@ -75,4 +75,23 @@ export const authApi = {
    */
   changePassword: (currentPassword: string | null, newPassword: string) =>
     api.post<{ message: string }>('/api/v1/auth/change-password', { currentPassword, newPassword }),
+
+  /** Dados pro modal de aniversário (isBirthday + stats do último ano). */
+  anniversary: () => api.get<AnniversaryResponse>('/api/v1/users/me/anniversary'),
+}
+
+export interface AnniversaryStats {
+  totalActions: number
+  daysActive: number
+  logins: number
+  patientsTouched: number
+  mostUsedModule: string | null
+  mostUsedModuleCount: number
+}
+
+export interface AnniversaryResponse {
+  isBirthday: boolean
+  firstName: string
+  age: number | null
+  stats: AnniversaryStats
 }

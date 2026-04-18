@@ -683,3 +683,155 @@ class UserService:
             await SessionService(self.session).end_all_for_user(user_id, reason)
         await self.repo.update(user)
         return user
+
+
+    # ─── Aniversário + estatísticas ──────────────────────────────────────
+
+    async def anniversary(self, user: User) -> dict:
+        """Calcula ``is_birthday`` + estatísticas de uso do último ano.
+
+        Métricas agregadas a partir de ``audit_logs`` (apenas ações do
+        próprio usuário). Quando o usuário não tem ``birth_date`` cadastrado
+        ou a data não bate com hoje, ``is_birthday=False`` — o frontend
+        usa isso pra decidir se mostra o modal comemorativo.
+        """
+        from datetime import UTC, date, datetime, timedelta
+
+        from sqlalchemy import and_, func, select as sa_select
+
+        from app.modules.audit.models import AuditLog
+
+        today = date.today()
+        is_birthday = (
+            user.birth_date is not None
+            and user.birth_date.month == today.month
+            and user.birth_date.day == today.day
+        )
+        age = None
+        if user.birth_date is not None:
+            age = today.year - user.birth_date.year
+            # Corrige se aniversário ainda não passou neste ano.
+            if (today.month, today.day) < (user.birth_date.month, user.birth_date.day):
+                age -= 1
+
+        since = datetime.now(UTC) - timedelta(days=365)
+        base_where = and_(
+            AuditLog.user_id == user.id,
+            AuditLog.at >= since,
+        )
+
+        total_actions = int(
+            await self.session.scalar(
+                sa_select(func.count()).select_from(AuditLog).where(base_where)
+            ) or 0
+        )
+        days_active = int(
+            await self.session.scalar(
+                sa_select(func.count(func.distinct(func.date(AuditLog.at))))
+                .where(base_where)
+            ) or 0
+        )
+        logins = int(
+            await self.session.scalar(
+                sa_select(func.count()).select_from(AuditLog)
+                .where(base_where)
+                .where(AuditLog.action == "login")
+            ) or 0
+        )
+        patients_touched = int(
+            await self.session.scalar(
+                sa_select(func.count(func.distinct(AuditLog.resource_id)))
+                .where(base_where)
+                .where(AuditLog.resource == "patient")
+            ) or 0
+        )
+
+        # Módulo mais usado
+        mod_row = (
+            await self.session.execute(
+                sa_select(AuditLog.module, func.count().label("n"))
+                .where(base_where)
+                .group_by(AuditLog.module)
+                .order_by(func.count().desc())
+                .limit(1)
+            )
+        ).first()
+        most_used_module = mod_row[0] if mod_row else None
+        most_used_module_count = int(mod_row[1]) if mod_row else 0
+
+        # social_name pode vir com espaço em branco (server_default=" ").
+        display = (user.social_name or "").strip() or user.name or ""
+        first_name = display.split(" ")[0] if display else ""
+
+        return {
+            "is_birthday": is_birthday,
+            "first_name": first_name,
+            "age": age if is_birthday else None,
+            "stats": {
+                "total_actions": total_actions,
+                "days_active": days_active,
+                "logins": logins,
+                "patients_touched": patients_touched,
+                "most_used_module": most_used_module,
+                "most_used_module_count": most_used_module_count,
+            },
+        }
+
+
+    # ─── Aniversariantes (listagem mensal) ────────────────────────────────
+
+    async def birthdays(
+        self, month: int, *, scope: set[UUID] | None = None,
+    ) -> list[dict]:
+        """Retorna usuários cujo ``birth_date`` cai no mês informado.
+
+        Ordenado pelo dia do aniversário (ascendente). Inclui ``isToday``
+        pro frontend destacar. Idade é a que a pessoa completa **neste ano**.
+
+        ``scope`` opcional restringe aos usuários com MunicipalityAccess
+        em algum dos municípios informados (usado em /ops pra listar só
+        aniversariantes do município ativo). ``None`` = todos.
+        """
+        from datetime import date
+        from sqlalchemy import extract, func as sa_func
+
+        today = date.today()
+        stmt = (
+            select(User)
+            .where(User.birth_date.is_not(None))
+            .where(extract("month", User.birth_date) == month)
+            .where(User.is_active.is_(True))
+            .order_by(
+                sa_func.extract("day", User.birth_date).asc(),
+                User.name.asc(),
+            )
+        )
+        if scope:
+            from app.modules.tenants.models import MunicipalityAccess
+            stmt = stmt.where(
+                User.id.in_(
+                    select(MunicipalityAccess.user_id)
+                    .where(MunicipalityAccess.municipality_id.in_(scope))
+                )
+            )
+        users = list((await self.session.scalars(stmt)).all())
+        out = []
+        for u in users:
+            bd = u.birth_date
+            if bd is None:
+                continue
+            is_today = bd.month == today.month and bd.day == today.day
+            age_this_year = today.year - bd.year
+            out.append({
+                "id": u.id,
+                "name": u.name,
+                "social_name": (u.social_name or "").strip(),
+                "level": u.level.value if hasattr(u.level, "value") else str(u.level),
+                "primary_role": u.primary_role,
+                "birth_date": bd,
+                "day": bd.day,
+                "month": bd.month,
+                "is_today": is_today,
+                "age": age_this_year,
+            })
+        return out

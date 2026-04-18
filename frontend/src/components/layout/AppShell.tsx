@@ -9,6 +9,8 @@ import type { SystemId } from '../../types'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
 import { ChangePasswordModal } from '../ui/ChangePasswordModal'
+import { BirthdayModal } from '../ui/BirthdayModal'
+import { useBirthdayCheck } from '../../hooks/useBirthdayCheck'
 import { authApi } from '../../api/auth'
 
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
@@ -22,6 +24,8 @@ export function AppShell() {
   const blockForPassword = passwordExpired || mustChangePassword
   const blockReason: 'expired' | 'provisional' =
     mustChangePassword && !passwordExpired ? 'provisional' : 'expired'
+
+  const birthday = useBirthdayCheck()
 
   async function handlePasswordChanged() {
     // Atualiza o user pra remover o estado expirado
@@ -59,7 +63,11 @@ export function AppShell() {
           sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60',
         )}
       >
-        <TopBar module={currentModule} />
+        <TopBar
+          module={currentModule}
+          birthday={birthday.isBirthday}
+          onBirthdayClick={birthday.openModal}
+        />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin">
           <Outlet />
         </main>
@@ -76,6 +84,11 @@ export function AppShell() {
           onClose={() => { /* não permite fechar — required=true */ }}
           onChanged={handlePasswordChanged}
         />
+      )}
+
+      {/* Aniversário — auto-abre só uma vez por dia; ícone no nav reabre */}
+      {!blockForPassword && birthday.modalOpen && birthday.data && (
+        <BirthdayModal data={birthday.data} onClose={birthday.closeModal} />
       )}
     </div>
   )

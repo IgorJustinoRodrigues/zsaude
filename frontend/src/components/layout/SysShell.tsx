@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
   LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download, Database,
-  Sparkles, User,
+  Sparkles, User, Cake,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useTheme } from '../../hooks/useTheme'
@@ -11,6 +11,8 @@ import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
 import { ChangePasswordModal } from '../ui/ChangePasswordModal'
+import { BirthdayModal } from '../ui/BirthdayModal'
+import { useBirthdayCheck } from '../../hooks/useBirthdayCheck'
 import { AccessibilityMenu } from '../ui/AccessibilityMenu'
 import { BrandName } from '../shared/BrandName'
 import { authApi } from '../../api/auth'
@@ -21,6 +23,8 @@ import { authApi } from '../../api/auth'
  */
 export function SysShell() {
   const { user, logout } = useAuthStore()
+  const birthday = useBirthdayCheck()
+  const passwordBlocking = user?.passwordExpired || user?.mustChangePassword
   const { theme, toggle: toggleDarkMode } = useTheme()
   const darkMode = theme === 'dark'
   const navigate = useNavigate()
@@ -115,6 +119,19 @@ export function SysShell() {
             <span>Área MASTER</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Aniversário — só aparece no dia */}
+            {birthday.isBirthday && (
+              <button
+                type="button"
+                onClick={birthday.openModal}
+                title="Hoje é seu aniversário! 🎉"
+                aria-label="Abrir mensagem de aniversário"
+                className="relative p-1.5 rounded-lg text-pink-500 hover:text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-950/40 transition-colors"
+              >
+                <Cake size={15} />
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+              </button>
+            )}
             <AccessibilityMenu />
             <button
               onClick={toggleDarkMode}
@@ -133,6 +150,11 @@ export function SysShell() {
 
       <Toaster />
       <DialogContainer />
+
+      {/* Aniversário — só abre se não há modal bloqueante de senha. */}
+      {!passwordBlocking && birthday.modalOpen && birthday.data && (
+        <BirthdayModal data={birthday.data} onClose={birthday.closeModal} />
+      )}
 
       {/* Senha expirada ou provisória: modal bloqueante. */}
       {(user?.passwordExpired || user?.mustChangePassword) && (

@@ -261,3 +261,38 @@ class UserPhotoListItem(CamelModel):
     height: int | None = None
     uploaded_at: datetime
     uploaded_by_name: str
+
+
+class UserAnniversaryStats(CamelModel):
+    """Estatísticas de uso do usuário no último ano — pro modal de aniversário."""
+
+    total_actions: int
+    days_active: int
+    logins: int
+    patients_touched: int
+    most_used_module: str | None = None
+    most_used_module_count: int = 0
+
+
+class UserAnniversaryResponse(CamelModel):
+    """Retorno do endpoint /users/me/anniversary."""
+
+    is_birthday: bool
+    first_name: str
+    age: int | None = None
+    stats: UserAnniversaryStats
+
+
+class UserBirthdayItem(CamelModel):
+    """Item da listagem de aniversariantes."""
+
+    id: UUID
+    name: str
+    social_name: str = ""
+    level: UserLevelLiteral
+    primary_role: str
+    birth_date: date
+    day: int           # dia do mês do aniversário
+    month: int         # mês do aniversário
+    is_today: bool     # hoje é o aniversário
+    age: int           # idade que fará no aniversário deste ano
