@@ -82,6 +82,8 @@ services:
       # Cache persistente dos modelos do InsightFace (~320 MB na primeira
       # execução). Sem este volume, cada rebuild baixa tudo de novo.
       - insightface_models:/home/app/.insightface
+      # Chaves JWT (dev) — não vão pra imagem.
+      - ./secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
