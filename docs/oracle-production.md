@@ -134,15 +134,38 @@ await ensure_municipality_schema(session, ibge, apply_migrations=True)
 
 O `_do_create` detecta que já existe, chama `evolve_schema` e aplica diffs.
 
-### Limitações do auto-evolve
+### Capacidades do auto-evolve
 
-- **ADD COLUMN**: ✅ suportado.
-- **DROP COLUMN**: ⚠️ opcional (`allow_drop=True` destrutivo, DBA-ok).
-- **MODIFY COLUMN** (tipo/nullable): ❌ manual via DBA. O migrator não
-  tenta — risco de perda de dado em mudanças incompatíveis.
+- **ADD COLUMN**: ✅ sempre (default).
+- **MODIFY COLUMN**: ⚠️ opcional via `allow_modify=True`. Detecta e aplica:
+  - Aumento/redução de tamanho de `VARCHAR2`
+  - Mudança `NULL` ↔ `NOT NULL`
+  - Ignora mudanças estruturais de tipo (`VARCHAR ↔ NUMBER`) — requer DBA
+  - Ignora tipos especiais (`VECTOR`, `JSON`, `RAW`, `CLOB`, `BLOB`)
+- **DROP COLUMN**: ⚠️ opcional via `allow_drop=True` — destrutivo.
 
-Para mudar tipo de coluna em prod, DBA executa `ALTER TABLE X MODIFY (...)`
-antes do deploy do app.
+Ativação em prod:
+
+```python
+# Conservador (só ADD, default)
+await provision_app_schema(engine())
+
+# Com MODIFY — seguro em ambiente novo; em prod com dados, preview antes
+await provision_app_schema(engine(), allow_modify=True)
+
+# Preview sem aplicar
+async with engine().begin() as conn:
+    result = await conn.run_sync(lambda c: evolve_schema(
+        c, Base.metadata,
+        schema_translate={"app": None},
+        allow_modify=True,
+        dry_run=True,
+    ))
+print(result.skipped)  # DDLs que SERIAM aplicados
+```
+
+Mudanças de tipo incompatíveis (ex: `NUMBER → VARCHAR2`) continuam sendo
+responsabilidade do DBA — o migrator pula para evitar loss-of-data.
 
 ## Dry-run (preview sem aplicar)
 

@@ -50,23 +50,28 @@ async def provision_app_schema(
     *,
     apply_seeds: bool = True,
     auto_evolve: bool = True,
+    allow_modify: bool = False,
 ) -> dict[str, int | str | list]:
     """Cria/evolui o schema ``app`` no banco conectado. Idempotente.
 
     Etapas:
     1. ``CREATE TABLE`` para tabelas novas (``metadata.create_all(checkfirst=True)``).
-    2. Em Oracle: ``ALTER TABLE ADD COLUMN`` para colunas que mudaram nos
-       models mas já existem tabelas (via ``schema_migrator``).
-    3. Aplica seeds (se ``apply_seeds``).
-    4. Registra fingerprint em ``APP.SCHEMA_VERSION`` (Oracle).
+    2. Em Oracle: ``ALTER TABLE ADD COLUMN`` para colunas novas nos models
+       (via ``schema_migrator``).
+    3. (Se ``allow_modify``) ``ALTER TABLE MODIFY`` para colunas que
+       mudaram tipo/tamanho/nullable.
+    4. Aplica seeds (se ``apply_seeds``).
+    5. Registra fingerprint em ``APP.SCHEMA_VERSION`` (Oracle).
 
     Parâmetros:
     - ``apply_seeds``: roda seeds de bootstrap. Default ``True``.
-    - ``auto_evolve``: aplica ``ALTER TABLE ADD COLUMN`` pra evoluir schema
-      Oracle. Default ``True``. Desative em prod se preferir DBA controle.
+    - ``auto_evolve``: aplica ``ALTER TABLE ADD COLUMN``. Default ``True``.
+    - ``allow_modify``: aplica ``ALTER TABLE MODIFY`` pra tipo/nullable.
+      Default ``False`` — arriscado em tabela com dados (pode falhar se
+      não couberem). Seguro em ambiente novo.
 
-    Retorna: dict com ``dialect``, contadores dos seeds, ``added_columns``
-    (se evolução rodou), ``fingerprint``.
+    Retorna: dict com ``dialect``, contadores dos seeds, ``added_columns``,
+    ``modified_columns``, ``fingerprint``.
     """
     dialect = engine.dialect.name
     started = time.monotonic()
@@ -87,12 +92,14 @@ async def provision_app_schema(
             await conn.run_sync(
                 lambda c: Base.metadata.create_all(c, checkfirst=True)
             )
-            # 2) Evolui tabelas existentes (ADD COLUMN).
+            # 2) Evolui tabelas existentes (ADD / MODIFY COLUMN).
             evolve_summary = None
             if auto_evolve:
                 evolve_summary = await conn.run_sync(
                     lambda c: evolve_schema(
-                        c, Base.metadata, schema_translate={"app": None},
+                        c, Base.metadata,
+                        schema_translate={"app": None},
+                        allow_modify=allow_modify,
                     )
                 )
     else:
@@ -107,6 +114,7 @@ async def provision_app_schema(
     counts: dict[str, int | str | list] = {"dialect": dialect}
     if dialect == "oracle" and auto_evolve and evolve_summary is not None:
         counts["added_columns"] = evolve_summary.added_columns
+        counts["modified_columns"] = evolve_summary.modified_columns
         counts["dropped_columns"] = evolve_summary.dropped_columns
         if evolve_summary.warnings:
             counts["evolve_warnings"] = evolve_summary.warnings
