@@ -108,10 +108,18 @@ def _set_tenant_context_oracle(conn, ctx) -> None:
     conn.exec_driver_sql(f'ALTER SESSION SET CURRENT_SCHEMA = "{schema}"')
 
     def _set(key: str, value: str) -> None:
-        conn.exec_driver_sql(
-            "BEGIN ZSAUDE.ZSAUDE_CTX_PKG.set_val(:k, :v); END;",
-            {"k": key, "v": value},
-        )
+        # Application Context requer o package ``ZSAUDE.ZSAUDE_CTX_PKG``
+        # instalado pelo DBA. Se não existir (ex: dev), silenciamos o erro
+        # pra não bloquear requests — auditoria fica sem contexto.
+        try:
+            conn.exec_driver_sql(
+                "BEGIN ZSAUDE.ZSAUDE_CTX_PKG.set_val(:k, :v); END;",
+                {"k": key, "v": value},
+            )
+        except Exception as e:
+            msg = str(e)
+            if "ORA-06550" not in msg and "ORA-04063" not in msg:
+                raise
 
     _set("app.current_user_id", str(ctx.user_id) if ctx.user_id else "")
     _set("app.current_municipality_id", str(ctx.municipality_id) if ctx.municipality_id else "")

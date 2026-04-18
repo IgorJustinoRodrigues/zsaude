@@ -36,11 +36,24 @@ class OracleAdapter(DialectAdapter):
         )
 
     async def set_session_vars(self, conn: AsyncConnection, vars: dict[str, str]) -> None:
+        """Define variáveis de sessão via package ``ZSAUDE.ZSAUDE_CTX_PKG``.
+
+        Se o package não existir (ex: ambiente dev sem setup de Application
+        Context), o erro ORA-06550 é silenciado — o contexto de auditoria
+        fica indisponível nesta sessão, mas a aplicação segue.
+        """
         for key, val in vars.items():
-            await conn.exec_driver_sql(
-                "BEGIN ZSAUDE.ZSAUDE_CTX_PKG.set_val(:k, :v); END;",
-                {"k": key, "v": val},
-            )
+            try:
+                await conn.exec_driver_sql(
+                    "BEGIN ZSAUDE.ZSAUDE_CTX_PKG.set_val(:k, :v); END;",
+                    {"k": key, "v": val},
+                )
+            except Exception as e:
+                # ORA-06550 = PL/SQL compile error; ORA-04063 = package inválido.
+                msg = str(e)
+                if "ORA-06550" in msg or "ORA-04063" in msg:
+                    return
+                raise
 
     # ── Upsert ───────────────────────────────────────────────────────────
 
