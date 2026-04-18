@@ -33,7 +33,7 @@ from app.tenant_models.patients import Patient, PatientPhoto
 log = logging.getLogger(__name__)
 
 
-FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled"]
+FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled", "duplicate"]
 """Status devolvido ao caller quando uma foto é processada.
 
 - ``ok`` — embedding gerado e salvo.
@@ -41,7 +41,37 @@ FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled"]
 - ``low_quality`` — rosto detectado, mas score < threshold.
 - ``error`` — falha técnica (decode, modelo, etc).
 - ``disabled`` — feature desligada globalmente.
+- ``duplicate`` — rosto bate com outra pessoa acima do threshold de duplicata.
+  Embedding NÃO é salvo; a foto em si pode ser mantida pelo caller.
 """
+
+
+@dataclass
+class DuplicateFaceMatch:
+    """Identifica a pessoa cuja face já está cadastrada e bateu com a nova foto."""
+
+    entity_id: UUID
+    name: str
+    similarity: float  # 0..1
+
+
+@dataclass
+class EnrollResult:
+    """Retorno do enroll facial. Inclui info do match quando ``status=duplicate``."""
+
+    status: FaceStatus
+    duplicate_of: DuplicateFaceMatch | None = None
+
+
+def _duplicate_threshold() -> float:
+    """Similaridade mínima pra considerar duas fotos como "mesma pessoa".
+
+    ArcFace (buffalo_l) tipicamente retorna 0.6-0.9 para a mesma pessoa
+    em condições diferentes (ângulo, luz) e <0.4 para pessoas diferentes.
+    0.70 é um bom balanço — bloqueia duplicatas óbvias sem gerar falsos
+    positivos. Ajustável via system_settings ``hsp.face.duplicate_threshold``.
+    """
+    return get_float_sync("hsp.face.duplicate_threshold", 0.70)
 
 
 @dataclass
@@ -98,14 +128,19 @@ async def enroll_from_photo(
     patient_id: UUID,
     photo_bytes: bytes,
     photo_id: UUID,
-) -> FaceStatus:
+) -> EnrollResult:
     """Gera embedding e faz UPSERT. NÃO faz flush (o caller controla a transação).
 
-    Retorna o status pra UI mostrar aviso relevante. Nunca levanta exceção —
-    falha não bloqueia o upload da foto.
+    Antes do upsert, roda uma busca de similaridade contra os embeddings
+    dos OUTROS pacientes do município. Se algum estiver acima do
+    ``duplicate_threshold`` (default 0.85), **não salva** o embedding e
+    retorna ``status='duplicate'`` com info do paciente que bateu — isso
+    evita criar cadastros duplicados por engano.
+
+    Nunca levanta exceção — falha não bloqueia o upload da foto.
     """
     if not _is_vector_available(db):
-        return "disabled"
+        return EnrollResult("disabled")
 
     # Nome do paciente pra aparecer em logs de erro (facilita triagem
     # sem precisar ir no banco buscar quem é o UUID).
@@ -121,14 +156,14 @@ async def enroll_from_photo(
             patient_name=patient_name, patient_id=str(patient_id),
             error=str(e),
         )
-        return "error"
+        return EnrollResult("error")
 
     if result is None:
         log.info(
             "face_enroll_no_face",
             patient_name=patient_name, patient_id=str(patient_id),
         )
-        return "no_face"
+        return EnrollResult("no_face")
 
     if result.detection_score < _min_detection_score():
         log.info(
@@ -136,7 +171,18 @@ async def enroll_from_photo(
             patient_name=patient_name, patient_id=str(patient_id),
             score=result.detection_score,
         )
-        return "low_quality"
+        return EnrollResult("low_quality")
+
+    # ── Checagem de duplicata ───────────────────────────────────────
+    duplicate = await _find_duplicate_patient(db, result.embedding, patient_id)
+    if duplicate is not None:
+        log.info(
+            "face_enroll_duplicate",
+            patient_name=patient_name, patient_id=str(patient_id),
+            match_id=str(duplicate.entity_id), match_name=duplicate.name,
+            similarity=duplicate.similarity,
+        )
+        return EnrollResult("duplicate", duplicate_of=duplicate)
 
     adapter = get_adapter(db.bind.dialect.name)
     await adapter.execute_upsert(
@@ -158,7 +204,52 @@ async def enroll_from_photo(
         ],
         extra_set={"updated_at": datetime.now(UTC)},
     )
-    return "ok"
+    return EnrollResult("ok")
+
+
+async def _find_duplicate_patient(
+    db: AsyncSession,
+    embedding: list[float],
+    exclude_patient_id: UUID,
+) -> DuplicateFaceMatch | None:
+    """Retorna o paciente mais similar (se > duplicate_threshold), excluindo o próprio."""
+    adapter = get_adapter(db.bind.dialect.name)
+    dist = adapter.vector_cosine_distance_sql("fe.embedding", "q")
+    dialect = db.bind.dialect.name
+    max_distance = 1 - _duplicate_threshold()
+    limit_clause = "LIMIT 1" if dialect == "postgresql" else "FETCH FIRST 1 ROWS ONLY"
+
+    sql = f"""
+        SELECT p.id, p.name, 1 - ({dist}) AS similarity
+          FROM patient_face_embeddings fe
+          JOIN patients p ON p.id = fe.patient_id
+         WHERE fe.patient_id <> :exclude
+           AND ({dist}) <= :max_dist
+         ORDER BY ({dist}) ASC
+        {limit_clause}
+    """
+
+    if dialect == "postgresql":
+        q_param = str(embedding)
+        exclude_param: object = exclude_patient_id
+    else:
+        import array as _array
+        q_param = _array.array("f", embedding)
+        # Oracle: UUID precisa ser serializado em bytes (RAW(16)).
+        exclude_param = exclude_patient_id.bytes
+
+    row = (await db.execute(
+        text(sql),
+        {"q": q_param, "max_dist": max_distance, "exclude": exclude_param},
+    )).mappings().first()
+
+    if row is None:
+        return None
+    return DuplicateFaceMatch(
+        entity_id=row["id"],
+        name=row["name"] or "",
+        similarity=float(row["similarity"]),
+    )
 
 
 # ─── Match ───────────────────────────────────────────────────────────────────
@@ -346,9 +437,9 @@ async def reindex_all(
             result = await enroll_from_photo(
                 db, patient_id=patient_id, photo_bytes=photo_bytes, photo_id=photo_id,
             )
-            if result == "ok":
+            if result.status == "ok":
                 status.enrolled += 1
-            elif result == "no_face":
+            elif result.status == "no_face":
                 status.no_face += 1
             else:
                 status.errors += 1

@@ -18,18 +18,31 @@ class UserRepository:
     async def get_by_id(self, user_id: UUID) -> User | None:
         return await self.session.scalar(select(User).where(User.id == user_id))
 
-    async def get_by_login_or_email(self, identifier: str) -> User | None:
+    async def get_by_identifier(self, identifier: str) -> User | None:
+        """Lookup por CPF (com ou sem máscara) ou e-mail.
+
+        Não tenta mais casar com ``login``: o sistema só aceita CPF ou
+        e-mail como credencial.
+        """
         ident = identifier.strip().lower()
-        stmt = select(User).where(or_(User.login == ident, User.email == ident))
+        cpf_digits = "".join(ch for ch in ident if ch.isdigit())
+        conditions = [User.email == ident]
+        if len(cpf_digits) == 11:
+            conditions.append(User.cpf == cpf_digits)
+        stmt = select(User).where(or_(*conditions))
         return await self.session.scalar(stmt)
 
     async def get_by_login(self, login: str) -> User | None:
         return await self.session.scalar(select(User).where(User.login == login.strip().lower()))
 
-    async def get_by_email(self, email: str) -> User | None:
+    async def get_by_email(self, email: str | None) -> User | None:
+        if not email:
+            return None
         return await self.session.scalar(select(User).where(User.email == email.strip().lower()))
 
-    async def get_by_cpf(self, cpf: str) -> User | None:
+    async def get_by_cpf(self, cpf: str | None) -> User | None:
+        if not cpf:
+            return None
         return await self.session.scalar(select(User).where(User.cpf == cpf))
 
     async def add(self, user: User) -> User:

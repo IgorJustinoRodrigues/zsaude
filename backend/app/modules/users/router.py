@@ -21,12 +21,14 @@ from app.modules.users.schemas import (
     UserDetail,
     UserListItem,
     UserListParams,
+    UserPhotoDuplicateMatch,
     UserPhotoListItem,
     UserPhotoUploadResponse,
     UserRead,
     UserStats,
     UserUpdate,
     UserUpdateMe,
+    user_read_from_orm,
 )
 from app.modules.users.service import UserService
 
@@ -39,13 +41,13 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserRead)
 async def read_me(db: DB, user: CurrentUserDep) -> UserRead:
     record = await UserService(db).get_or_404(user.id)
-    return UserRead.model_validate(record)
+    return user_read_from_orm(record)
 
 
 @router.patch("/me", response_model=UserRead)
 async def update_me(payload: UserUpdateMe, db: DB, user: CurrentUserDep) -> UserRead:
     record = await UserService(db).update_me(user.id, payload)
-    return UserRead.model_validate(record)
+    return user_read_from_orm(record)
 
 
 # ─── Admin endpoints ──────────────────────────────────────────────────────────
@@ -143,6 +145,14 @@ async def admin_reset_password(
     return await svc.admin_reset_password(user_id, payload)
 
 
+def _forbid_self_destruct(actor: User, target_user_id: UUID, action: str) -> None:
+    """Bloqueia o usuário de desativar/bloquear a própria conta."""
+    if actor.id == target_user_id:
+        raise ForbiddenError(
+            f"Você não pode {action} sua própria conta. Peça a outro administrador.",
+        )
+
+
 @router.post("/{user_id}/activate", response_model=MessageResponse)
 async def activate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
     svc = UserService(db)
@@ -153,6 +163,7 @@ async def activate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
 
 @router.post("/{user_id}/deactivate", response_model=MessageResponse)
 async def deactivate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
+    _forbid_self_destruct(actor, user_id, "inativar")
     svc = UserService(db)
     await svc.ensure_target_in_scope(actor, user_id)
     await svc.set_status(user_id, UserStatus.INATIVO)
@@ -161,6 +172,7 @@ async def deactivate(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
 
 @router.post("/{user_id}/block", response_model=MessageResponse)
 async def block(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
+    _forbid_self_destruct(actor, user_id, "bloquear")
     svc = UserService(db)
     await svc.ensure_target_in_scope(actor, user_id)
     await svc.set_status(user_id, UserStatus.BLOQUEADO)
@@ -210,18 +222,26 @@ async def upload_user_photo(
     mime = (file.content_type or "").lower()
 
     svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
-    photo, face_status = await svc.set_photo(
+    photo, outcome = await svc.set_photo(
         user_id,
         content=content,
         mime_type=mime,
         original_name=file.filename or "",
     )
+    duplicate = None
+    if outcome.duplicate_of is not None:
+        duplicate = UserPhotoDuplicateMatch(
+            user_id=outcome.duplicate_of.user_id,
+            user_name=outcome.duplicate_of.name,
+            similarity=outcome.duplicate_of.similarity,
+        )
     return UserPhotoUploadResponse(
         photo_id=photo.id,
         mime_type=photo.mime_type,
         file_size=photo.file_size,
         uploaded_at=photo.uploaded_at,
-        face_enrollment=face_status,
+        face_enrollment=outcome.status,
+        duplicate_of=duplicate,
     )
 
 

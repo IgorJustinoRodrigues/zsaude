@@ -131,7 +131,7 @@ def upgrade() -> None:
             "face_opt_in",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("1"),
+            server_default=sa.true(),
         ),
         schema="app",
     )

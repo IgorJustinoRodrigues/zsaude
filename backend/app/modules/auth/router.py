@@ -22,7 +22,7 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.service import AuthService
 from app.modules.system.service import get_int_sync
-from app.modules.users.schemas import UserRead
+from app.modules.users.schemas import UserRead, user_read_from_orm
 from app.modules.users.service import UserService
 
 log = get_logger(__name__)
@@ -71,7 +71,7 @@ async def logout(payload: LogoutRequest, db: DB) -> MessageResponse:
 @router.get("/me", response_model=UserRead)
 async def me(db: DB, user: CurrentUserDep) -> UserRead:
     record = await UserService(db).get_or_404(user.id)
-    return UserRead.model_validate(record)
+    return user_read_from_orm(record)
 
 
 @router.post("/forgot-password", response_model=MessageResponse)

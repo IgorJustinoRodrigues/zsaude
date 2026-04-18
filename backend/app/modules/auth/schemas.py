@@ -36,14 +36,23 @@ class ResetPasswordRequest(CamelModel):
     token: str
     new_password: str = Field(max_length=200)
 
-    _check_pwd = field_validator("new_password")(lambda _, v: validate_password_strength(v))
+    @field_validator("new_password")
+    @classmethod
+    def _check_pwd(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class ChangePasswordRequest(CamelModel):
-    current_password: str
+    # Obrigatório no fluxo normal de troca. Opcional quando o usuário está
+    # usando senha provisória (``must_change_password=True``) — nesse caso
+    # a senha já foi validada no login e não faz sentido pedir de novo.
+    current_password: str | None = None
     new_password: str = Field(max_length=200)
 
-    _check_pwd = field_validator("new_password")(lambda _, v: validate_password_strength(v))
+    @field_validator("new_password")
+    @classmethod
+    def _check_pwd(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class MessageResponse(CamelModel):

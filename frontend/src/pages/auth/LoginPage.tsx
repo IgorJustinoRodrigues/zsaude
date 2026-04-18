@@ -24,7 +24,7 @@ export function LoginPage() {
     try {
       await login(form.login, form.password)
     } catch (err) {
-      let msg = 'Usuário ou senha inválidos.'
+      let msg = 'CPF, e-mail ou senha inválidos.'
       if (err instanceof HttpError) {
         if (err.status === 429) msg = 'Muitas tentativas. Aguarde alguns instantes.'
         else if (err.message) msg = err.message
@@ -152,12 +152,12 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                Usuário
+                CPF ou e-mail
               </label>
               <input
                 value={form.login}
                 onChange={e => setForm(f => ({ ...f, login: e.target.value }))}
-                placeholder="seu.login"
+                placeholder="000.000.000-00 ou seu e-mail"
                 autoComplete="username"
                 className="w-full h-11 px-3.5 text-sm rounded-xl transition-all
                   bg-white dark:bg-slate-900

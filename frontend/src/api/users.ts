@@ -11,9 +11,9 @@ export type UserLevel = 'master' | 'admin' | 'user'
 export interface UserListItem {
   id: string
   login: string
-  email: string
+  email: string | null
   name: string
-  cpf: string
+  cpf: string | null
   phone: string
   status: UserStatus
   level: UserLevel
@@ -45,9 +45,9 @@ export interface MunicipalityAccessDetail {
 export interface UserDetail {
   id: string
   login: string
-  email: string
+  email: string | null
   name: string
-  cpf: string
+  cpf: string | null
   phone: string
   status: UserStatus
   level: UserLevel
@@ -80,10 +80,11 @@ export interface MunicipalityAccessInput {
 }
 
 export interface UserCreateInput {
-  login: string
-  email: string
+  /** Opcional quando ``cpf`` é informado (e vice-versa). Pelo menos um é obrigatório. */
+  email?: string
   name: string
-  cpf: string
+  /** Opcional quando ``email`` é informado (e vice-versa). Pelo menos um é obrigatório. */
+  cpf?: string
   phone?: string
   primaryRole: string
   password: string
@@ -143,6 +144,13 @@ export type UserFaceEnrollment =
   | 'error'
   | 'disabled'
   | 'opted_out'
+  | 'duplicate'
+
+export interface UserPhotoDuplicateMatch {
+  userId: string
+  userName: string
+  similarity: number  // 0..1
+}
 
 export interface UserPhotoUploadResponse {
   photoId: string
@@ -150,6 +158,8 @@ export interface UserPhotoUploadResponse {
   fileSize: number
   uploadedAt: string
   faceEnrollment: UserFaceEnrollment
+  /** Preenchido quando ``faceEnrollment='duplicate'``. */
+  duplicateOf: UserPhotoDuplicateMatch | null
 }
 
 export interface UserPhotoListItem {

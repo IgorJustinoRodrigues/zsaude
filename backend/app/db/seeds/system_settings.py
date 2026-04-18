@@ -22,6 +22,9 @@ from app.modules.system.models import SystemSetting
 SYSTEM_SETTINGS: list[tuple[str, object, str]] = [
     ("password_min_length", 8, "Comprimento mínimo de senha"),
     ("password_require_special", True, "Exige caractere especial em senhas"),
+    ("password_expiry_days", 90, "Dias até expirar a senha (0 = nunca)"),
+    ("password_history_count", 5, "Senhas antigas bloqueadas (reuso)"),
+    ("password_expiry_warn_days", 7, "Dias de antecedência pra avisar"),
     ("access_token_ttl_minutes", 15, "TTL do access token (min)"),
     ("refresh_token_ttl_days", 30, "TTL do refresh token (dias)"),
     ("login_rate_limit_per_min", 5, "Tentativas de login por IP/min"),

@@ -592,13 +592,21 @@ class PatientService:
         await self.db.flush()
 
         from app.modules.hsp import face_service
-        face_status = await face_service.enroll_from_photo(
+        enroll = await face_service.enroll_from_photo(
             self.db,
             patient_id=patient.id,
             photo_bytes=content,
             photo_id=photo.id,
         )
+        face_status = enroll.status
         photo.face_status = face_status  # type: ignore[attr-defined]
+        if enroll.duplicate_of is not None:
+            # Expõe os metadados do match pro router compor a resposta.
+            photo.face_duplicate_of = {  # type: ignore[attr-defined]
+                "entityId": str(enroll.duplicate_of.entity_id),
+                "name": enroll.duplicate_of.name,
+                "similarity": round(enroll.duplicate_of.similarity, 4),
+            }
 
         await self._record_history(
             patient_id=patient.id,
@@ -609,21 +617,33 @@ class PatientService:
             reason=None,
         )
 
+        # Duplicata é evento de segurança/compliance — severity warning.
+        audit_extra = f"reconhecimento facial: {face_status}"
+        audit_severity = "warning" if face_status == "duplicate" else "info"
+        audit_details: dict[str, object] = {
+            "patientName": patient.name,
+            "size": len(content),
+            "mime": mime_type,
+            "storageKey": storage_key,
+            "faceEnrollment": face_status,
+        }
+        if enroll.duplicate_of is not None:
+            audit_extra += f" — bate com {enroll.duplicate_of.name} ({enroll.duplicate_of.similarity:.0%})"
+            audit_details["duplicateOf"] = {
+                "patientId": str(enroll.duplicate_of.entity_id),
+                "patientName": enroll.duplicate_of.name,
+                "similarity": round(enroll.duplicate_of.similarity, 4),
+            }
+
         await write_audit(
-            self.db, module="hsp", action="patient_photo_upload", severity="info",
+            self.db, module="hsp", action="patient_photo_upload", severity=audit_severity,
             resource="patient_photo", resource_id=str(photo.id),
             description=describe_change(
                 actor=self.user_name, verb="enviou nova foto para",
                 target_name=patient.name,
-                extra=f"reconhecimento facial: {face_status}",
+                extra=audit_extra,
             ),
-            details={
-                "patientName": patient.name,
-                "size": len(content),
-                "mime": mime_type,
-                "storageKey": storage_key,
-                "faceEnrollment": face_status,
-            },
+            details=audit_details,
         )
         return photo
 

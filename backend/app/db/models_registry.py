@@ -74,6 +74,6 @@ from app.modules.tenants.models import (  # noqa: F401
     MunicipalityAccess,
     Neighborhood,
 )
-from app.modules.users.models import User  # noqa: F401
+from app.modules.users.models import PasswordHistory, User  # noqa: F401
 from app.modules.users.photo_models import UserFaceEmbedding, UserPhoto  # noqa: F401
 from app.db.file_model import AppFile  # noqa: F401

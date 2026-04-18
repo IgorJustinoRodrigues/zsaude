@@ -14,10 +14,10 @@ export type UserLevel = 'master' | 'admin' | 'user'
 export interface MeResponse {
   id: string
   login: string
-  email: string
+  email: string | null
   name: string
   socialName: string
-  cpf: string
+  cpf: string | null
   phone: string
   status: string
   level: UserLevel
@@ -25,6 +25,14 @@ export interface MeResponse {
   birthDate: string | null
   currentPhotoId: string | null
   faceOptIn: boolean
+  /** Quando a senha atual vai expirar (null se política desligada). */
+  passwordExpiresAt: string | null
+  /** Dias restantes — negativo se já expirou. null se política desligada. */
+  passwordExpiresInDays: number | null
+  /** Já expirou e precisa trocar antes de qualquer ação. */
+  passwordExpired: boolean
+  /** Senha é provisória (gerada por admin em reset). Precisa trocar ao entrar. */
+  mustChangePassword: boolean
   createdAt: string
 }
 
@@ -59,6 +67,12 @@ export const authApi = {
   resetPassword: (token: string, newPassword: string) =>
     api.post<{ message: string }>('/api/v1/auth/reset-password', { token, newPassword }, { anonymous: true }),
 
-  changePassword: (currentPassword: string, newPassword: string) =>
+  /**
+   * Troca a senha do usuário logado. ``currentPassword`` é obrigatória
+   * quando o usuário já tem uma senha pessoal — opcional (pode ser ``null``)
+   * quando ele está usando uma senha provisória vinda de reset admin,
+   * nesse caso o backend pula a verificação.
+   */
+  changePassword: (currentPassword: string | null, newPassword: string) =>
     api.post<{ message: string }>('/api/v1/auth/change-password', { currentPassword, newPassword }),
 }

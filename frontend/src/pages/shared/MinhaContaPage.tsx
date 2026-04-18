@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   User2, Save, Calendar, Mail, Phone, ScrollText, ScanFace, Loader2,
+  Lock, AlertTriangle, Clock,
 } from 'lucide-react'
 import { authApi, type MeResponse, type UpdateMeInput } from '../../api/auth'
 import { auditApi, type AuditLogItem } from '../../api/audit'
@@ -8,6 +9,7 @@ import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { useAuthStore } from '../../store/authStore'
 import { UserPhotoField } from '../ops/components/UserPhotoField'
+import { ChangePasswordModal } from '../../components/ui/ChangePasswordModal'
 import { labelAction, labelSeverity, labelModule } from '../../lib/auditLabels'
 import { cn } from '../../lib/utils'
 
@@ -45,6 +47,9 @@ export function MinhaContaPage() {
   const [logs, setLogs] = useState<AuditLogItem[]>([])
   const [loadingLogs, setLoadingLogs] = useState(true)
 
+  // Modal de senha
+  const [showChangePassword, setShowChangePassword] = useState(false)
+
   const loadMe = useCallback(async () => {
     setLoading(true)
     try {
@@ -52,7 +57,7 @@ export function MinhaContaPage() {
       setMe(res)
       setName(res.name)
       setSocialName(res.socialName || '')
-      setEmail(res.email)
+      setEmail(res.email || '')
       setPhone(res.phone || '')
       setBirthDate(res.birthDate || '')
       setFaceOptIn(res.faceOptIn)
@@ -84,7 +89,7 @@ export function MinhaContaPage() {
     return (
       name !== me.name ||
       (socialName || '') !== (me.socialName || '') ||
-      email !== me.email ||
+      email !== (me.email || '') ||
       phone !== (me.phone || '') ||
       birthDate !== (me.birthDate || '') ||
       faceOptIn !== me.faceOptIn
@@ -98,7 +103,7 @@ export function MinhaContaPage() {
       const payload: UpdateMeInput = {}
       if (name !== me.name) payload.name = name
       if ((socialName || '') !== (me.socialName || '')) payload.socialName = socialName
-      if (email !== me.email) payload.email = email
+      if (email !== (me.email || '')) payload.email = email
       if (phone !== (me.phone || '')) payload.phone = phone
       if (birthDate !== (me.birthDate || '')) payload.birthDate = birthDate || null
       if (faceOptIn !== me.faceOptIn) payload.faceOptIn = faceOptIn
@@ -158,6 +163,32 @@ export function MinhaContaPage() {
         </div>
       </div>
 
+      {/* Banner de senha expirando/expirada */}
+      {me.passwordExpired ? (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-300 dark:bg-red-950/40 dark:border-red-900">
+          <AlertTriangle size={18} className="text-red-600 dark:text-red-400 shrink-0" />
+          <div className="flex-1 text-sm text-red-700 dark:text-red-400">
+            <strong>Sua senha expirou.</strong> Troque agora para continuar usando o sistema.
+          </div>
+          <button type="button" onClick={() => setShowChangePassword(true)}
+            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors">
+            Trocar senha
+          </button>
+        </div>
+      ) : me.passwordExpiresInDays !== null && me.passwordExpiresInDays <= 7 ? (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 dark:bg-amber-950/40 dark:border-amber-900">
+          <Clock size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <div className="flex-1 text-sm text-amber-700 dark:text-amber-400">
+            Sua senha expira em <strong>{me.passwordExpiresInDays} {me.passwordExpiresInDays === 1 ? 'dia' : 'dias'}</strong>.
+            Troque já para evitar interrupção.
+          </div>
+          <button type="button" onClick={() => setShowChangePassword(true)}
+            className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors">
+            Trocar agora
+          </button>
+        </div>
+      ) : null}
+
       {/* Layout 2 colunas em telas grandes — esquerda: foto + privacidade + logs
           direita: dados pessoais.
           No mobile/tablet tudo empilha. */}
@@ -166,6 +197,35 @@ export function MinhaContaPage() {
         <div className="space-y-5">
           <Section title="Foto" subtitle="Sua imagem no sistema e no reconhecimento facial.">
             <UserPhotoField userId={me.id} userName={me.socialName || me.name} />
+          </Section>
+
+          <Section
+            title="Segurança"
+            subtitle="Altere sua senha periodicamente."
+          >
+            <div className="space-y-2">
+              <div className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                {me.passwordExpiresAt ? (
+                  <>
+                    Sua senha foi alterada pela última vez há pouco tempo.{' '}
+                    {me.passwordExpiresInDays !== null && me.passwordExpiresInDays > 0 && (
+                      <>Expira em <strong>{me.passwordExpiresInDays} dia(s)</strong>.</>
+                    )}
+                  </>
+                ) : (
+                  'Política de expiração de senha desativada.'
+                )}
+                {' '}Não é possível reutilizar as últimas 5 senhas.
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePassword(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-medium transition-colors"
+              >
+                <Lock size={13} />
+                Alterar senha
+              </button>
+            </div>
           </Section>
 
           <Section
@@ -242,14 +302,11 @@ export function MinhaContaPage() {
                   className={inputCls}
                 />
               </Field>
+              <Field label="CPF" hint="Usado para entrar no sistema.">
+                <input value={me.cpf || '—'} disabled className={cn(inputCls, 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
+              </Field>
               <Field label="Perfil principal">
                 <input value={me.primaryRole || '—'} disabled className={cn(inputCls, 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
-              </Field>
-              <Field label="Login">
-                <input value={me.login} disabled className={cn(inputCls, 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
-              </Field>
-              <Field label="CPF">
-                <input value={me.cpf} disabled className={cn(inputCls, 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
               </Field>
             </div>
           </Section>
@@ -305,6 +362,16 @@ export function MinhaContaPage() {
           </Section>
         </div>
       </div>
+
+      {/* Modal — required quando senha expirou ou é provisória. */}
+      {(showChangePassword || me.passwordExpired || me.mustChangePassword) && (
+        <ChangePasswordModal
+          required={me.passwordExpired || me.mustChangePassword}
+          reason={me.mustChangePassword && !me.passwordExpired ? 'provisional' : 'expired'}
+          onClose={() => setShowChangePassword(false)}
+          onChanged={() => { void loadMe(); void loadLogs() }}
+        />
+      )}
     </div>
   )
 }

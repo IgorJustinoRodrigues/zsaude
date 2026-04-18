@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, User, Mail, Phone, MapPin, Building2, Shield,
   Eye as EyeIcon, EyeOff, KeyRound, RefreshCw, Check, X, Copy, Lock,
@@ -10,6 +10,7 @@ import { userApi, type UserDetail } from '../../api/users'
 import { sessionsApi, type SessionRead } from '../../api/sessions'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
 import type { SystemId } from '../../types'
 
 // ─── Modal de reset de senha (agora consome a API) ────────────────────────────
@@ -225,6 +226,13 @@ const STATUS_STYLE: Record<string, string> = {
 export function OpsUserViewPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // MASTER acessa via /sys/usuarios; demais via /ops/usuarios.
+  const base = pathname.startsWith('/sys/') ? '/sys/usuarios' : '/ops/usuarios'
+  // Alvo é o próprio ator? Esconde ações destrutivas (inativar, bloquear,
+  // resetar a própria senha).
+  const currentUserId = useAuthStore(s => s.user?.id)
+  const isSelf = currentUserId === id
   const [user, setUser] = useState<UserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -291,7 +299,7 @@ export function OpsUserViewPage() {
       <div className="flex flex-col items-center justify-center py-24 text-slate-400">
         <User size={40} className="mb-3 opacity-30" />
         <p className="text-sm text-slate-500">{error || 'Usuário não encontrado'}</p>
-        <button onClick={() => navigate('/ops/usuarios')} className="mt-3 text-xs text-sky-500 hover:underline">
+        <button onClick={() => navigate(base)} className="mt-3 text-xs text-sky-500 hover:underline">
           Voltar à lista
         </button>
       </div>
@@ -305,7 +313,7 @@ export function OpsUserViewPage() {
       {/* Cabeçalho */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/ops/usuarios')}
+          <button onClick={() => navigate(base)}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <ArrowLeft size={18} />
           </button>
@@ -321,29 +329,33 @@ export function OpsUserViewPage() {
             {user.status}
           </span>
 
-          {/* Ações de status */}
-          {user.status !== 'Ativo' && (
+          {/* Ações de status — escondidas pra própria conta */}
+          {!isSelf && user.status !== 'Ativo' && (
             <StatusBtn icon={<UserCheck size={13} />} label="Ativar" color="emerald"
               onClick={() => handleStatus('activate')} disabled={statusLoading} />
           )}
-          {user.status === 'Ativo' && (
+          {!isSelf && user.status === 'Ativo' && (
             <StatusBtn icon={<UserX size={13} />} label="Inativar" color="slate"
               onClick={() => handleStatus('deactivate')} disabled={statusLoading} />
           )}
-          {user.status !== 'Bloqueado' && (
+          {!isSelf && user.status !== 'Bloqueado' && (
             <StatusBtn icon={<ShieldOff size={13} />} label="Bloquear" color="red"
               onClick={() => handleStatus('block')} disabled={statusLoading} />
           )}
 
+          {/* Reset de senha — também escondido pra própria conta
+              (use "Minha conta" → "Alterar senha"). */}
+          {!isSelf && (
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Redefinir senha</span>
+            </button>
+          )}
           <button
-            onClick={() => setShowResetModal(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            <KeyRound size={14} />
-            <span className="hidden sm:inline">Redefinir senha</span>
-          </button>
-          <button
-            onClick={() => navigate(`/ops/usuarios/${user.id}/editar`)}
+            onClick={() => navigate(`${base}/${user.id}/editar`)}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors"
           >
             <Pencil size={14} />
@@ -362,9 +374,8 @@ export function OpsUserViewPage() {
           </div>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
             <ReadField label="Nome completo" value={user.name} className="sm:col-span-2" />
-            <ReadField label="Nome de acesso" value={user.login} icon={<Lock size={12} />} />
-            <ReadField label="CPF" value={user.cpf} />
-            <ReadField label="E-mail" value={user.email} icon={<Mail size={12} />} />
+            <ReadField label="CPF" value={user.cpf || '—'} icon={<Lock size={12} />} />
+            <ReadField label="E-mail" value={user.email || '—'} icon={<Mail size={12} />} />
             <ReadField label="Telefone" value={user.phone || '—'} icon={<Phone size={12} />} />
             <ReadField label="Perfil" value={user.primaryRole} icon={<Shield size={12} />} />
           </div>
@@ -418,14 +429,20 @@ export function OpsUserViewPage() {
                               {MODULE_LABEL[mod]}
                             </span>
                           ))}
-                          <button
-                            onClick={() => navigate(`/ops/usuarios/${user.id}/acessos/${fac.facilityAccessId}/permissoes`)}
-                            title="Personalizar permissões deste acesso"
-                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
-                          >
-                            <KeyRound size={11} />
-                            Permissões
-                          </button>
+                          {/* Botão "Permissões" só faz sentido no contexto
+                              OPS (ADMIN do município editando acesso). MASTER
+                              vendo da plataforma não tem contexto de
+                              trabalho — esconde o botão. */}
+                          {base === '/ops/usuarios' && (
+                            <button
+                              onClick={() => navigate(`${base}/${user.id}/acessos/${fac.facilityAccessId}/permissoes`)}
+                              title="Personalizar permissões deste acesso"
+                              className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <KeyRound size={11} />
+                              Permissões
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

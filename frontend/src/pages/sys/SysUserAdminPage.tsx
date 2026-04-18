@@ -4,6 +4,7 @@ import { Search, UserPlus, Users, Shield, UserCheck, UserX } from 'lucide-react'
 import { userApi, type UserListItem } from '../../api/users'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
 import { initials, cn } from '../../lib/utils'
 
 type LevelFilter = 'master' | 'admin' | 'all'
@@ -22,6 +23,7 @@ const LEVEL_STYLE: Record<string, string> = {
 
 export function SysUserAdminPage() {
   const navigate = useNavigate()
+  const currentUserId = useAuthStore(s => s.user?.id)
   const [items, setItems] = useState<UserListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,7 +62,7 @@ export function SysUserAdminPage() {
             Usuários MASTER e ADMIN. Para gerenciar usuários operacionais, use a área do município.
           </p>
         </div>
-        <button onClick={() => navigate('/ops/usuarios/novo')}
+        <button onClick={() => navigate('/sys/usuarios/novo')}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors shrink-0">
           <UserPlus size={15} />
           Novo usuário
@@ -102,7 +104,12 @@ export function SysUserAdminPage() {
       ) : (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
           {filtered.map(u => (
-            <button key={u.id} onClick={() => navigate(`/ops/usuarios/${u.id}`)}
+            <button key={u.id} onClick={() => {
+              // Clicando no próprio registro, vai pra "Minha conta"
+              // — não faz sentido se auto-administrar na lista.
+              if (u.id === currentUserId) navigate('/sys/minha-conta')
+              else navigate(`/sys/usuarios/${u.id}`)
+            }}
               className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left">
               <div className="w-9 h-9 rounded-full bg-violet-500 flex items-center justify-center text-[12px] font-bold text-white shrink-0">
                 {initials(u.name)}

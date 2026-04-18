@@ -308,17 +308,27 @@ class UserService:
     async def create(self, payload: UserCreate, *, scope: set[UUID] | None = None) -> User:
         self._ensure_payload_in_scope(scope, payload.municipalities)
 
-        if await self.repo.get_by_login(payload.login):
-            raise ConflictError("Login já está em uso.")
-        if await self.repo.get_by_email(payload.email):
-            raise ConflictError("E-mail já está em uso.")
-        if await self.repo.get_by_cpf(payload.cpf):
+        # Pelo menos um entre CPF e e-mail é obrigatório — o schema já
+        # rejeita payload sem nenhum dos dois, isso aqui é defesa em
+        # profundidade.
+        if not payload.cpf and not payload.email:
+            raise ConflictError("Informe CPF ou e-mail.")
+
+        # Colisão só é checada para o campo que foi informado.
+        if payload.cpf and await self.repo.get_by_cpf(payload.cpf):
             raise ConflictError("CPF já está em uso.")
+        if payload.email and await self.repo.get_by_email(payload.email):
+            raise ConflictError("E-mail já está em uso.")
+
+        # ``login`` é interno: preferimos CPF, senão e-mail (slug antes do @).
+        login = payload.cpf or (payload.email or "").lower()
+        if await self.repo.get_by_login(login):
+            raise ConflictError("Identificador já está em uso.")
 
         status_enum = UserStatus(payload.status)
         level_enum = UserLevel(payload.level)
         user = User(
-            login=payload.login,
+            login=login,
             email=payload.email,
             name=payload.name,
             cpf=payload.cpf,
@@ -588,11 +598,37 @@ class UserService:
     async def admin_reset_password(
         self, user_id: UUID, payload: AdminResetPasswordRequest
     ) -> AdminResetPasswordResponse:
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
         user = await self.get_or_404(user_id)
-        new_plain = payload.new_password or _gen_provisional_password()
-        user.password_hash = hash_password(new_plain)
-        user.token_version += 1  # invalida tokens existentes
-        await self.repo.update(user)
+        # Admin pode gerar uma senha provisória ou enviar uma explicitamente.
+        # A cada tentativa que colide com histórico, geramos outra (até 5x).
+        provided = payload.new_password
+        for _ in range(5):
+            candidate = provided or _gen_provisional_password()
+            try:
+                # require_change=True: senha é provisória; usuário vai
+                # precisar trocar antes de navegar no sistema.
+                await apply_new_password(
+                    self.session, user, candidate, require_change=True,
+                )
+                new_plain = candidate
+                break
+            except PasswordReuseError:
+                # Se o admin forneceu explicitamente, propaga o erro — não
+                # devemos adivinhar outra senha por ele.
+                if provided is not None:
+                    raise ConflictError(
+                        "Nova senha não pode ser igual a uma das senhas anteriores.",
+                    )
+                # Senão, gera outra automática e tenta de novo.
+                continue
+        else:
+            raise ConflictError(
+                "Não foi possível gerar uma senha provisória única. Tente de novo.",
+            )
         return AdminResetPasswordResponse(
             message="Senha redefinida. Entregue a senha provisória ao usuário.",
             new_password=new_plain,

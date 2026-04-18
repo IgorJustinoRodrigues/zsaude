@@ -205,7 +205,10 @@ class PatientPhotoOut(CamelModel):
     uploaded_at: datetime
     # Status do enrollment facial feito automaticamente no upload.
     # Presente só no POST /photo; GET/lista devolve None.
-    face_status: Literal["ok", "no_face", "low_quality", "error", "disabled"] | None = None
+    face_status: Literal["ok", "no_face", "low_quality", "error", "disabled", "duplicate"] | None = None
+    # Quando ``face_status='duplicate'``, identifica o paciente cuja face
+    # bateu acima do threshold. Frontend mostra alerta e admin decide.
+    face_duplicate_of: dict | None = None
 
 
 class PatientFieldHistoryOut(CamelModel):

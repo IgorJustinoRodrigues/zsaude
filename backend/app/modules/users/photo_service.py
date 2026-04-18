@@ -21,12 +21,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import get_audit_context
@@ -47,7 +48,28 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 _ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp"}
 _EXT_BY_MIME = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
-FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled", "opted_out"]
+# Threshold de duplicata — acima disso consideramos a mesma pessoa.
+# ArcFace (buffalo_l) tipicamente retorna 0.6-0.9 para a mesma pessoa sob
+# condições diferentes e <0.4 para pessoas diferentes. 0.70 é um bom
+# balanço: bloqueia duplicatas óbvias sem gerar muitos falsos positivos.
+_DUPLICATE_THRESHOLD = 0.70
+
+FaceStatus = Literal[
+    "ok", "no_face", "low_quality", "error", "disabled", "opted_out", "duplicate",
+]
+
+
+@dataclass
+class DuplicateUserMatch:
+    user_id: UUID
+    name: str
+    similarity: float  # 0..1
+
+
+@dataclass
+class EnrollOutcome:
+    status: FaceStatus
+    duplicate_of: DuplicateUserMatch | None = None
 
 
 class UserPhotoService:
@@ -91,7 +113,7 @@ class UserPhotoService:
         original_name: str = "",
         width: int | None = None,
         height: int | None = None,
-    ) -> tuple[UserPhoto, FaceStatus]:
+    ) -> tuple[UserPhoto, EnrollOutcome]:
         self._validate_upload(content, mime_type)
         user = await self._get_user(user_id)
 
@@ -142,13 +164,33 @@ class UserPhotoService:
             await storage.delete(storage_key)
             raise
 
-        face_status: FaceStatus = await self._enroll(user, photo, content)
+        outcome = await self._enroll(user, photo, content)
+
+        # Severidade + descrição extra quando duplicata detectada —
+        # isso é evento de compliance/segurança, merece destaque.
+        audit_extra = f"reconhecimento facial: {outcome.status}"
+        audit_severity = "warning" if outcome.status == "duplicate" else "info"
+        audit_details: dict[str, object] = {
+            "targetUserName": user.name,
+            "targetUserId": str(user.id),
+            "size": len(content),
+            "mime": mime_type,
+            "storageKey": storage_key,
+            "faceEnrollment": outcome.status,
+        }
+        if outcome.duplicate_of is not None:
+            audit_extra += f" — bate com {outcome.duplicate_of.name} ({outcome.duplicate_of.similarity:.0%})"
+            audit_details["duplicateOf"] = {
+                "userId": str(outcome.duplicate_of.user_id),
+                "userName": outcome.duplicate_of.name,
+                "similarity": round(outcome.duplicate_of.similarity, 4),
+            }
 
         await write_audit(
             self.db,
             module="users",
             action="user_photo_upload",
-            severity="info",
+            severity=audit_severity,
             resource="user_photo",
             resource_id=str(photo.id),
             description=describe_change(
@@ -156,25 +198,18 @@ class UserPhotoService:
                 verb="enviou foto para",
                 target_kind="usuário",
                 target_name=user.name,
-                extra=f"reconhecimento facial: {face_status}",
+                extra=audit_extra,
             ),
-            details={
-                "targetUserName": user.name,
-                "targetUserId": str(user.id),
-                "size": len(content),
-                "mime": mime_type,
-                "storageKey": storage_key,
-                "faceEnrollment": face_status,
-            },
+            details=audit_details,
         )
-        return photo, face_status
+        return photo, outcome
 
-    async def _enroll(self, user: User, photo: UserPhoto, content: bytes) -> FaceStatus:
+    async def _enroll(self, user: User, photo: UserPhoto, content: bytes) -> EnrollOutcome:
         """Enroll facial sem levantar exceção. Falha nunca bloqueia upload."""
         if not user.face_opt_in:
-            return "opted_out"
+            return EnrollOutcome("opted_out")
         if self.db.bind.dialect.name not in ("postgresql", "oracle"):
-            return "disabled"
+            return EnrollOutcome("disabled")
 
         try:
             result = await detect_and_embed(content)
@@ -183,13 +218,26 @@ class UserPhotoService:
                 "user_face_enroll_error",
                 extra={"user_id": str(user.id), "error": str(e)},
             )
-            return "error"
+            return EnrollOutcome("error")
 
         if result is None:
-            return "no_face"
-        # Mesmo threshold do paciente — podemos parametrizar depois.
+            return EnrollOutcome("no_face")
         if result.detection_score < 0.50:
-            return "low_quality"
+            return EnrollOutcome("low_quality")
+
+        # ── Detecção de duplicata ──────────────────────────────────────
+        duplicate = await self._find_duplicate(user.id, result.embedding)
+        if duplicate is not None:
+            log.info(
+                "user_face_enroll_duplicate",
+                extra={
+                    "user_id": str(user.id),
+                    "match_id": str(duplicate.user_id),
+                    "match_name": duplicate.name,
+                    "similarity": duplicate.similarity,
+                },
+            )
+            return EnrollOutcome("duplicate", duplicate_of=duplicate)
 
         adapter = get_adapter(self.db.bind.dialect.name)
         await adapter.execute_upsert(
@@ -211,7 +259,50 @@ class UserPhotoService:
             ],
             extra_set={"updated_at": datetime.now(UTC)},
         )
-        return "ok"
+        return EnrollOutcome("ok")
+
+    async def _find_duplicate(
+        self, exclude_user_id: UUID, embedding: list[float],
+    ) -> DuplicateUserMatch | None:
+        """Retorna o usuário mais similar (acima do threshold de duplicata)."""
+        adapter = get_adapter(self.db.bind.dialect.name)
+        dist = adapter.vector_cosine_distance_sql("fe.embedding", "q")
+        dialect = self.db.bind.dialect.name
+        max_distance = 1 - _DUPLICATE_THRESHOLD
+        limit_clause = "LIMIT 1" if dialect == "postgresql" else "FETCH FIRST 1 ROWS ONLY"
+
+        sql = f"""
+            SELECT u.id, u.name, 1 - ({dist}) AS similarity
+              FROM user_face_embeddings fe
+              JOIN users u ON u.id = fe.user_id
+             WHERE fe.user_id <> :exclude
+               AND ({dist}) <= :max_dist
+             ORDER BY ({dist}) ASC
+            {limit_clause}
+        """
+
+        if dialect == "postgresql":
+            q_param = str(embedding)
+            exclude_param: object = exclude_user_id
+        else:
+            import array as _array
+            q_param = _array.array("f", embedding)
+            # Oracle ``oracledb`` não sabe serializar UUID direto; nossa
+            # coluna é RAW(16), então passamos os bytes.
+            exclude_param = exclude_user_id.bytes
+
+        row = (await self.db.execute(
+            text(sql),
+            {"q": q_param, "max_dist": max_distance, "exclude": exclude_param},
+        )).mappings().first()
+
+        if row is None:
+            return None
+        return DuplicateUserMatch(
+            user_id=row["id"],
+            name=row["name"] or "",
+            similarity=float(row["similarity"]),
+        )
 
     # ── leitura / listagem ─────────────────────────────────────────
 

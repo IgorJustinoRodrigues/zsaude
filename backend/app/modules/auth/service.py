@@ -56,7 +56,7 @@ class AuthService:
     async def login(self, identifier: str, password: str, ip: str, ua: str) -> TokenPair:
         from app.core.metrics import AUTH_LOGIN_TOTAL
 
-        user = await self.users.get_by_login_or_email(identifier)
+        user = await self.users.get_by_identifier(identifier)
         valid = bool(user and user.is_active and verify_password(password, user.password_hash))
 
         await self.repo.record_login_attempt(identifier, ip, valid)
@@ -243,7 +243,7 @@ class AuthService:
 
         Sempre retorna None ou token sem revelar se o e-mail existe.
         """
-        user = await self.users.get_by_login_or_email(email)
+        user = await self.users.get_by_identifier(email)
         if user is None or not user.is_active:
             return None
         plaintext = generate_opaque_token()
@@ -257,6 +257,11 @@ class AuthService:
         return plaintext
 
     async def reset_password(self, token: str, new_password: str) -> None:
+        from app.core.exceptions import ConflictError
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
         pr = await self.repo.find_password_reset(hash_opaque_token(token))
         now = datetime.now(UTC)
         if pr is None or pr.used_at is not None or _as_aware(pr.expires_at) < now:
@@ -264,18 +269,31 @@ class AuthService:
         user = await self.users.get_by_id(pr.user_id)
         if user is None:
             raise UnauthorizedError("Usuário não encontrado.")
-        user.password_hash = hash_password(new_password)
-        user.token_version += 1  # invalida access tokens existentes
+        try:
+            await apply_new_password(self.session, user, new_password)
+        except PasswordReuseError as e:
+            raise ConflictError(str(e)) from e
         pr.used_at = now
-        # Revoga todas as famílias de refresh desse usuário (logout total)
         await self.session.flush()
 
-    async def change_password(self, user: User, current: str, new: str) -> None:
-        if not verify_password(current, user.password_hash):
-            raise UnauthorizedError("Senha atual incorreta.")
-        user.password_hash = hash_password(new)
-        user.token_version += 1
-        await self.session.flush()
+    async def change_password(
+        self, user: User, current: str | None, new: str,
+    ) -> None:
+        from app.core.exceptions import ConflictError
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
+        # Usuário com senha provisória (reset de admin) pode pular a
+        # verificação da senha atual — ele já autenticou no login com
+        # essa mesma senha, e o objetivo da tela é justamente substituí-la.
+        if not user.must_change_password:
+            if not current or not verify_password(current, user.password_hash):
+                raise UnauthorizedError("Senha atual incorreta.")
+        try:
+            await apply_new_password(self.session, user, new)
+        except PasswordReuseError as e:
+            raise ConflictError(str(e)) from e
 
     # ── Helpers ────────────────────────────────────────────────────────
 

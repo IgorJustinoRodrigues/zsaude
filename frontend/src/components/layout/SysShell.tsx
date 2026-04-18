@@ -10,8 +10,10 @@ import { Sun, Moon } from 'lucide-react'
 import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
+import { ChangePasswordModal } from '../ui/ChangePasswordModal'
 import { AccessibilityMenu } from '../ui/AccessibilityMenu'
 import { BrandName } from '../shared/BrandName'
+import { authApi } from '../../api/auth'
 
 /**
  * Layout da área MASTER. Sidebar violeta escuro pra deixar claro que o usuário
@@ -131,6 +133,21 @@ export function SysShell() {
 
       <Toaster />
       <DialogContainer />
+
+      {/* Senha expirada ou provisória: modal bloqueante. */}
+      {(user?.passwordExpired || user?.mustChangePassword) && (
+        <ChangePasswordModal
+          required
+          reason={user.mustChangePassword && !user.passwordExpired ? 'provisional' : 'expired'}
+          onClose={() => { /* required, não fecha */ }}
+          onChanged={async () => {
+            try {
+              const me = await authApi.me()
+              useAuthStore.setState({ user: me })
+            } catch { /* ignora */ }
+          }}
+        />
+      )}
     </div>
   )
 }

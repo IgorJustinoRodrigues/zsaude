@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Trash2, ChevronDown, ChevronUp,
   Eye, EyeOff, RefreshCw, Check, X,
@@ -105,6 +105,10 @@ function detailToAccesses(
 export function OpsUserFormPage() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const { pathname } = useLocation()
+  // MASTER acessa via /sys/usuarios; demais via /ops/usuarios. Preserva
+  // o prefixo nas navegações de volta pra não cair fora do shell.
+  const base = pathname.startsWith('/sys/') ? '/sys/usuarios' : '/ops/usuarios'
   const isEdit = !!id
 
   // Estado de carga
@@ -119,7 +123,6 @@ export function OpsUserFormPage() {
   const [allRoles,       setAllRoles]       = useState<RoleSummary[]>([])
 
   // Campos
-  const [login,    setLogin]    = useState('')
   const [name,     setName]     = useState('')
   const [cpf,      setCpf]      = useState('')
   const [email,    setEmail]    = useState('')
@@ -167,10 +170,9 @@ export function OpsUserFormPage() {
           const detail = await userApi.get(id)
           if (cancelled) return
           setExisting(detail)
-          setLogin(detail.login)
-          setName(detail.name)
-          setCpf(detail.cpf)
-          setEmail(detail.email)
+          setName(detail.name ?? '')
+          setCpf(detail.cpf ? maskCpf(detail.cpf) : '')
+          setEmail(detail.email ?? '')
           setPhone(detail.phone)
           setRole(detail.primaryRole)
           setStatus(detail.status)
@@ -195,18 +197,6 @@ export function OpsUserFormPage() {
     void load()
     return () => { cancelled = true }
   }, [id, isEdit])
-
-  // Login auto-sugerido a partir do nome (só no modo create, antes do toque)
-  const [loginTouched, setLoginTouched] = useState(false)
-  useEffect(() => {
-    if (isEdit || loginTouched) return
-    const slug = name
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
-      .split(/\s+/).filter(Boolean)
-    if (slug.length >= 2) setLogin(`${slug[0]}.${slug[slug.length - 1]}`)
-    else if (slug.length === 1) setLogin(slug[0])
-  }, [name, isEdit, loginTouched])
 
   // Helpers acessos
   const addMunicipality    = () => setAccesses(a => [...a, emptyMunicipality()])
@@ -233,10 +223,18 @@ export function OpsUserFormPage() {
   const validate = () => {
     const e: Record<string, string> = {}
     if (!name.trim())   e.name  = 'Campo obrigatório'
-    if (!login.trim())  e.login = 'Campo obrigatório'
-    else if (!/^[a-z0-9._-]+$/.test(login)) e.login = 'Use apenas letras minúsculas, números, . _ -'
-    if (!cpf.trim())    e.cpf   = 'Campo obrigatório'
-    if (!email.trim())  e.email = 'Campo obrigatório'
+    // CPF e e-mail são opcionais individualmente, mas **pelo menos um** é obrigatório.
+    if (!cpf.trim() && !email.trim()) {
+      e.identifier = 'Informe CPF ou e-mail.'
+    } else {
+      if (cpf.trim()) {
+        const digits = cpf.replace(/\D/g, '')
+        if (digits.length !== 11) e.cpf = 'CPF deve ter 11 dígitos.'
+      }
+      if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        e.email = 'E-mail inválido.'
+      }
+    }
     if (!role.trim())   e.role  = 'Selecione o perfil principal'
 
     if (!isEdit) {
@@ -299,13 +297,13 @@ export function OpsUserFormPage() {
           municipalities: buildPayloadAccesses(),
         })
         toast.success('Usuário atualizado', name)
-        navigate(`/ops/usuarios/${id}`, { replace: true })
+        navigate(`${base}/${id}`, { replace: true })
       } else {
+        const cpfDigits = cpf.replace(/\D/g, '')
         const created = await userApi.create({
-          login,
-          email,
+          email: email.trim() || undefined,
           name,
-          cpf: cpf.replace(/\D/g, ''),
+          cpf: cpfDigits || undefined,
           phone,
           primaryRole: role,
           password,
@@ -313,8 +311,8 @@ export function OpsUserFormPage() {
           level: safeLevel,
           municipalities: buildPayloadAccesses(),
         })
-        toast.success('Usuário criado', `${created.name} · login ${created.login}`)
-        navigate(`/ops/usuarios/${created.id}`, { replace: true })
+        toast.success('Usuário criado', created.name)
+        navigate(`${base}/${created.id}`, { replace: true })
       }
     } catch (err) {
       let msg = 'Erro ao salvar.'
@@ -344,7 +342,7 @@ export function OpsUserFormPage() {
     <form onSubmit={handleSubmit} className="space-y-0">
       {/* Cabeçalho */}
       <div className="flex items-center gap-3 mb-6">
-        <button type="button" onClick={() => navigate('/ops/usuarios')}
+        <button type="button" onClick={() => navigate(base)}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           <ArrowLeft size={18} />
         </button>
@@ -377,30 +375,29 @@ export function OpsUserFormPage() {
       {/* Dados pessoais */}
       <FormSection title="Dados pessoais" subtitle="Identificação e contato do usuário">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-4">
-          <Field label="Nome completo *" error={errors.name} className="sm:col-span-2 xl:col-span-2">
+          <Field label="Nome completo *" error={errors.name} className="sm:col-span-2 xl:col-span-3">
             <input value={name} onChange={e => setName(e.target.value)}
               placeholder="Nome completo do usuário" className={inputCls(!!errors.name)} />
           </Field>
 
-          <Field label="Nome de acesso *" error={errors.login}>
-            <input
-              value={login}
-              onChange={e => { setLogin(e.target.value.toLowerCase()); setLoginTouched(true) }}
-              disabled={isEdit}
-              placeholder="login.do.usuario"
-              className={cn(inputCls(!!errors.login), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')}
-            />
-          </Field>
-
-          <Field label="CPF *" error={errors.cpf}>
+          <Field
+            label="CPF"
+            error={errors.cpf || errors.identifier}
+            hint="Usado para entrar no sistema. CPF ou e-mail é obrigatório — pelo menos um."
+          >
             <input value={cpf} onChange={e => setCpf(maskCpf(e.target.value))} disabled={isEdit}
               placeholder="000.000.000-00"
-              className={cn(inputCls(!!errors.cpf), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
+              className={cn(inputCls(!!(errors.cpf || errors.identifier)), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
           </Field>
 
-          <Field label="E-mail *" error={errors.email}>
+          <Field
+            label="E-mail"
+            error={errors.email || (errors.identifier && !errors.cpf ? errors.identifier : undefined)}
+            hint="Usado para entrar no sistema. CPF ou e-mail é obrigatório — pelo menos um."
+          >
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="email@prefeitura.gov.br" className={inputCls(!!errors.email)} />
+              placeholder="email@prefeitura.gov.br"
+              className={inputCls(!!(errors.email || errors.identifier))} />
           </Field>
 
           <Field label="Telefone">
@@ -634,7 +631,7 @@ export function OpsUserFormPage() {
 
       {/* Ações */}
       <div className="flex items-center justify-end gap-3 pt-6 pb-6 border-t border-slate-100 dark:border-slate-800 mt-2">
-        <button type="button" onClick={() => navigate(isEdit ? `/ops/usuarios/${id}` : '/ops/usuarios')}
+        <button type="button" onClick={() => navigate(isEdit ? `${base}/${id}` : base)}
           disabled={saving}
           className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50">
           Cancelar

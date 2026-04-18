@@ -8,13 +8,28 @@ import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
+import { ChangePasswordModal } from '../ui/ChangePasswordModal'
+import { authApi } from '../../api/auth'
 
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
 
 export function AppShell() {
   const { sidebarCollapsed } = useUIStore()
-  const { currentSystem, selectSystem } = useAuthStore()
+  const { currentSystem, selectSystem, user } = useAuthStore()
   const { pathname } = useLocation()
+  const passwordExpired = user?.passwordExpired ?? false
+  const mustChangePassword = user?.mustChangePassword ?? false
+  const blockForPassword = passwordExpired || mustChangePassword
+  const blockReason: 'expired' | 'provisional' =
+    mustChangePassword && !passwordExpired ? 'provisional' : 'expired'
+
+  async function handlePasswordChanged() {
+    // Atualiza o user pra remover o estado expirado
+    try {
+      const me = await authApi.me()
+      useAuthStore.setState({ user: me })
+    } catch { /* ignora — próximo reload pega */ }
+  }
 
   // Módulo da URL atual (se for um segmento de módulo válido).
   const segment = pathname.split('/')[1] as SystemId
@@ -52,6 +67,16 @@ export function AppShell() {
 
       <Toaster />
       <DialogContainer />
+
+      {/* Senha expirada ou provisória: modal bloqueante em qualquer tela */}
+      {blockForPassword && (
+        <ChangePasswordModal
+          required
+          reason={blockReason}
+          onClose={() => { /* não permite fechar — required=true */ }}
+          onChanged={handlePasswordChanged}
+        />
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Camera, Trash2, UserCircle, Loader2, CheckCircle2, AlertTriangle, ScanFace } from 'lucide-react'
+import { Camera, Trash2, UserCircle, Loader2, CheckCircle2, AlertTriangle, ScanFace, ShieldAlert } from 'lucide-react'
 import { apiFetchBlob, HttpError } from '../../../api/client'
-import { userApi, type UserFaceEnrollment } from '../../../api/users'
+import { userApi, type UserFaceEnrollment, type UserPhotoDuplicateMatch } from '../../../api/users'
 import { toast } from '../../../store/toastStore'
 import { cn } from '../../../lib/utils'
 import { PhotoCropModal } from '../../../components/ui/PhotoCropModal'
@@ -22,6 +22,7 @@ const FACE_LABEL: Record<UserFaceEnrollment, { label: string; tone: 'ok' | 'warn
   error:       { label: 'Falha ao processar reconhecimento facial',  tone: 'err'  },
   disabled:    { label: 'Reconhecimento facial indisponível neste banco', tone: 'info' },
   opted_out:   { label: 'Reconhecimento facial desativado pelo usuário', tone: 'info' },
+  duplicate:   { label: 'Esta face já está cadastrada em outro usuário', tone: 'err'  },
 }
 
 /**
@@ -41,6 +42,7 @@ export function UserPhotoField({ userId, userName, readonly = false }: Props) {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [faceStatus, setFaceStatus] = useState<UserFaceEnrollment | null>(null)
+  const [duplicateOf, setDuplicateOf] = useState<UserPhotoDuplicateMatch | null>(null)
   const [showCropModal, setShowCropModal] = useState(false)
   const [showFaceCapture, setShowFaceCapture] = useState(false)
 
@@ -86,6 +88,7 @@ export function UserPhotoField({ userId, userName, readonly = false }: Props) {
       const file = new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' })
       const res = await userApi.uploadPhoto(userId, file)
       setFaceStatus(res.faceEnrollment)
+      setDuplicateOf(res.duplicateOf)
       setCacheKey(k => k + 1)
       const status = res.faceEnrollment
       if (status === 'ok') {
@@ -96,6 +99,12 @@ export function UserPhotoField({ userId, userName, readonly = false }: Props) {
       } else if (status === 'low_quality') {
         toast.warning('Foto atualizada',
           'Qualidade do rosto abaixo do ideal. Tente uma foto com mais luz.')
+      } else if (status === 'duplicate' && res.duplicateOf) {
+        const pct = Math.round(res.duplicateOf.similarity * 100)
+        toast.error(
+          'Face já cadastrada',
+          `Esta foto bate com o usuário ${res.duplicateOf.userName} (${pct}% de similaridade). O reconhecimento facial não foi cadastrado para evitar duplicata.`,
+        )
       } else {
         toast.success('Foto atualizada.')
       }
@@ -125,6 +134,7 @@ export function UserPhotoField({ userId, userName, readonly = false }: Props) {
       await userApi.removePhoto(userId)
       setSrc(null)
       setFaceStatus(null)
+      setDuplicateOf(null)
       setCacheKey(k => k + 1)
       toast.success('Foto removida', `A foto de ${userName} foi removida.`)
     } catch (e) {
@@ -206,8 +216,26 @@ export function UserPhotoField({ userId, userName, readonly = false }: Props) {
           JPEG, PNG ou WEBP · máx. 10 MB. A câmera detecta e recorta o rosto automaticamente.
         </p>
 
-        {/* Status do enrollment — full width, destaque */}
-        {statusInfo && (
+        {/* Card específico de DUPLICATA — mais prominente, com nome e % */}
+        {faceStatus === 'duplicate' && duplicateOf && (
+          <div className="w-full p-3 rounded-lg bg-red-50 border border-red-300 dark:bg-red-950/40 dark:border-red-900 space-y-1">
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
+              <ShieldAlert size={15} />
+              Face já cadastrada
+            </div>
+            <p className="text-xs text-red-700 dark:text-red-400 leading-relaxed">
+              Esta foto bate com o usuário{' '}
+              <strong className="font-semibold">{duplicateOf.userName}</strong>
+              {' '}({Math.round(duplicateOf.similarity * 100)}% de similaridade).
+              O reconhecimento facial <strong>não foi cadastrado</strong> para evitar
+              duplicação. A imagem foi salva, mas não vai ser usada em buscas
+              biométricas. Verifique se não é um cadastro duplicado do mesmo usuário.
+            </p>
+          </div>
+        )}
+
+        {/* Status do enrollment — badge compacto para outros estados (ok, erros) */}
+        {statusInfo && faceStatus !== 'duplicate' && (
           <div
             className={cn(
               'w-full flex items-start gap-2 px-3 py-2 rounded-lg text-xs leading-snug',
