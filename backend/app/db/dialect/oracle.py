@@ -95,13 +95,33 @@ class OracleAdapter(DialectAdapter):
 
         update_parts = [f"t.{qc(c)} = src.{qc(c)}" for c in update_columns]
         if extra_set:
+            import datetime as _dt
             for k, v in extra_set.items():
-                if isinstance(v, str):
-                    update_parts.append(f"t.{qc(k)} = '{v}'")
-                elif isinstance(v, bool):
+                if isinstance(v, bool):
                     update_parts.append(f"t.{qc(k)} = {1 if v else 0}")
-                else:
+                elif isinstance(v, (int, float)):
                     update_parts.append(f"t.{qc(k)} = {v}")
+                elif isinstance(v, _dt.datetime):
+                    # Literal timestamp Oracle em ISO 8601; usa SYSTIMESTAMP se
+                    # for ``datetime.now(UTC)`` típico — senão TIMESTAMP literal.
+                    if v.tzinfo is not None:
+                        s = v.strftime("%Y-%m-%d %H:%M:%S.%f")
+                        update_parts.append(
+                            f"t.{qc(k)} = TIMESTAMP '{s}'"
+                        )
+                    else:
+                        s = v.strftime("%Y-%m-%d %H:%M:%S.%f")
+                        update_parts.append(f"t.{qc(k)} = TIMESTAMP '{s}'")
+                elif isinstance(v, _dt.date):
+                    update_parts.append(
+                        f"t.{qc(k)} = DATE '{v.isoformat()}'"
+                    )
+                elif v is None:
+                    update_parts.append(f"t.{qc(k)} = NULL")
+                else:
+                    # string (e fallback) — escapa aspas simples
+                    escaped = str(v).replace("'", "''")
+                    update_parts.append(f"t.{qc(k)} = '{escaped}'")
         update_set = ", ".join(update_parts)
 
         insert_cols = ", ".join(qc(c) for c in all_cols)
@@ -188,6 +208,41 @@ class OracleAdapter(DialectAdapter):
         except Exception:
             return {}
 
+    @staticmethod
+    def _apply_python_defaults(
+        table: type, row: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Preenche colunas NOT NULL ausentes usando ``default=callable`` do model.
+
+        Em Oracle o MERGE vai por ``text()`` cru — defaults Python (``default=
+        new_uuid7``) não disparam automaticamente como em ``session.add()``.
+        Este helper resolve isso sem mudar o caller.
+        """
+        try:
+            tbl = table.__table__  # type: ignore[attr-defined]
+        except AttributeError:
+            return row
+        out = dict(row)
+        for col in tbl.columns:
+            if col.name in out and out[col.name] is not None:
+                continue
+            if col.nullable or col.default is None:
+                continue
+            arg = getattr(col.default, "arg", None)
+            if callable(arg):
+                # Alguns callables aceitam ExecutionContext, outros não.
+                # Tenta sem arg; se falhar, passa um stub.
+                try:
+                    out[col.name] = arg()
+                except TypeError:
+                    try:
+                        out[col.name] = arg(None)
+                    except TypeError:
+                        continue
+            elif arg is not None:
+                out[col.name] = arg
+        return out
+
     async def execute_upsert(
         self, session: Any, table: type,
         values: list[dict[str, Any]] | dict[str, Any],
@@ -198,6 +253,9 @@ class OracleAdapter(DialectAdapter):
         rows = values if isinstance(values, list) else [values]
         if not rows:
             return
+        # Aplica defaults Python-side (ex: id = new_uuid7()) em colunas
+        # NOT NULL ausentes — importador passa só os campos do CSV.
+        rows = [self._apply_python_defaults(table, r) for r in rows]
         tbl = table.__tablename__  # type: ignore[attr-defined]
         all_cols = list(rows[0].keys())
         sql = self._build_merge_sql(tbl, all_cols, index_elements, update_columns, extra_set)
@@ -214,29 +272,21 @@ class OracleAdapter(DialectAdapter):
     async def execute_upsert_do_nothing(
         self, session: Any, table: type, values: list[dict[str, Any]],
     ) -> None:
-        """Oracle: executa MERGE do-nothing row-by-row."""
-        for row in values:
-            stmt = self.upsert_do_nothing(table, [row])
-            await session.execute(stmt)
-
-    def upsert_do_nothing(
-        self, table: type, values: list[dict[str, Any]],
-    ) -> Executable:
-        """MERGE sem WHEN MATCHED — insere apenas se não existir."""
+        """Oracle: MERGE sem WHEN MATCHED — insere só o que falta. Row-by-row."""
         if not values:
-            raise ValueError("upsert_do_nothing requires at least one row")
-
+            return
+        # Aplica defaults Python-side (ex: id = new_uuid7()) em cada row.
+        rows = [self._apply_python_defaults(table, r) for r in values]
         tbl = table.__tablename__.upper()  # type: ignore[attr-defined]
-        row = values[0]
-        all_cols = list(row.keys())
+        all_cols = list(rows[0].keys())
+        qc = self._qcol
+        col_types = self._column_types(table)
 
-        q = self._q
         bp = {c: f"p_{c.strip('\"')}" for c in all_cols}
-        src_select = ", ".join(f":{bp[c]} AS {q(c)}" for c in all_cols)
+        src_select = ", ".join(f":{bp[c]} AS {qc(c)}" for c in all_cols)
         insert_cols = ", ".join(qc(c) for c in all_cols)
         insert_vals = ", ".join(f"src.{qc(c)}" for c in all_cols)
-
-        on_clause = f't."id" = src."id"'
+        on_clause = f"t.{qc('id')} = src.{qc('id')}"
 
         sql = (
             f"MERGE INTO {tbl} t "
@@ -244,7 +294,42 @@ class OracleAdapter(DialectAdapter):
             f"ON ({on_clause}) "
             f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
         )
+        stmt = text(sql)
+        for row in rows:
+            prefixed = {
+                f"p_{k.strip('\"')}":
+                    self._coerce_value_for_oracle(v, col_types.get(k))
+                for k, v in row.items()
+            }
+            await session.execute(stmt, prefixed)
 
+    def upsert_do_nothing(
+        self, table: type, values: list[dict[str, Any]],
+    ) -> Executable:
+        """Retorna um Executable pra insert-if-not-exists (compat com interface).
+
+        Callers devem preferir ``execute_upsert_do_nothing`` que trata
+        defaults Python e faz row-by-row corretamente em Oracle.
+        """
+        if not values:
+            raise ValueError("upsert_do_nothing requires at least one row")
+        row = self._apply_python_defaults(table, values[0])
+        tbl = table.__tablename__.upper()  # type: ignore[attr-defined]
+        all_cols = list(row.keys())
+        qc = self._qcol
+
+        bp = {c: f"p_{c.strip('\"')}" for c in all_cols}
+        src_select = ", ".join(f":{bp[c]} AS {qc(c)}" for c in all_cols)
+        insert_cols = ", ".join(qc(c) for c in all_cols)
+        insert_vals = ", ".join(f"src.{qc(c)}" for c in all_cols)
+        on_clause = f"t.{qc('id')} = src.{qc('id')}"
+
+        sql = (
+            f"MERGE INTO {tbl} t "
+            f"USING (SELECT {src_select} FROM dual) src "
+            f"ON ({on_clause}) "
+            f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
+        )
         prefixed_row = {f"p_{k.strip('\"')}": v for k, v in row.items()}
         return text(sql).bindparams(**prefixed_row)
 
@@ -332,3 +417,13 @@ class OracleAdapter(DialectAdapter):
         # ``NLS_SORT=BINARY_AI`` (Accent Insensitive) faz uppercase sem
         # acentos de forma consistente pra português.
         return f"NLS_UPPER({column_expr}, 'NLS_SORT=BINARY_AI')"
+
+
+def _wants_ctx(fn: Any) -> bool:
+    """Detecta se o callable default espera um argumento de contexto."""
+    import inspect
+    try:
+        sig = inspect.signature(fn)
+        return len(sig.parameters) >= 1
+    except (TypeError, ValueError):
+        return False

@@ -215,8 +215,13 @@ async def match(
     """
 
     # Postgres (pgvector) aceita o vetor como string serializada; Oracle
-    # (AI Vector Search) aceita list[float] ou array.array — passamos list.
-    q_param = str(result.embedding) if dialect == "postgresql" else list(result.embedding)
+    # (AI Vector Search) exige ``array.array("f", ...)`` — ``list`` Python
+    # crua vira array PL/SQL e dispara ORA-01484.
+    if dialect == "postgresql":
+        q_param = str(result.embedding)
+    else:
+        import array as _array
+        q_param = _array.array("f", result.embedding)
 
     rows = await db.execute(
         text(sql),

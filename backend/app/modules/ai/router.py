@@ -21,7 +21,7 @@ import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, case, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.crypto import decrypt_secret, encrypt_secret, fingerprint_secret, last4
@@ -847,7 +847,16 @@ async def sys_usage_timeseries(
 
     Cada item: ``{date, requests, tokensIn, tokensOut, totalCostCents, successes, failures}``.
     """
-    trunc_fn = func.date_trunc(group, AIUsageLog.at)
+    # ``date_trunc`` (PG) vs ``TRUNC(..., 'DD'|'IW')`` (Oracle); ``FILTER (WHERE)``
+    # (PG) não existe em Oracle — usamos ``CASE WHEN ... THEN 1 END`` que roda
+    # nos dois. Detecta dialect via bind da session.
+    is_oracle = db.bind.dialect.name == "oracle"
+    if is_oracle:
+        fmt = "IW" if group == "week" else "DD"
+        trunc_fn = func.trunc(AIUsageLog.at, fmt)
+    else:
+        trunc_fn = func.date_trunc(group, AIUsageLog.at)
+
     conds = []
     if municipality_id is not None:
         conds.append(AIUsageLog.municipality_id == municipality_id)
@@ -856,6 +865,10 @@ async def sys_usage_timeseries(
     if to:
         conds.append(AIUsageLog.at <= to)
 
+    # ``FILTER (WHERE cond)`` → portável via ``SUM(CASE WHEN cond THEN 1 ELSE 0 END)``.
+    success_count = func.coalesce(func.sum(case((AIUsageLog.success == True, 1), else_=0)), 0)
+    fail_count    = func.coalesce(func.sum(case((AIUsageLog.success == False, 1), else_=0)), 0)
+
     stmt = (
         select(
             trunc_fn.label("bucket"),
@@ -863,8 +876,8 @@ async def sys_usage_timeseries(
             func.coalesce(func.sum(AIUsageLog.tokens_in), 0).label("tokens_in"),
             func.coalesce(func.sum(AIUsageLog.tokens_out), 0).label("tokens_out"),
             func.coalesce(func.sum(AIUsageLog.total_cost_cents), 0).label("total_cost_cents"),
-            func.count().filter(AIUsageLog.success== True).label("successes"),
-            func.count().filter(AIUsageLog.success== False).label("failures"),
+            success_count.label("successes"),
+            fail_count.label("failures"),
         )
         .where(*conds)
         .group_by("bucket")
