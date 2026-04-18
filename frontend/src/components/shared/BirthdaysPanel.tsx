@@ -5,6 +5,8 @@ import { userApi, type UserBirthdayItem } from '../../api/users'
 import { HttpError } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { initials, cn } from '../../lib/utils'
+import { ExportMenuButton } from '../ui/ExportMenuButton'
+import type { ExportOptions } from '../../lib/export'
 
 interface Props {
   /**
@@ -22,6 +24,12 @@ interface Props {
    * MASTER em ``/sys`` costuma omitir (vê todos).
    */
   municipalityId?: string
+  /**
+   * Rótulo usado no cabeçalho do PDF (ex.: "Anápolis/GO"). Quando o
+   * painel está filtrado por município, vale a pena passar pra ficar
+   * claro no documento qual recorte está sendo exportado.
+   */
+  contextLabel?: string
 }
 
 const MONTH_NAMES = [
@@ -42,7 +50,7 @@ const ACCENT_TEXT: Record<NonNullable<Props['accent']>, string> = {
 }
 
 export function BirthdaysPanel({
-  viewBasePath, accent = 'violet', municipalityId,
+  viewBasePath, accent = 'violet', municipalityId, contextLabel,
 }: Props) {
   const navigate = useNavigate()
   const currentUserId = useAuthStore(s => s.user?.id)
@@ -78,33 +86,40 @@ export function BirthdaysPanel({
 
   return (
     <div className="space-y-4">
-      {/* Navegador de mês */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-          <button
-            onClick={() => setMonth(m => m === 1 ? 12 : m - 1)}
-            className="px-3 py-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-[140px] text-center">
-            {MONTH_NAMES[month - 1]}
-          </span>
-          <button
-            onClick={() => setMonth(m => m === 12 ? 1 : m + 1)}
-            className="px-3 py-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <ChevronRight size={14} />
-          </button>
+      {/* Navegador de mês + export */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMonth(m => m === 1 ? 12 : m - 1)}
+              className="px-3 py-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="px-4 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 min-w-[140px] text-center">
+              {MONTH_NAMES[month - 1]}
+            </span>
+            <button
+              onClick={() => setMonth(m => m === 12 ? 1 : m + 1)}
+              className="px-3 py-2 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          {!isCurrentMonth && (
+            <button
+              onClick={() => setMonth(today.getMonth() + 1)}
+              className={cn('text-xs font-medium hover:underline', ACCENT_TEXT[accent])}
+            >
+              Voltar pro mês atual
+            </button>
+          )}
         </div>
-        {!isCurrentMonth && (
-          <button
-            onClick={() => setMonth(today.getMonth() + 1)}
-            className={cn('text-xs font-medium hover:underline', ACCENT_TEXT[accent])}
-          >
-            Voltar pro mês atual
-          </button>
-        )}
+
+        {/* Export padrão do sistema — veja docs/exports.md */}
+        <ExportMenuButton<UserBirthdayItem>
+          options={buildExportOptions(items, month, contextLabel)}
+        />
       </div>
 
       {/* Destaque "hoje" */}
@@ -236,4 +251,28 @@ function BirthdayCard({
       </div>
     </button>
   )
+}
+
+// ─── Export padrão do sistema ─────────────────────────────────────────────────
+
+function buildExportOptions(
+  items: UserBirthdayItem[],
+  month: number,
+  contextLabel?: string,
+): ExportOptions<UserBirthdayItem> {
+  return {
+    title: 'Aniversariantes',
+    subtitle: `${MONTH_NAMES[month - 1]} · ${items.length} ${items.length === 1 ? 'pessoa' : 'pessoas'}`,
+    context: contextLabel,
+    filename: `aniversariantes-${MONTH_NAMES[month - 1].toLowerCase()}`,
+    rows: items,
+    columns: [
+      { header: 'Dia',    get: u => String(u.day).padStart(2, '0'), align: 'center', bold: true, width: 40 },
+      { header: 'Nome',   get: u => u.socialName || u.name },
+      { header: 'Nível',  get: u => u.level.toUpperCase(), align: 'center', width: 60 },
+      { header: 'Perfil', get: u => u.primaryRole || '—' },
+      { header: 'Idade',  get: u => `${u.age} anos`, align: 'right', width: 65 },
+    ],
+    rowHighlight: u => u.isToday ? 'pink' : null,
+  }
 }

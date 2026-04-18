@@ -191,6 +191,9 @@ export function OpsUserListPage() {
             viewBasePath="/ops/usuarios"
             accent="sky"
             municipalityId={context?.municipality.id}
+            contextLabel={context?.municipality
+              ? `${context.municipality.name}/${context.municipality.state}`
+              : undefined}
           />
         </>
       )}
