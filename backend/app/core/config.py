@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     ai_circuit_cooldown_seconds: int = 60
     ai_usage_log_retention_months: int = 24
 
+    # ── Object Storage (S3/MinIO) ─────────────────────────────────────
+    # Em dev: MinIO local (endpoint = http://minio:9000)
+    # Em prod: AWS S3 (endpoint vazio, usa default da AWS)
+    storage_endpoint: str = "http://minio:9000"
+    storage_access_key: str = "minioadmin"
+    storage_secret_key: str = "minioadmin"
+    storage_bucket: str = "zsaude-files"
+    storage_region: str = "us-east-1"
+
     # ── Integração CadSUS (DATASUS PDQ Supplier) ─────────────────────
     # Sem credenciais, o endpoint de busca devolve 503. Em dev, ativar
     # `cadsus_mock=true` retorna paciente fake pra testar UI sem API real.

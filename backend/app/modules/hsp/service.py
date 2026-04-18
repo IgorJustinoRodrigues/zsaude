@@ -482,15 +482,44 @@ class PatientService:
         *,
         content: bytes,
         mime_type: str,
+        original_name: str = "",
         width: int | None = None,
         height: int | None = None,
     ) -> PatientPhoto:
         patient = await self.get_patient(patient_id)
         checksum = hashlib.sha256(content).hexdigest()
 
+        from app.db.types import new_uuid7
+        photo_uuid = new_uuid7()
+        ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}.get(mime_type, "bin")
+        ibge = self.ctx.municipality_ibge
+        storage_key = f"mun_{ibge}/patients/{patient_id}/photos/{photo_uuid}.{ext}"
+
+        # Upload para S3/MinIO
+        from app.services.storage import get_storage
+        await get_storage().upload(storage_key, content, mime_type)
+
+        # Registrar na tabela files
+        from app.db.file_model import TenantFile
+        file_record = TenantFile(
+            storage_key=storage_key,
+            original_name=original_name or f"photo.{ext}",
+            mime_type=mime_type,
+            size_bytes=len(content),
+            checksum_sha256=checksum,
+            category="patient_photo",
+            entity_id=patient.id,
+            uploaded_by=self.ctx.user_id,
+            uploaded_by_name=self.user_name,
+        )
+        self.db.add(file_record)
+        await self.db.flush()
+
         photo = PatientPhoto(
+            id=photo_uuid,
             patient_id=patient.id,
-            content=content,
+            storage_key=storage_key,
+            file_id=file_record.id,
             mime_type=mime_type,
             file_size=len(content),
             width=width,
@@ -507,9 +536,6 @@ class PatientService:
         patient.updated_by = self.ctx.user_id
         await self.db.flush()
 
-        # Enrollment facial (custo zero — InsightFace local). Não bloqueia
-        # o upload se falhar; status vai pro audit detail e o caller decide
-        # se mostra aviso ao usuário.
         from app.modules.hsp import face_service
         face_status = await face_service.enroll_from_photo(
             self.db,
@@ -517,7 +543,6 @@ class PatientService:
             photo_bytes=content,
             photo_id=photo.id,
         )
-        # Anexa status ao photo em memória pra o router enviar à UI.
         photo.face_status = face_status  # type: ignore[attr-defined]
 
         await self._record_history(
@@ -537,6 +562,7 @@ class PatientService:
                 "patientId": str(patient.id),
                 "size": len(content),
                 "mime": mime_type,
+                "storageKey": storage_key,
                 "faceEnrollment": face_status,
             },
         )

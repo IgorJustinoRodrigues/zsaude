@@ -201,7 +201,9 @@ class PatientPhoto(TenantBase):
         index=True,
     )
 
-    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    content: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)  # legacy, será removido
+    storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)  # path no S3
+    file_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)  # FK para files.id
     mime_type: Mapped[str] = mapped_column(String(50), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)

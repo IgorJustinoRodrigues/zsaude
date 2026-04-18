@@ -40,6 +40,7 @@ dependencies = [
     "pgvector>=0.3.0",
     "oracledb>=2.0",
     "prometheus-client>=0.21.0",
+    "aioboto3>=13.0.0",
 ]
 
 [dependency-groups]

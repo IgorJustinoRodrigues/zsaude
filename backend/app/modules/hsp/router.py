@@ -288,8 +288,13 @@ async def get_current_photo(
 ) -> Response:
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, None)
+    if photo.storage_key:
+        from app.services.storage import get_storage
+        data = await get_storage().download(photo.storage_key)
+    else:
+        data = bytes(photo.content) if photo.content else b""
     return Response(
-        content=bytes(photo.content),
+        content=data,
         media_type=photo.mime_type,
         headers={"Cache-Control": "private, max-age=60"},
     )
@@ -316,8 +321,13 @@ async def get_specific_photo(
 ) -> Response:
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, photo_id)
+    if photo.storage_key:
+        from app.services.storage import get_storage
+        data = await get_storage().download(photo.storage_key)
+    else:
+        data = bytes(photo.content) if photo.content else b""
     return Response(
-        content=bytes(photo.content),
+        content=data,
         media_type=photo.mime_type,
         headers={"Cache-Control": "private, max-age=3600"},
     )

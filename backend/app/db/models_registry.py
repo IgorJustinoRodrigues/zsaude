@@ -75,3 +75,4 @@ from app.modules.tenants.models import (  # noqa: F401
     Neighborhood,
 )
 from app.modules.users.models import User  # noqa: F401
+from app.db.file_model import AppFile  # noqa: F401

@@ -265,9 +265,9 @@ async def reindex_all(
     algorithm_version (útil ao re-rodar após falhas).
     """
     stmt = (
-        select(Patient.id, Patient.current_photo_id, PatientPhoto.content)
+        select(Patient.id, Patient.current_photo_id, PatientPhoto.storage_key, PatientPhoto.content)
         .join(PatientPhoto, PatientPhoto.id == Patient.current_photo_id)
-        .where(Patient.current_photo_id.is_not(None), Patient.active== True)
+        .where(Patient.current_photo_id.is_not(None), Patient.active == True)
     )
     rows = (await db.execute(stmt)).all()
 
@@ -283,14 +283,28 @@ async def reindex_all(
     else:
         skip = set()
 
-    for i, (patient_id, photo_id, content) in enumerate(rows):
+    from app.services.storage import get_storage
+    storage = get_storage()
+
+    for i, (patient_id, photo_id, storage_key, content) in enumerate(rows):
         if patient_id in skip:
             continue
-        if not photo_id or not content:
+        if not photo_id:
+            continue
+        # Lê bytes do S3 ou do DB (legado)
+        try:
+            if storage_key:
+                photo_bytes = await storage.download(storage_key)
+            elif content:
+                photo_bytes = bytes(content)
+            else:
+                continue
+        except Exception:
+            status.errors += 1
             continue
         try:
             result = await enroll_from_photo(
-                db, patient_id=patient_id, photo_bytes=bytes(content), photo_id=photo_id,
+                db, patient_id=patient_id, photo_bytes=photo_bytes, photo_id=photo_id,
             )
             if result == "ok":
                 status.enrolled += 1
