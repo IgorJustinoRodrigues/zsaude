@@ -182,3 +182,28 @@ class UserListParams(CamelModel):
     module: str | None = None
     page: int = 1
     page_size: int = 20
+
+
+# ─── Foto ─────────────────────────────────────────────────────────────────────
+
+
+class UserPhotoUploadResponse(CamelModel):
+    """Resposta do upload — inclui status do enroll facial."""
+
+    photo_id: UUID
+    mime_type: str
+    file_size: int
+    uploaded_at: datetime
+    face_enrollment: str  # ok | no_face | low_quality | error | disabled | opted_out
+
+
+class UserPhotoListItem(CamelModel):
+    """Item do histórico de fotos."""
+
+    id: UUID
+    mime_type: str
+    file_size: int
+    width: int | None = None
+    height: int | None = None
+    uploaded_at: datetime
+    uploaded_by_name: str

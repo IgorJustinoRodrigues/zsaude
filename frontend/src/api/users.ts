@@ -1,7 +1,7 @@
 // Endpoints admin de usuários.
 
 import type { SystemId } from '../types'
-import { api } from './client'
+import { api, apiFetch } from './client'
 
 export type UserStatus = 'Ativo' | 'Inativo' | 'Bloqueado'
 export type UserLevel = 'master' | 'admin' | 'user'
@@ -134,6 +134,34 @@ export interface UserStats {
   bloqueado: number
 }
 
+// ─── Foto de usuário ──────────────────────────────────────────────────────────
+
+export type UserFaceEnrollment =
+  | 'ok'
+  | 'no_face'
+  | 'low_quality'
+  | 'error'
+  | 'disabled'
+  | 'opted_out'
+
+export interface UserPhotoUploadResponse {
+  photoId: string
+  mimeType: string
+  fileSize: number
+  uploadedAt: string
+  faceEnrollment: UserFaceEnrollment
+}
+
+export interface UserPhotoListItem {
+  id: string
+  mimeType: string
+  fileSize: number
+  width: number | null
+  height: number | null
+  uploadedAt: string
+  uploadedByName: string
+}
+
 export const userApi = {
   stats: () => api.get<UserStats>('/api/v1/users/stats'),
 
@@ -168,4 +196,35 @@ export const userApi = {
 
   block: (id: string) =>
     api.post<{ message: string }>(`/api/v1/users/${id}/block`),
+
+  // ── Foto ───────────────────────────────────────────────────────────────
+  uploadPhoto: (id: string, file: File | Blob) => {
+    const fd = new FormData()
+    fd.append('file', file, (file as File).name ?? 'photo.jpg')
+    return apiFetch<UserPhotoUploadResponse>(`/api/v1/users/${id}/photo`, {
+      method: 'POST',
+      body: fd,
+    })
+  },
+
+  /** URL do proxy do backend — inclui Authorization automaticamente via apiFetchBlob. */
+  photoUrl: (id: string, photoId?: string) =>
+    photoId
+      ? `/api/v1/users/${id}/photos/${photoId}`
+      : `/api/v1/users/${id}/photo`,
+
+  removePhoto: (id: string) =>
+    apiFetch<void>(`/api/v1/users/${id}/photo`, { method: 'DELETE' }),
+
+  listPhotos: (id: string) =>
+    api.get<UserPhotoListItem[]>(`/api/v1/users/${id}/photos`),
+
+  restorePhoto: (id: string, photoId: string) =>
+    apiFetch<UserPhotoUploadResponse>(
+      `/api/v1/users/${id}/photos/${photoId}/restore`,
+      { method: 'POST' },
+    ),
+
+  deleteFaceEmbedding: (id: string) =>
+    apiFetch<void>(`/api/v1/users/${id}/face-embedding`, { method: 'DELETE' }),
 }

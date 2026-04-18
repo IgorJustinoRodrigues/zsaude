@@ -70,6 +70,10 @@ SKIP_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"/api/v1/cnes/imports$"),
     # Reference tables (CRUD): router grava com {resource}/{codigo} explícito.
     re.compile(r"/api/v1/sys/reference/[^/]+(?:/[^/]+)?$"),
+    # Foto de usuário: service grava audit humano com nome + status face.
+    re.compile(r"/api/v1/users/[^/]+/photo$"),
+    re.compile(r"/api/v1/users/[^/]+/photos/[^/]+/restore$"),
+    re.compile(r"/api/v1/users/[^/]+/face-embedding$"),
     # AI MASTER admin (catálogo/modelos): router grava audit humano.
     re.compile(r"/api/v1/sys/ai/.*"),
 )

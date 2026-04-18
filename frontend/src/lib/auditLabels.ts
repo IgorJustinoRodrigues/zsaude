@@ -93,11 +93,17 @@ export const ACTION_LABELS: Record<string, string> = {
   // Usuários
   user_create:                'Cadastro de usuário',
   user_edit:                  'Edição de usuário',
+  user_update:                'Edição de usuário',
   user_delete:                'Exclusão de usuário',
   user_activate:              'Ativação de usuário',
   user_deactivate:            'Desativação de usuário',
   user_block:                 'Bloqueio de usuário',
   user_reset_password:        'Reset de senha',
+  user_photo_upload:          'Upload de foto de usuário',
+  user_photo_remove:          'Remoção de foto de usuário',
+  user_photo_restore:         'Restauração de foto de usuário',
+  user_face_embedding_delete: 'Remoção de reconhecimento facial do usuário',
+  user_face_match:            'Reconhecimento facial de usuário',
 
   // Perfis e permissões
   role_create:                'Cadastro de perfil',

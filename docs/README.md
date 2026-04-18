@@ -36,6 +36,8 @@ React 19 · Vite · TypeScript · Tailwind · Zustand
 
 - [Comandos do dia a dia](./operations/commands.md) — docker, seed, migrations, testes.
 - [Troubleshooting](./operations/troubleshooting.md) — problemas comuns.
+- [**Audit logs**](./audit-logging.md) — padrão PT-BR, helpers, middleware, checklist.
+- [**Observabilidade**](./observability.md) — Prometheus, Grafana, Loki, métricas, dashboards.
 
 ---
 

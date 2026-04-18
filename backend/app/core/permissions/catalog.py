@@ -31,6 +31,9 @@ P("users.user.archive", "Arquivar usuário")
 P("users.user.reset_password", "Redefinir senha de outro usuário")
 P("users.access.view", "Visualizar acessos de usuário")
 P("users.access.manage", "Conceder/remover acesso a município ou unidade")
+P("users.photo.manage", "Enviar ou remover foto de outro usuário")
+P("users.photo.view", "Visualizar foto de outro usuário")
+P("users.face.match", "Identificar usuário por reconhecimento facial")
 
 # ── Auditoria ───────────────────────────────────────────────────────────────
 P("audit.log.view", "Consultar logs de auditoria")

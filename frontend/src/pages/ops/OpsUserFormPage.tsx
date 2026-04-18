@@ -11,6 +11,7 @@ import { directoryApi, type MunicipalityDto, type FacilityDto } from '../../api/
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { UserPhotoField } from './components/UserPhotoField'
 
 const STATUSES: UserStatus[] = ['Ativo', 'Inativo', 'Bloqueado']
 const LEVELS: UserLevel[] = ['master', 'admin', 'user']
@@ -361,6 +362,16 @@ export function OpsUserFormPage() {
         <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-400">
           {globalError}
         </div>
+      )}
+
+      {/* Foto (apenas em edição — precisamos do id do usuário) */}
+      {isEdit && id && (
+        <FormSection
+          title="Foto do usuário"
+          subtitle="Imagem exibida no sistema e usada para reconhecimento facial."
+        >
+          <UserPhotoField userId={id} userName={existing?.name || name || 'usuário'} />
+        </FormSection>
       )}
 
       {/* Dados pessoais */}

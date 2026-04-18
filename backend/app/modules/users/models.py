@@ -75,5 +75,13 @@ class User(Base, TimestampedMixin):
 
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # Foto ativa do usuário (FK lógica -> user_photos.id). FK não declarada
+    # na coluna para evitar ciclo (UserPhoto.user_id -> users.id).
+    current_photo_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
+
+    # Opt-in para reconhecimento facial. Default True (pode desativar na UI).
+    # Paciente tem feature equivalente em tenant_models; aqui é global.
+    face_opt_in: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User {self.login}>"

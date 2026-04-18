@@ -5,12 +5,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 
 from app.core.deps import DB, CurrentUserDep
 from app.core.exceptions import ForbiddenError
 from app.core.pagination import Page
 from app.modules.users.models import User, UserLevel, UserStatus
+from app.modules.users.photo_service import UserPhotoService
 from app.modules.users.schemas import (
     AdminResetPasswordRequest,
     AdminResetPasswordResponse,
@@ -19,6 +21,8 @@ from app.modules.users.schemas import (
     UserDetail,
     UserListItem,
     UserListParams,
+    UserPhotoListItem,
+    UserPhotoUploadResponse,
     UserRead,
     UserStats,
     UserUpdate,
@@ -161,3 +165,147 @@ async def block(user_id: UUID, db: DB, actor: AdminDep) -> MessageResponse:
     await svc.ensure_target_in_scope(actor, user_id)
     await svc.set_status(user_id, UserStatus.BLOQUEADO)
     return MessageResponse(message="Usuário bloqueado.")
+
+
+# ─── Foto do usuário ──────────────────────────────────────────────────────────
+
+
+_PHOTO_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+_PHOTO_ALLOWED_MIMES = {"image/jpeg", "image/png", "image/webp"}
+
+
+async def _actor_can_manage_photo(db: DB, actor: User, user_id: UUID) -> None:
+    """Self ou MASTER/ADMIN (no escopo) podem gerenciar a foto."""
+    if actor.id == user_id:
+        return
+    if actor.level not in (UserLevel.ADMIN, UserLevel.MASTER):
+        raise ForbiddenError("Você não pode gerenciar a foto de outro usuário.")
+    if actor.level == UserLevel.ADMIN:
+        await UserService(db).ensure_target_in_scope(actor, user_id)
+
+
+async def _actor_can_view_photo(db: DB, actor: User, user_id: UUID) -> None:
+    """Self, MASTER ou ADMIN no escopo podem ver. Usuários comuns só a própria."""
+    if actor.id == user_id:
+        return
+    if actor.level == UserLevel.MASTER:
+        return
+    if actor.level == UserLevel.ADMIN:
+        await UserService(db).ensure_target_in_scope(actor, user_id)
+        return
+    raise ForbiddenError("Acesso negado à foto deste usuário.")
+
+
+@router.post("/{user_id}/photo", response_model=UserPhotoUploadResponse, status_code=201)
+async def upload_user_photo(
+    user_id: UUID,
+    db: DB,
+    actor: CurrentUserDep,
+    file: Annotated[UploadFile, File(description="Imagem JPEG/PNG/WEBP, até 10 MB")],
+) -> UserPhotoUploadResponse:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_manage_photo(db, actor_record, user_id)
+
+    content = await file.read()
+    mime = (file.content_type or "").lower()
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    photo, face_status = await svc.set_photo(
+        user_id,
+        content=content,
+        mime_type=mime,
+        original_name=file.filename or "",
+    )
+    return UserPhotoUploadResponse(
+        photo_id=photo.id,
+        mime_type=photo.mime_type,
+        file_size=photo.file_size,
+        uploaded_at=photo.uploaded_at,
+        face_enrollment=face_status,
+    )
+
+
+@router.get("/{user_id}/photo")
+async def get_current_user_photo(
+    user_id: UUID, db: DB, actor: CurrentUserDep,
+) -> Response:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_view_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    data, mime = await svc.load_current_photo_bytes(user_id)
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=60"},
+    )
+
+
+@router.delete("/{user_id}/photo", status_code=204)
+async def delete_user_photo(
+    user_id: UUID, db: DB, actor: CurrentUserDep,
+) -> Response:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_manage_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    await svc.remove_photo(user_id)
+    return Response(status_code=204)
+
+
+@router.get("/{user_id}/photos", response_model=list[UserPhotoListItem])
+async def list_user_photos(
+    user_id: UUID, db: DB, actor: CurrentUserDep,
+) -> list[UserPhotoListItem]:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_view_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    rows = await svc.list_photos(user_id)
+    return [UserPhotoListItem.model_validate(p, from_attributes=True) for p in rows]
+
+
+@router.get("/{user_id}/photos/{photo_id}")
+async def get_user_photo_by_id(
+    user_id: UUID, photo_id: UUID, db: DB, actor: CurrentUserDep,
+) -> Response:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_view_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    data, mime = await svc.load_photo_bytes(user_id, photo_id)
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.post("/{user_id}/photos/{photo_id}/restore", response_model=UserPhotoUploadResponse)
+async def restore_user_photo(
+    user_id: UUID, photo_id: UUID, db: DB, actor: CurrentUserDep,
+) -> UserPhotoUploadResponse:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_manage_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    photo = await svc.restore_photo(user_id, photo_id)
+    return UserPhotoUploadResponse(
+        photo_id=photo.id,
+        mime_type=photo.mime_type,
+        file_size=photo.file_size,
+        uploaded_at=photo.uploaded_at,
+        face_enrollment="ok",
+    )
+
+
+@router.delete("/{user_id}/face-embedding", status_code=204)
+async def delete_user_face_embedding(
+    user_id: UUID, db: DB, actor: CurrentUserDep,
+) -> Response:
+    actor_record = await UserService(db).get_or_404(actor.id)
+    await _actor_can_manage_photo(db, actor_record, user_id)
+
+    svc = UserPhotoService(db, actor_user_id=actor.id, actor_name=actor_record.name)
+    await svc.delete_face_embedding(user_id)
+    return Response(status_code=204)
