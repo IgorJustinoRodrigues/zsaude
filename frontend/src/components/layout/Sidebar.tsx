@@ -4,10 +4,11 @@ import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
-  BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2,
+  BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2, Moon, Sun,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
+import { useTheme } from '../../hooks/useTheme'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
@@ -358,6 +359,8 @@ export function Sidebar({ module }: Props) {
             </button>
           )}
 
+          <ThemeToggleButton desktopCollapsed={desktopCollapsed} />
+
           <button
             onClick={() => { logout(); closeMobileSidebar() }}
             className={cn(
@@ -374,6 +377,27 @@ export function Sidebar({ module }: Props) {
     </>
   )
 }
+
+function ThemeToggleButton({ desktopCollapsed }: { desktopCollapsed: boolean }) {
+  const { theme, toggle } = useTheme()
+  const isDark = theme === 'dark'
+  return (
+    <button
+      onClick={toggle}
+      className={cn(
+        'w-full flex items-center gap-2.5 px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors',
+        desktopCollapsed ? 'md:justify-center' : 'justify-start md:justify-center lg:justify-start',
+      )}
+      title={isDark ? 'Modo claro' : 'Modo escuro'}
+    >
+      {isDark ? <Sun size={15} /> : <Moon size={15} />}
+      {!desktopCollapsed && (
+        <span className="md:hidden lg:inline">{isDark ? 'Modo claro' : 'Modo escuro'}</span>
+      )}
+    </button>
+  )
+}
+
 
 interface NavItemProps {
   icon: React.ReactNode

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './hooks/useTheme' // aplica tema salvo antes do primeiro render
 import App from './App.tsx'
 import { useAppInfoStore } from './store/appInfoStore'
 

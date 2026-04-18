@@ -5,7 +5,8 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
-import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
+import { Sun, Moon } from 'lucide-react'
 import { initials, cn } from '../../lib/utils'
 import { Toaster } from '../ui/Toaster'
 import { DialogContainer } from '../ui/DialogContainer'
@@ -18,7 +19,8 @@ import { BrandName } from '../shared/BrandName'
  */
 export function SysShell() {
   const { user, logout } = useAuthStore()
-  const { darkMode, toggleDarkMode } = useUIStore()  // eslint-disable-line
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -108,9 +110,10 @@ export function SysShell() {
             <AccessibilityMenu />
             <button
               onClick={toggleDarkMode}
+              title={darkMode ? 'Modo claro' : 'Modo escuro'}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              {darkMode ? '☀︎' : '☾'}
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
           </div>
         </header>

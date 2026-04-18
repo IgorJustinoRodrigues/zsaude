@@ -196,5 +196,8 @@ class UserRepository:
         rows = (await self.session.execute(text(sql), params)).all()
         out: dict[UUID, set[str]] = {uid: set() for uid in user_ids}
         for uid, module in rows:
+            # Oracle (RAW(16)) retorna bytes em ``text()`` cru; PG retorna UUID.
+            if isinstance(uid, bytes):
+                uid = UUID(bytes=uid)
             out[uid].add(module)
         return out

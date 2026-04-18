@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
 import { SYSTEMS } from '../../mock/users'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
@@ -24,7 +25,9 @@ export function TopBar({ module }: Props) {
   const can = useAuthStore(s => s.can)
   const canManageRoles = can('roles.role.view')
   const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
-  const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
+  const { openMobileSidebar } = useUIStore()
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen]     = useState(false)
   const [usersOpen, setUsersOpen]     = useState(false)

@@ -8,7 +8,9 @@ function getInitial(): Theme {
   if (typeof window === 'undefined') return 'light'
   const saved = localStorage.getItem(STORAGE_KEY) as Theme | null
   if (saved === 'light' || saved === 'dark') return saved
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  // Default: tema claro. Preferência do SO é ignorada pra ter
+  // comportamento consistente em quiosque/multi-usuário.
+  return 'light'
 }
 
 function apply(theme: Theme) {

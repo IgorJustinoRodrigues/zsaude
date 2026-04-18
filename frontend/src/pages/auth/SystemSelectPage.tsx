@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
 import { SYSTEMS } from '../../mock/users'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
@@ -40,7 +40,8 @@ const ICON_SM: Record<SystemId, React.ReactNode> = {
 
 export function SystemSelectPage() {
   const { user, context, selectSystem, logout } = useAuthStore()
-  const { darkMode, toggleDarkMode } = useUIStore()
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
