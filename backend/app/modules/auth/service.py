@@ -31,6 +31,20 @@ from app.modules.users.repository import UserRepository
 log = get_logger(__name__)
 
 
+def _as_aware(dt: datetime | None) -> datetime | None:
+    """Normaliza ``datetime`` pra tz-aware (UTC) — tolera leituras Oracle.
+
+    Em Oracle, colunas ``DATE`` (e mesmo ``TIMESTAMP``) voltam naive mesmo
+    que o model declare ``DateTime(timezone=True)``. Comparar com
+    ``datetime.now(UTC)`` falha. Este helper assume UTC quando naive.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -165,7 +179,7 @@ class AuthService:
             await self.session.commit()
             raise UnauthorizedError("Refresh reutilizado. Sessão encerrada por segurança.")
 
-        if token.expires_at < now:
+        if _as_aware(token.expires_at) < now:
             raise UnauthorizedError("Refresh expirado.")
 
         user = await self.users.get_by_id(token.user_id)
@@ -245,7 +259,7 @@ class AuthService:
     async def reset_password(self, token: str, new_password: str) -> None:
         pr = await self.repo.find_password_reset(hash_opaque_token(token))
         now = datetime.now(UTC)
-        if pr is None or pr.used_at is not None or pr.expires_at < now:
+        if pr is None or pr.used_at is not None or _as_aware(pr.expires_at) < now:
             raise UnauthorizedError("Token de reset inválido ou expirado.")
         user = await self.users.get_by_id(pr.user_id)
         if user is None:

@@ -55,6 +55,21 @@ SKIP_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Archive/unarchive: serviço grava com nome do recurso afetado.
     re.compile(r"/api/v1/admin/municipalities/[^/]+/(?:un)?archive$"),
     re.compile(r"/api/v1/admin/facilities/[^/]+/(?:un)?archive$"),
+    # HSP: cadastro/edição de paciente, fotos, face, CadSUS — todos têm
+    # audit explícito no service/router com nome humano + diff.
+    re.compile(r"/api/v1/hsp/patients$"),                                       # POST create
+    re.compile(r"/api/v1/hsp/patients/[^/]+$"),                                 # PATCH/DELETE
+    re.compile(r"/api/v1/hsp/patients/[^/]+/restore$"),                         # POST reativar
+    re.compile(r"/api/v1/hsp/patients/[^/]+/photo$"),                           # POST upload / DELETE
+    re.compile(r"/api/v1/hsp/patients/[^/]+/photos/[^/]+/restore$"),            # POST restore foto
+    re.compile(r"/api/v1/hsp/patients/[^/]+/face-embedding$"),                  # DELETE opt-out
+    re.compile(r"/api/v1/hsp/patients/match-face$"),                            # POST busca facial
+    re.compile(r"/api/v1/hsp/admin/face/reindex$"),                             # POST reindex
+    # Importações: SIGTAP + CNES já têm audit no router.
+    re.compile(r"/api/v1/sigtap/imports$"),
+    re.compile(r"/api/v1/cnes/imports$"),
+    # Reference tables (CRUD): router grava com {resource}/{codigo} explícito.
+    re.compile(r"/api/v1/reference/[^/]+(?:/[^/]+)?$"),
 )
 
 
@@ -110,22 +125,30 @@ def _parse_body(raw: bytes, content_type: str) -> Any:
     except UnicodeDecodeError:
         return {"__binary__": True, "size": len(raw)}
 
-# Prefixo de path → módulo. Ordem importa (mais específico primeiro).
+# Prefixo de path → módulo. Lowercase pra consistência com os audits
+# explícitos no código (ver docs/audit-logging.md). Ordem importa
+# (mais específico primeiro).
 PATH_TO_MODULE: list[tuple[str, str]] = [
-    ("/api/v1/admin/",           "SYS"),
-    ("/api/v1/system/",          "SYS"),
-    ("/api/v1/users",            "SYS"),
-    ("/api/v1/municipalities",   "SYS"),
-    ("/api/v1/facilities",       "SYS"),
-    ("/api/v1/audit",            "SYS"),
-    ("/api/v1/work-context",     "AUTH"),
-    ("/api/v1/auth/",            "AUTH"),
-    ("/api/v1/cln/",             "CLN"),
-    ("/api/v1/dgn/",             "DGN"),
-    ("/api/v1/hsp/",             "HSP"),
-    ("/api/v1/pln/",             "PLN"),
-    ("/api/v1/fsc/",             "FSC"),
-    ("/api/v1/ops/",             "OPS"),
+    ("/api/v1/admin/",           "sys"),
+    ("/api/v1/system/",          "sys"),
+    ("/api/v1/users",            "users"),
+    ("/api/v1/municipalities",   "tenants"),
+    ("/api/v1/facilities",       "tenants"),
+    ("/api/v1/audit",            "audit"),
+    ("/api/v1/work-context",     "auth"),
+    ("/api/v1/auth/",            "auth"),
+    ("/api/v1/roles",            "roles"),
+    ("/api/v1/reference/",       "reference"),
+    ("/api/v1/sigtap/",          "sigtap"),
+    ("/api/v1/cnes/",            "cnes"),
+    ("/api/v1/ai/",              "ai"),
+    ("/api/v1/sys/ai/",          "ai"),
+    ("/api/v1/cln/",             "cln"),
+    ("/api/v1/dgn/",             "dgn"),
+    ("/api/v1/hsp/",             "hsp"),
+    ("/api/v1/pln/",             "pln"),
+    ("/api/v1/fsc/",             "fsc"),
+    ("/api/v1/ops/",             "ops"),
 ]
 
 
@@ -133,7 +156,7 @@ def _module_for(path: str) -> str:
     for prefix, module in PATH_TO_MODULE:
         if path.startswith(prefix):
             return module
-    return "API"
+    return "api"
 
 
 # Mapeia sufixo de URL a uma ação específica (sobrescreve o método).
