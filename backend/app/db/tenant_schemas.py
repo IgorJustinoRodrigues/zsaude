@@ -83,27 +83,36 @@ async def ensure_municipality_schema(
 async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
     """Provisiona o tenant Oracle sem Alembic.
 
-    Em Oracle usamos ``metadata.create_all`` direto dos models (que já
-    usam tipos portáveis via ``UUIDType``, ``JSONType``, ``VectorType``).
-    Depois criamos os objetos que ``create_all`` não cria — hoje, o
-    índice HNSW da tabela ``patient_face_embeddings``.
+    Em Oracle, schema = user. Para ``metadata.create_all`` criar as tabelas
+    com *owner* correto (``MUN_XXX``), conectamos **diretamente como o user
+    do tenant** em vez de usar ``ALTER SESSION SET CURRENT_SCHEMA`` sob o
+    usuário admin — o ``CURRENT_SCHEMA`` muda o schema default mas o DDL
+    continua criando com ``owner = user_logado``, quebrando FKs internas.
+
+    Fluxo: deriva a URL do tenant a partir de ``settings.database_url``
+    substituindo o user/pwd pelo do tenant (senha idêntica ao user admin
+    por convenção em dev — produção deve gerenciar via Vault/Secrets).
     """
     from sqlalchemy.ext.asyncio import create_async_engine as _create
+    from urllib.parse import urlparse, urlunparse
 
     from app.core.config import settings as app_settings
     from app.db.dialect import get_adapter
     from app.tenant_models import TenantBase
     import app.tenant_models._registry  # noqa: F401 - popula metadata
 
-    tmp_eng = _create(app_settings.database_url, pool_size=1, max_overflow=0)
+    # Reconstrói a URL trocando user/pwd pelo do tenant. A senha vem da
+    # convenção ``CREATE USER ... IDENTIFIED BY <mesma senha do admin>``
+    # usada em dev; em prod o admin passa a senha real aqui.
+    parsed = urlparse(app_settings.database_url)
+    tenant_user = schema.upper()
+    tenant_pwd = parsed.password or "zsaude_dev_password"
+    new_netloc = f"{tenant_user}:{tenant_pwd}@{parsed.hostname}"
+    if parsed.port:
+        new_netloc += f":{parsed.port}"
+    tenant_url = urlunparse(parsed._replace(netloc=new_netloc))
 
-    from sqlalchemy import event as sa_event
-
-    @sa_event.listens_for(tmp_eng.sync_engine, "connect")
-    def _set_schema(dbapi_conn, _):
-        cursor = dbapi_conn.cursor()
-        cursor.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{schema.upper()}"')
-        cursor.close()
+    tmp_eng = _create(tenant_url, pool_size=1, max_overflow=0)
 
     adapter = get_adapter("oracle")
     vector_index_sql = adapter.create_vector_index_sql(
@@ -115,8 +124,7 @@ async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
 
     def _do_create(connection):
         result = connection.execute(
-            text("SELECT COUNT(*) FROM all_tables WHERE owner = :o"),
-            {"o": schema.upper()},
+            text("SELECT COUNT(*) FROM user_tables"),
         )
         if result.scalar() > 0:
             log.info("tenant_tables_exist_skip", schema=schema)

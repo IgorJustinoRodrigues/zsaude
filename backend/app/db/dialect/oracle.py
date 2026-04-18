@@ -251,17 +251,31 @@ class OracleAdapter(DialectAdapter):
     # ── Schema Management ────────────────────────────────────────────────
 
     async def create_schema(self, conn: AsyncConnection, name: str) -> None:
-        """Cria user Oracle (schema = user). Idempotente."""
+        """Cria user Oracle (schema = user). Idempotente.
+
+        A senha do novo user é derivada da URL do admin (``settings.database_url``)
+        — simplifica dev e integra com ``_create_tenant_tables_oracle`` que
+        conecta como o próprio tenant pra evitar FK cross-schema quebradas.
+        Em prod, o admin deve customizar esta lógica pra gerar senhas únicas
+        via secret manager.
+        """
         exists = await self.schema_exists(conn, name)
         if not exists:
+            from urllib.parse import urlparse
+            from app.core.config import settings as app_settings
+
+            pwd = urlparse(app_settings.database_url).password or "zsaude_dev_password"
             upper = name.upper()
             await conn.exec_driver_sql(
-                f'CREATE USER "{upper}" IDENTIFIED BY "zsaude_tenant" '
+                f'CREATE USER "{upper}" IDENTIFIED BY "{pwd}" '
                 f"DEFAULT TABLESPACE users QUOTA UNLIMITED ON users",
             )
+            # Nota: CREATE INDEX não é um system priv em Oracle — o user
+            # já cria índices nas suas próprias tabelas sem grant explícito.
             await conn.exec_driver_sql(
                 f'GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, '
-                f'CREATE VIEW, CREATE PROCEDURE TO "{upper}"',
+                f'CREATE VIEW, CREATE PROCEDURE, '
+                f'UNLIMITED TABLESPACE TO "{upper}"',
             )
 
     async def drop_schema(

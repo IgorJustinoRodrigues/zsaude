@@ -25,13 +25,36 @@ class TenantBase(DeclarativeBase):
 
 
 def _register_tenant_oracle_null_fix() -> None:
-    """Oracle trata '' como NULL. Converte None → '' ao carregar strings do ORM."""
+    """Compat layer Oracle ↔ strings vazias nos models tenant.
+
+    Mesma lógica de ``app.db.base._register_oracle_null_fix``: converte
+    ``""`` → ``" "`` antes de INSERT/UPDATE (pra satisfazer ``NOT NULL``)
+    e ``None`` → ``""`` após LOAD (pro código Python não precisar checar).
+    """
 
     @event.listens_for(TenantBase, "load", propagate=True)
-    def _fix_empty_strings(target, context):
+    def _fix_empty_strings_on_load(target, context):
         mapper = target.__class__.__mapper__
         for col in mapper.columns:
             if isinstance(col.type, SAString) and not col.nullable:
                 val = getattr(target, col.key, None)
                 if val is None:
                     object.__setattr__(target, col.key, "")
+
+    def _fix_empty_strings_on_write(mapper, connection, target):
+        if connection.dialect.name != "oracle":
+            return
+        for col in mapper.columns:
+            if not isinstance(col.type, SAString) or col.nullable:
+                continue
+            val = getattr(target, col.key, None)
+            if val is None or val == "":
+                object.__setattr__(target, col.key, " ")
+
+    @event.listens_for(TenantBase, "before_insert", propagate=True)
+    def _before_insert(mapper, connection, target):
+        _fix_empty_strings_on_write(mapper, connection, target)
+
+    @event.listens_for(TenantBase, "before_update", propagate=True)
+    def _before_update(mapper, connection, target):
+        _fix_empty_strings_on_write(mapper, connection, target)

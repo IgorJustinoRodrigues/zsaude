@@ -31,18 +31,50 @@ class Base(DeclarativeBase):
 
 
 def _register_oracle_null_fix() -> None:
-    """Oracle trata '' como NULL. Converte None → '' ao carregar strings do ORM."""
+    """Compat layer Oracle ↔ strings vazias.
+
+    Oracle trata ``''`` como NULL, o que quebra colunas ``NOT NULL``. Aplica
+    dois hooks:
+
+    1. **Antes de INSERT/UPDATE**: converte ``""`` → ``" "`` (um espaço) e
+       ``None`` → ``" "`` em colunas ``String NOT NULL``. Permite que o
+       código que passa strings vazias funcione sem modificação.
+    2. **Após o LOAD**: converte ``None`` de volta pra ``""`` (para que
+       Python não quebre ao comparar ``value == ""``).
+
+    Resultado: em Oracle, strings vazias viram um espaço no banco (invisível
+    em UI que faz ``.strip()``) e NULL é normalizado para string vazia na
+    leitura.
+    """
     from sqlalchemy import String as SAString
-    from sqlalchemy.orm import InstanceEvents
 
     @event.listens_for(Base, "load", propagate=True)
-    def _fix_empty_strings(target, context):
+    def _fix_empty_strings_on_load(target, context):
         mapper = target.__class__.__mapper__
         for col in mapper.columns:
             if isinstance(col.type, SAString) and not col.nullable:
                 val = getattr(target, col.key, None)
                 if val is None:
                     object.__setattr__(target, col.key, "")
+
+    def _fix_empty_strings_on_write(mapper, connection, target):
+        # Só aplica em Oracle.
+        if connection.dialect.name != "oracle":
+            return
+        for col in mapper.columns:
+            if not isinstance(col.type, SAString) or col.nullable:
+                continue
+            val = getattr(target, col.key, None)
+            if val is None or val == "":
+                object.__setattr__(target, col.key, " ")
+
+    @event.listens_for(Base, "before_insert", propagate=True)
+    def _before_insert(mapper, connection, target):
+        _fix_empty_strings_on_write(mapper, connection, target)
+
+    @event.listens_for(Base, "before_update", propagate=True)
+    def _before_update(mapper, connection, target):
+        _fix_empty_strings_on_write(mapper, connection, target)
 
 
 # ── Mixins comuns ───────────────────────────────────────────────────────────

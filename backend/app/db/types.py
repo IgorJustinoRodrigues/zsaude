@@ -129,10 +129,24 @@ class JSONType(TypeDecorator):
             return None
         if dialect.name == "postgresql":
             return value
-        if isinstance(value, (dict, list, int, float, bool)):
+        # Oracle: driver já retorna valores escalares decodificados do OSON
+        # (int, float, bool, Decimal, dict, list, str JSON-válida).
+        if isinstance(value, (dict, list, bool)):
             return value
-        import json as _json
-        return _json.loads(value)
+        # Números JSON vêm como int/Decimal do driver; converte Decimal → int/float.
+        import decimal
+        if isinstance(value, decimal.Decimal):
+            return int(value) if value == value.to_integral_value() else float(value)
+        if isinstance(value, (int, float)):
+            return value
+        # String: pode ser string JSON crua (CLOB) ou scalar string.
+        if isinstance(value, str):
+            import json as _json
+            try:
+                return _json.loads(value)
+            except (ValueError, TypeError):
+                return value
+        return value
 
 
 class _OracleJSON(TypeDecorator):

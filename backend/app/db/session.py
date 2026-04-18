@@ -141,6 +141,13 @@ def _register_rls_listener(eng: AsyncEngine) -> None:
         _set_ctx = _set_tenant_context_pg
     elif dialect_name == "oracle":
         _set_ctx = _set_tenant_context_oracle
+        # Em Oracle "" = NULL quebra colunas NOT NULL. Registra os hooks
+        # ORM antes de qualquer INSERT/UPDATE — idempotente, propaga pra
+        # subclasses de Base e TenantBase.
+        from app.db.base import _register_oracle_null_fix
+        from app.tenant_models import _register_tenant_oracle_null_fix
+        _register_oracle_null_fix()
+        _register_tenant_oracle_null_fix()
     else:
         return
 
