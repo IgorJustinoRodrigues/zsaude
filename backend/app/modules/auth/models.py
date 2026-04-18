@@ -40,8 +40,8 @@ class RefreshToken(Base, TimestampedMixin):
     replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(), nullable=True
     )
-    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
-    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
 
 
 class PasswordReset(Base, TimestampedMixin):
@@ -54,7 +54,7 @@ class PasswordReset(Base, TimestampedMixin):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
 
 
 class LoginAttempt(Base):

@@ -72,8 +72,8 @@ class Municipality(Base, TimestampedMixin):
     # secretaria recebe do DATASUS um usuário no formato
     # CADSUS.SMS.{MUNICIPIO}.{UF}). Sem configurar, cai no fallback da
     # env var global (ou 503 em produção).
-    cadsus_user: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
-    cadsus_password: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    cadsus_user: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
+    cadsus_password: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
 
     __table_args__ = (UniqueConstraint("name", "state", name="uq_municipality_name_state"),)
 

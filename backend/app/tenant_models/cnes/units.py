@@ -28,19 +28,19 @@ class CnesUnit(TenantBase):
     id_unidade: Mapped[str] = mapped_column(String(31), unique=True, nullable=False, index=True)
     cnes: Mapped[str] = mapped_column(String(7), unique=True, nullable=False, index=True)
 
-    cnpj_mantenedora: Mapped[str] = mapped_column(String(14), nullable=False, server_default="")
-    razao_social: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
-    nome_fantasia: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    cnpj_mantenedora: Mapped[str] = mapped_column(String(14), nullable=False, server_default=" ")
+    razao_social: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
+    nome_fantasia: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
 
-    cpf: Mapped[str] = mapped_column(String(11), nullable=False, server_default="")
-    cnpj: Mapped[str] = mapped_column(String(14), nullable=False, server_default="")
+    cpf: Mapped[str] = mapped_column(String(11), nullable=False, server_default=" ")
+    cnpj: Mapped[str] = mapped_column(String(14), nullable=False, server_default=" ")
 
-    tipo_unidade: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
-    estado: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
+    tipo_unidade: Mapped[str] = mapped_column(String(2), nullable=False, server_default=" ")
+    estado: Mapped[str] = mapped_column(String(2), nullable=False, server_default=" ")
     codigo_ibge: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
 
     # Competência da última importação que atualizou esta linha (AAAAMM).
-    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
+    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default=" ")
 
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 

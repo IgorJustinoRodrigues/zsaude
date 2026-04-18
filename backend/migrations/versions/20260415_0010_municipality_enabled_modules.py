@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import JSONType
 revision: str = "0010_mun_enabled_modules"
 down_revision: str | None = "0009_mun_geo_neighborhoods"
 branch_labels: str | Sequence[str] | None = None
@@ -30,7 +31,7 @@ _DEFAULT_MODULES = ["cln", "dgn", "hsp", "pln", "fsc", "ops", "ind", "cha", "esu
 def upgrade() -> None:
     op.add_column(
         "municipalities",
-        sa.Column("enabled_modules", postgresql.JSONB(), nullable=True),
+        sa.Column("enabled_modules", JSONType(), nullable=True),
         schema="app",
     )
     # Preenche linhas existentes com o conjunto completo.

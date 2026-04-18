@@ -24,12 +24,12 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "municipalities",
-        sa.Column("cadsus_user", sa.String(100), nullable=False, server_default=""),
+        sa.Column("cadsus_user", sa.String(100), nullable=False, server_default=" "),
         schema="app",
     )
     op.add_column(
         "municipalities",
-        sa.Column("cadsus_password", sa.String(200), nullable=False, server_default=""),
+        sa.Column("cadsus_password", sa.String(200), nullable=False, server_default=" "),
         schema="app",
     )
 

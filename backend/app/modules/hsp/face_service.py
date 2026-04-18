@@ -22,10 +22,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.dialect import get_adapter
-
+from app.db.file_model import TenantFile
 from app.modules.system.service import get_float_sync
 from app.services.face import detect_and_embed
 from app.services.face.schemas import FaceResult
+from app.services.storage import get_storage
 from app.tenant_models.face import PatientFaceEmbedding
 from app.tenant_models.patients import Patient, PatientPhoto
 
@@ -83,10 +84,10 @@ def _min_detection_score() -> float:
 # ─── Enroll ──────────────────────────────────────────────────────────────────
 
 
-def _is_pgvector_available(db: AsyncSession) -> bool:
-    """Reconhecimento facial requer PostgreSQL + pgvector."""
+def _is_vector_available(db: AsyncSession) -> bool:
+    """Reconhecimento facial requer Postgres (pgvector) ou Oracle 23ai (AI Vector Search)."""
     try:
-        return db.bind.dialect.name == "postgresql"
+        return db.bind.dialect.name in ("postgresql", "oracle")
     except Exception:
         return False
 
@@ -103,7 +104,7 @@ async def enroll_from_photo(
     Retorna o status pra UI mostrar aviso relevante. Nunca levanta exceção —
     falha não bloqueia o upload da foto.
     """
-    if not _is_pgvector_available(db):
+    if not _is_vector_available(db):
         return "disabled"
 
     try:
@@ -157,7 +158,7 @@ async def match(
     limit: int = 5,
 ) -> MatchResponse:
     """Busca top-N candidatos na base de embeddings do município ativo."""
-    if not _is_pgvector_available(db):
+    if not _is_vector_available(db):
         raise FaceError(
             "Reconhecimento facial não disponível neste banco de dados.",
             code="unsupported",
@@ -179,31 +180,47 @@ async def match(
         )
 
     thr = threshold if threshold is not None else _match_threshold()
-    # pgvector: `<=>` é cosine distance (0 = idêntico, 2 = oposto).
-    # similaridade = 1 - distance, portanto threshold de similaridade >= thr
-    # corresponde a distance <= 1 - thr.
+    # Distância coseno: 0 = idêntico, 1 = ortogonal. similaridade = 1 - dist;
+    # threshold de similaridade >= thr ⇔ distância <= 1 - thr.
     max_distance = 1 - thr
 
+    adapter = get_adapter(db.bind.dialect.name)
+    dist = adapter.vector_cosine_distance_sql("fe.embedding", "q")
+    dialect = db.bind.dialect.name
+
+    # Oracle não tem "IS TRUE" — patients.active é NUMBER(1). LIMIT também
+    # varia: Postgres usa LIMIT, Oracle 12c+ usa FETCH FIRST N ROWS ONLY.
+    active_cond = "p.active IS TRUE" if dialect == "postgresql" else "p.active = 1"
+    has_photo_expr = (
+        "(p.current_photo_id IS NOT NULL)" if dialect == "postgresql"
+        else "CASE WHEN p.current_photo_id IS NOT NULL THEN 1 ELSE 0 END"
+    )
+    limit_clause = "LIMIT :lim" if dialect == "postgresql" else "FETCH FIRST :lim ROWS ONLY"
+
+    sql = f"""
+        SELECT
+            p.id,
+            p.name,
+            p.social_name,
+            p.cpf,
+            p.birth_date,
+            {has_photo_expr} AS has_photo,
+            1 - ({dist}) AS similarity
+        FROM patient_face_embeddings fe
+        JOIN patients p ON p.id = fe.patient_id
+        WHERE {active_cond}
+          AND ({dist}) <= :max_dist
+        ORDER BY ({dist}) ASC
+        {limit_clause}
+    """
+
+    # Postgres (pgvector) aceita o vetor como string serializada; Oracle
+    # (AI Vector Search) aceita list[float] ou array.array — passamos list.
+    q_param = str(result.embedding) if dialect == "postgresql" else list(result.embedding)
+
     rows = await db.execute(
-        text(
-            """
-            SELECT
-                p.id,
-                p.name,
-                p.social_name,
-                p.cpf,
-                p.birth_date,
-                p.current_photo_id IS NOT NULL AS has_photo,
-                1 - (fe.embedding <=> CAST(:q AS vector)) AS similarity
-            FROM patient_face_embeddings fe
-            JOIN patients p ON p.id = fe.patient_id
-            WHERE p.active IS TRUE
-              AND fe.embedding <=> CAST(:q AS vector) <= :max_dist
-            ORDER BY fe.embedding <=> CAST(:q AS vector) ASC
-            LIMIT :lim
-            """
-        ),
-        {"q": str(result.embedding), "max_dist": max_distance, "lim": limit},
+        text(sql),
+        {"q": q_param, "max_dist": max_distance, "lim": limit},
     )
 
     candidates: list[MatchCandidate] = []
@@ -265,8 +282,14 @@ async def reindex_all(
     algorithm_version (útil ao re-rodar após falhas).
     """
     stmt = (
-        select(Patient.id, Patient.current_photo_id, PatientPhoto.storage_key, PatientPhoto.content)
+        select(
+            Patient.id,
+            Patient.current_photo_id,
+            TenantFile.storage_key,
+            PatientPhoto.content,
+        )
         .join(PatientPhoto, PatientPhoto.id == Patient.current_photo_id)
+        .outerjoin(TenantFile, TenantFile.id == PatientPhoto.file_id)
         .where(Patient.current_photo_id.is_not(None), Patient.active == True)
     )
     rows = (await db.execute(stmt)).all()
@@ -283,7 +306,6 @@ async def reindex_all(
     else:
         skip = set()
 
-    from app.services.storage import get_storage
     storage = get_storage()
 
     for i, (patient_id, photo_id, storage_key, content) in enumerate(rows):
@@ -291,7 +313,6 @@ async def reindex_all(
             continue
         if not photo_id:
             continue
-        # Lê bytes do S3 ou do DB (legado)
         try:
             if storage_key:
                 photo_bytes = await storage.download(storage_key)

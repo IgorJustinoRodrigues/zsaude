@@ -82,3 +82,30 @@ class PostgreSQLAdapter(DialectAdapter):
 
     def func_gen_uuid_sql(self) -> str:
         return "gen_random_uuid()"
+
+    # ── Vetor ────────────────────────────────────────────────────────────
+
+    def vector_cosine_distance_sql(self, column_expr: str, param_name: str) -> str:
+        # pgvector: operator `<=>` cosine. CAST necessário pra interpretar o
+        # bind como vector em vez de text.
+        return f"({column_expr} <=> CAST(:{param_name} AS vector))"
+
+    def create_vector_index_sql(
+        self,
+        index_name: str,
+        table: str,
+        column: str,
+        *,
+        distance: str = "cosine",
+    ) -> str:
+        ops = {"cosine": "vector_cosine_ops", "l2": "vector_l2_ops"}[distance]
+        return (
+            f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
+            f"USING hnsw ({column} {ops}) WITH (m = 16, ef_construction = 64)"
+        )
+
+    # ── Busca textual ────────────────────────────────────────────────────
+
+    def unaccent_upper_expr(self, column_expr: str) -> str:
+        # Requer extensão ``unaccent`` instalada (migration 0011 cria).
+        return f"UPPER(unaccent({column_expr}))"

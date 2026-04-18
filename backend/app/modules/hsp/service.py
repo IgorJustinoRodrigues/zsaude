@@ -23,8 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import get_audit_context
 from app.core.deps import WorkContext
+from app.db.file_model import TenantFile
+from app.db.types import new_uuid7
 from app.modules.audit.writer import write_audit
 from app.modules.hsp.schemas import DocumentInput, PatientCreate, PatientUpdate
+from app.services.storage import get_storage
 from app.tenant_models.patients import (
     Patient,
     PatientDocument,
@@ -109,6 +112,27 @@ def _validate_cpf(cpf: str) -> str:
         if d != int(cpf[i]):
             raise HTTPException(status_code=400, detail="CPF inválido.")
     return cpf
+
+
+# ── Helpers de foto ─────────────────────────────────────────────────────────
+
+
+async def load_photo_bytes(db: AsyncSession, photo: PatientPhoto) -> bytes:
+    """Lê o conteúdo binário da foto.
+
+    Ordem: S3 via ``photo.file_id`` → ``files.storage_key``; fallback pro
+    campo legado ``photo.content``. Levanta 404 se nenhum dos dois estiver
+    disponível (registro inconsistente).
+    """
+    if photo.file_id is not None:
+        storage_key = await db.scalar(
+            select(TenantFile.storage_key).where(TenantFile.id == photo.file_id)
+        )
+        if storage_key:
+            return await get_storage().download(storage_key)
+    if photo.content:
+        return bytes(photo.content)
+    raise HTTPException(status_code=404, detail="Foto sem conteúdo disponível.")
 
 
 # ── Service ─────────────────────────────────────────────────────────────────
@@ -489,47 +513,48 @@ class PatientService:
         patient = await self.get_patient(patient_id)
         checksum = hashlib.sha256(content).hexdigest()
 
-        from app.db.types import new_uuid7
         photo_uuid = new_uuid7()
         ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}.get(mime_type, "bin")
         ibge = self.ctx.municipality_ibge
         storage_key = f"mun_{ibge}/patients/{patient_id}/photos/{photo_uuid}.{ext}"
 
-        # Upload para S3/MinIO
-        from app.services.storage import get_storage
-        await get_storage().upload(storage_key, content, mime_type)
+        storage = get_storage()
+        await storage.upload(storage_key, content, mime_type)
 
-        # Registrar na tabela files
-        from app.db.file_model import TenantFile
-        file_record = TenantFile(
-            storage_key=storage_key,
-            original_name=original_name or f"photo.{ext}",
-            mime_type=mime_type,
-            size_bytes=len(content),
-            checksum_sha256=checksum,
-            category="patient_photo",
-            entity_id=patient.id,
-            uploaded_by=self.ctx.user_id,
-            uploaded_by_name=self.user_name,
-        )
-        self.db.add(file_record)
-        await self.db.flush()
+        # Se o DB falhar daqui pra baixo, o objeto fica órfão no bucket —
+        # removemos na mão pra não vazar storage.
+        try:
+            file_record = TenantFile(
+                storage_key=storage_key,
+                original_name=original_name or f"photo.{ext}",
+                mime_type=mime_type,
+                size_bytes=len(content),
+                checksum_sha256=checksum,
+                category="patient_photo",
+                entity_id=patient.id,
+                uploaded_by=self.ctx.user_id,
+                uploaded_by_name=self.user_name,
+            )
+            self.db.add(file_record)
+            await self.db.flush()
 
-        photo = PatientPhoto(
-            id=photo_uuid,
-            patient_id=patient.id,
-            storage_key=storage_key,
-            file_id=file_record.id,
-            mime_type=mime_type,
-            file_size=len(content),
-            width=width,
-            height=height,
-            checksum_sha256=checksum,
-            uploaded_by=self.ctx.user_id,
-            uploaded_by_name=self.user_name,
-        )
-        self.db.add(photo)
-        await self.db.flush()
+            photo = PatientPhoto(
+                id=photo_uuid,
+                patient_id=patient.id,
+                file_id=file_record.id,
+                mime_type=mime_type,
+                file_size=len(content),
+                width=width,
+                height=height,
+                checksum_sha256=checksum,
+                uploaded_by=self.ctx.user_id,
+                uploaded_by_name=self.user_name,
+            )
+            self.db.add(photo)
+            await self.db.flush()
+        except Exception:
+            await storage.delete(storage_key)
+            raise
 
         old_photo_id = patient.current_photo_id
         patient.current_photo_id = photo.id

@@ -24,7 +24,7 @@ class CnesUnitQualification(TenantBase):
     id_unidade: Mapped[str] = mapped_column(String(31), nullable=False, index=True)
     codigo_habilitacao: Mapped[str] = mapped_column(String(4), nullable=False)
 
-    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
+    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default=" ")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),

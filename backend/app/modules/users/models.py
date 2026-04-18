@@ -43,7 +43,7 @@ class User(Base, TimestampedMixin):
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     cpf: Mapped[str] = mapped_column(String(11), unique=True, nullable=False, index=True)
-    phone: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, server_default=" ")
 
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
 
@@ -68,7 +68,7 @@ class User(Base, TimestampedMixin):
         index=True,
     )
 
-    primary_role: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
+    primary_role: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
 
     # Incrementado para invalidar todos os access tokens emitidos (logout-all).
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))

@@ -17,4 +17,4 @@ class SystemSetting(Base, TimestampedMixin):
     id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
     key: Mapped[str] = mapped_column(String(80), unique=True, nullable=False, index=True)
     value: Mapped[dict] = mapped_column(JSONType(), nullable=False)
-    description: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    description: Mapped[str] = mapped_column(String(300), nullable=False, server_default=" ")

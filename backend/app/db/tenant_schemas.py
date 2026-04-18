@@ -81,14 +81,17 @@ async def ensure_municipality_schema(
 
 
 async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
-    """No Oracle, cria tabelas tenant via metadata.create_all (sem Alembic).
+    """Provisiona o tenant Oracle sem Alembic.
 
-    Usa um engine temporário com event listener isolado para não interferir
-    com o engine principal.
+    Em Oracle usamos ``metadata.create_all`` direto dos models (que já
+    usam tipos portáveis via ``UUIDType``, ``JSONType``, ``VectorType``).
+    Depois criamos os objetos que ``create_all`` não cria — hoje, o
+    índice HNSW da tabela ``patient_face_embeddings``.
     """
     from sqlalchemy.ext.asyncio import create_async_engine as _create
 
     from app.core.config import settings as app_settings
+    from app.db.dialect import get_adapter
     from app.tenant_models import TenantBase
     import app.tenant_models._registry  # noqa: F401 - popula metadata
 
@@ -102,14 +105,33 @@ async def _create_tenant_tables_oracle(eng: AsyncEngine, schema: str) -> None:
         cursor.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{schema.upper()}"')
         cursor.close()
 
+    adapter = get_adapter("oracle")
+    vector_index_sql = adapter.create_vector_index_sql(
+        index_name="ix_pfe_embedding_hnsw",
+        table="patient_face_embeddings",
+        column="embedding",
+        distance="cosine",
+    )
+
     def _do_create(connection):
-        result = connection.execute(text(
-            f"SELECT COUNT(*) FROM all_tables WHERE owner = :o"
-        ), {"o": schema.upper()})
+        result = connection.execute(
+            text("SELECT COUNT(*) FROM all_tables WHERE owner = :o"),
+            {"o": schema.upper()},
+        )
         if result.scalar() > 0:
             log.info("tenant_tables_exist_skip", schema=schema)
             return
         TenantBase.metadata.create_all(connection)
+        # Índice vetorial (AI Vector Search) — não é parte da metadata
+        # SQLAlchemy; criamos via SQL do adapter.
+        try:
+            connection.execute(text(vector_index_sql))
+        except Exception as e:  # noqa: BLE001 - índice é opcional pra startup
+            log.warning(
+                "tenant_vector_index_create_failed",
+                schema=schema,
+                error=str(e),
+            )
 
     try:
         async with tmp_eng.begin() as conn:

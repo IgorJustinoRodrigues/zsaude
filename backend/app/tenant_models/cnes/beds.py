@@ -28,7 +28,7 @@ class CnesUnitBed(TenantBase):
     quantidade_existente: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     quantidade_sus: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
+    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default=" ")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),

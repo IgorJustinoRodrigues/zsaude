@@ -23,7 +23,7 @@ from app.modules.hsp.schemas import (
     PatientRead,
     PatientUpdate,
 )
-from app.modules.hsp.service import PatientService
+from app.modules.hsp.service import PatientService, load_photo_bytes
 from app.modules.users.models import User
 from app.tenant_models.patients import Patient
 
@@ -270,7 +270,14 @@ async def upload_patient_photo(
         raise HTTPException(status_code=415, detail="Formato não suportado. Use JPEG, PNG ou WEBP.")
 
     svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
-    photo = await svc.set_photo(patient_id, content=raw, mime_type=mime, width=width, height=height)
+    photo = await svc.set_photo(
+        patient_id,
+        content=raw,
+        mime_type=mime,
+        original_name=file.filename or "",
+        width=width,
+        height=height,
+    )
     patient = await svc.get_patient(patient_id)
     docs = await svc.list_documents(patient_id)
     read = _patient_to_read(patient, docs)
@@ -288,11 +295,7 @@ async def get_current_photo(
 ) -> Response:
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, None)
-    if photo.storage_key:
-        from app.services.storage import get_storage
-        data = await get_storage().download(photo.storage_key)
-    else:
-        data = bytes(photo.content) if photo.content else b""
+    data = await load_photo_bytes(db, photo)
     return Response(
         content=data,
         media_type=photo.mime_type,
@@ -321,11 +324,7 @@ async def get_specific_photo(
 ) -> Response:
     svc = PatientService(db, ctx)
     photo = await svc.get_photo(patient_id, photo_id)
-    if photo.storage_key:
-        from app.services.storage import get_storage
-        data = await get_storage().download(photo.storage_key)
-    else:
-        data = bytes(photo.content) if photo.content else b""
+    data = await load_photo_bytes(db, photo)
     return Response(
         content=data,
         media_type=photo.mime_type,

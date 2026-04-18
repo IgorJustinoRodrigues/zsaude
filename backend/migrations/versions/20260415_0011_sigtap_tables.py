@@ -29,6 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import JSONType, UUIDType
 revision: str = "0011_sigtap_tables"
 down_revision: str | None = "0010_mun_enabled_modules"
 branch_labels: str | Sequence[str] | None = None
@@ -41,11 +42,11 @@ def upgrade() -> None:
     # ── sigtap_procedures ──
     op.create_table(
         "sigtap_procedures",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(10), nullable=False),
-        sa.Column("nome", sa.String(250), nullable=False, server_default=""),
-        sa.Column("complexidade", sa.String(1), nullable=False, server_default=""),
-        sa.Column("sexo", sa.String(1), nullable=False, server_default=""),
+        sa.Column("nome", sa.String(250), nullable=False, server_default=" "),
+        sa.Column("complexidade", sa.String(1), nullable=False, server_default=" "),
+        sa.Column("sexo", sa.String(1), nullable=False, server_default=" "),
         sa.Column("qt_maxima", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("qt_dias", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("qt_pontos", sa.Integer(), nullable=False, server_default="0"),
@@ -54,11 +55,11 @@ def upgrade() -> None:
         sa.Column("valor_sh", sa.Numeric(14, 2), nullable=False, server_default="0"),
         sa.Column("valor_sa", sa.Numeric(14, 2), nullable=False, server_default="0"),
         sa.Column("valor_sp", sa.Numeric(14, 2), nullable=False, server_default="0"),
-        sa.Column("id_financiamento", sa.String(2), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
+        sa.Column("id_financiamento", sa.String(2), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
         sa.Column("revogado", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_procedures_codigo"),
         schema="app",
     )
@@ -68,11 +69,11 @@ def upgrade() -> None:
     # ── sigtap_cbos ──
     op.create_table(
         "sigtap_cbos",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(6), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_cbos_codigo"),
         schema="app",
     )
@@ -80,13 +81,13 @@ def upgrade() -> None:
     # ── sigtap_cids ──
     op.create_table(
         "sigtap_cids",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(4), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("agravo", sa.String(1), nullable=False, server_default=""),
-        sa.Column("sexo", sa.String(1), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("agravo", sa.String(1), nullable=False, server_default=" "),
+        sa.Column("sexo", sa.String(1), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_cids_codigo"),
         schema="app",
     )
@@ -94,12 +95,12 @@ def upgrade() -> None:
     # ── sigtap_modalidades ──
     op.create_table(
         "sigtap_modalidades",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(2), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_modalidades_codigo"),
         schema="app",
     )
@@ -107,12 +108,12 @@ def upgrade() -> None:
     # ── sigtap_registros ──
     op.create_table(
         "sigtap_registros",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(2), nullable=False),
-        sa.Column("descricao", sa.String(100), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(100), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_registros_codigo"),
         schema="app",
     )
@@ -120,12 +121,12 @@ def upgrade() -> None:
     # ── sigtap_services ──
     op.create_table(
         "sigtap_services",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(3), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_services_codigo"),
         schema="app",
     )
@@ -133,13 +134,13 @@ def upgrade() -> None:
     # ── sigtap_service_classifications ──
     op.create_table(
         "sigtap_service_classifications",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_servico", sa.String(3), nullable=False),
         sa.Column("codigo_classificacao", sa.String(3), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_servico", "codigo_classificacao",
             name="uq_sigtap_service_classifications_servico_class",
@@ -154,12 +155,12 @@ def upgrade() -> None:
     # ── sigtap_procedure_descriptions ──
     op.create_table(
         "sigtap_procedure_descriptions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
-        sa.Column("descricao", sa.Text(), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.Text(), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo_procedimento", name="uq_sigtap_procedure_descriptions_codigo_procedimento"),
         schema="app",
     )
@@ -167,14 +168,14 @@ def upgrade() -> None:
     # ── sigtap_formas_organizacao ──
     op.create_table(
         "sigtap_formas_organizacao",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_grupo", sa.String(2), nullable=False),
         sa.Column("codigo_subgrupo", sa.String(2), nullable=False),
         sa.Column("codigo_forma", sa.String(2), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_grupo", "codigo_subgrupo", "codigo_forma",
             name="uq_sigtap_formas_organizacao_grupo_subgrupo_forma",
@@ -185,12 +186,12 @@ def upgrade() -> None:
     # ── sigtap_habilitacoes ──
     op.create_table(
         "sigtap_habilitacoes",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(4), nullable=False),
-        sa.Column("descricao", sa.String(200), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("descricao", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_habilitacoes_codigo"),
         schema="app",
     )
@@ -198,12 +199,12 @@ def upgrade() -> None:
     # ── sigtap_grupos_habilitacao ──
     op.create_table(
         "sigtap_grupos_habilitacao",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(4), nullable=False),
-        sa.Column("nome_grupo", sa.String(40), nullable=False, server_default=""),
-        sa.Column("descricao", sa.String(300), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("nome_grupo", sa.String(40), nullable=False, server_default=" "),
+        sa.Column("descricao", sa.String(300), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name="uq_sigtap_grupos_habilitacao_codigo"),
         schema="app",
     )
@@ -211,12 +212,12 @@ def upgrade() -> None:
     # ── sigtap_procedure_cids ──
     op.create_table(
         "sigtap_procedure_cids",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_cid", sa.String(4), nullable=False),
-        sa.Column("principal", sa.String(1), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("principal", sa.String(1), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_cid",
             name="uq_sigtap_procedure_cids_proc_cid",
@@ -235,11 +236,11 @@ def upgrade() -> None:
     # ── sigtap_procedure_cbos ──
     op.create_table(
         "sigtap_procedure_cbos",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_cbo", sa.String(6), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_cbo",
             name="uq_sigtap_procedure_cbos_proc_cbo",
@@ -258,11 +259,11 @@ def upgrade() -> None:
     # ── sigtap_procedure_modalidades ──
     op.create_table(
         "sigtap_procedure_modalidades",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_modalidade", sa.String(2), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_modalidade",
             name="uq_sigtap_procedure_modalidades_proc_modal",
@@ -277,11 +278,11 @@ def upgrade() -> None:
     # ── sigtap_procedure_registros ──
     op.create_table(
         "sigtap_procedure_registros",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_registro", sa.String(2), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_registro",
             name="uq_sigtap_procedure_registros_proc_reg",
@@ -296,15 +297,15 @@ def upgrade() -> None:
     # ── sigtap_procedure_compatibilidades ──
     op.create_table(
         "sigtap_procedure_compatibilidades",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
-        sa.Column("registro_principal", sa.String(2), nullable=False, server_default=""),
+        sa.Column("registro_principal", sa.String(2), nullable=False, server_default=" "),
         sa.Column("codigo_procedimento_secundario", sa.String(10), nullable=False),
-        sa.Column("registro_secundario", sa.String(2), nullable=False, server_default=""),
-        sa.Column("tipo_compatibilidade", sa.String(1), nullable=False, server_default=""),
+        sa.Column("registro_secundario", sa.String(2), nullable=False, server_default=" "),
+        sa.Column("tipo_compatibilidade", sa.String(1), nullable=False, server_default=" "),
         sa.Column("quantidade_permitida", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "registro_principal",
             "codigo_procedimento_secundario", "registro_secundario",
@@ -320,11 +321,11 @@ def upgrade() -> None:
     # ── sigtap_procedure_detalhes ──
     op.create_table(
         "sigtap_procedure_detalhes",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_lista_validacao", sa.String(3), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_lista_validacao",
             name="uq_sigtap_procedure_detalhes_proc_lista",
@@ -339,12 +340,12 @@ def upgrade() -> None:
     # ── sigtap_procedure_servicos ──
     op.create_table(
         "sigtap_procedure_servicos",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_servico", sa.String(3), nullable=False),
         sa.Column("codigo_classificacao", sa.String(3), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_servico", "codigo_classificacao",
             name="uq_sigtap_procedure_servicos_proc_serv_class",
@@ -359,11 +360,11 @@ def upgrade() -> None:
     # ── sigtap_procedure_leitos ──
     op.create_table(
         "sigtap_procedure_leitos",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_tipo_leito", sa.String(2), nullable=False),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_tipo_leito",
             name="uq_sigtap_procedure_leitos_proc_leito",
@@ -378,10 +379,10 @@ def upgrade() -> None:
     # ── sigtap_procedure_regras_cond ──
     op.create_table(
         "sigtap_procedure_regras_cond",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("regra_condicionada", sa.String(14), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "regra_condicionada",
             name="uq_sigtap_procedure_regras_cond_proc_regra",
@@ -396,12 +397,12 @@ def upgrade() -> None:
     # ── sigtap_procedure_habilitacoes ──
     op.create_table(
         "sigtap_procedure_habilitacoes",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo_procedimento", sa.String(10), nullable=False),
         sa.Column("codigo_habilitacao", sa.String(4), nullable=False),
-        sa.Column("codigo_grupo_habilitacao", sa.String(4), nullable=False, server_default=""),
-        sa.Column("competencia", sa.String(6), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("codigo_grupo_habilitacao", sa.String(4), nullable=False, server_default=" "),
+        sa.Column("competencia", sa.String(6), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "codigo_procedimento", "codigo_habilitacao", "codigo_grupo_habilitacao",
             name="uq_sigtap_procedure_habilitacoes_proc_hab_grupo",
@@ -420,16 +421,16 @@ def upgrade() -> None:
     # ── sigtap_imports (histórico) ──
     op.create_table(
         "sigtap_imports",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("competencia", sa.String(6), nullable=False),
-        sa.Column("uploaded_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("uploaded_by_user_name", sa.String(200), nullable=False, server_default=""),
-        sa.Column("zip_filename", sa.String(200), nullable=False, server_default=""),
+        sa.Column("uploaded_by_user_id", UUIDType(), nullable=True),
+        sa.Column("uploaded_by_user_name", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("zip_filename", sa.String(200), nullable=False, server_default=" "),
         sa.Column("zip_size_bytes", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("status", sa.String(10), nullable=False, server_default="running"),
-        sa.Column("error_message", sa.String(2000), nullable=False, server_default=""),
+        sa.Column("error_message", sa.String(2000), nullable=False, server_default=" "),
         sa.Column("total_rows_processed", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
             "status IN ('running','success','failed','partial')",
@@ -443,10 +444,10 @@ def upgrade() -> None:
     # ── sigtap_import_files ──
     op.create_table(
         "sigtap_import_files",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column(
             "import_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey(
                 "app.sigtap_imports.id",
                 ondelete="CASCADE",
@@ -459,9 +460,9 @@ def upgrade() -> None:
         sa.Column("rows_inserted", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("rows_updated", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("rows_skipped", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("warnings", postgresql.JSONB(), nullable=False, server_default="[]"),
-        sa.Column("error_message", sa.String(2000), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("warnings", JSONType(), nullable=False, server_default="[]"),
+        sa.Column("error_message", sa.String(2000), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         schema="app",
     )
     op.create_index("ix_sigtap_import_files_import_id", "sigtap_import_files", ["import_id"], schema="app")

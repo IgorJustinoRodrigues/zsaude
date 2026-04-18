@@ -124,6 +124,57 @@ class OracleAdapter(DialectAdapter):
         prefixed_row = {f"p_{k.strip('\"')}": v for k, v in rows[0].items()}
         return text(sql).bindparams(**prefixed_row)
 
+    @staticmethod
+    def _coerce_value_for_oracle(v: Any, col_type: Any = None) -> Any:
+        """Converte tipos Python pros esperados pelo oracledb, ciente do tipo
+        da coluna SQLAlchemy (quando disponível).
+
+        Conversões:
+        - ``uuid.UUID``           → ``bytes`` (RAW(16)).
+        - coluna ``JSONType``     → JSON string (``json.dumps(value)``).
+        - coluna ``VectorType``   → ``array.array("f", ...)`` (Oracle VECTOR).
+        - ``bool``                → ``int`` (NUMBER(1)).
+        - ``list``/``dict`` (sem tipo) → JSON string por heurística.
+        """
+        import json as _json
+        import uuid as _uuid
+        import array as _array
+
+        if v is None:
+            return v
+
+        # Tipo da coluna tem prioridade sobre tipo Python (ex: bool em
+        # coluna JSON vira ``"true"``, não ``1``).
+        if col_type is not None:
+            try:
+                from app.db.types import JSONType, VectorType, ArrayAsJSON
+                if isinstance(col_type, (JSONType, ArrayAsJSON)):
+                    return _json.dumps(v, ensure_ascii=False)
+                if isinstance(col_type, VectorType):
+                    if isinstance(v, _array.array):
+                        return v
+                    return _array.array("f", v)
+            except Exception:
+                pass
+
+        if isinstance(v, _uuid.UUID):
+            return v.bytes
+        if isinstance(v, bool):
+            return 1 if v else 0
+        if isinstance(v, (dict, list)):
+            # list/dict em coluna não-JSON (raro) — serializa como fallback.
+            return _json.dumps(v, ensure_ascii=False)
+        return v
+
+    @staticmethod
+    def _column_types(table: type) -> dict[str, Any]:
+        """Mapeia nome da coluna → TypeDecorator do model."""
+        try:
+            tbl = table.__table__  # type: ignore[attr-defined]
+            return {c.name: c.type for c in tbl.columns}
+        except Exception:
+            return {}
+
     async def execute_upsert(
         self, session: Any, table: type,
         values: list[dict[str, Any]] | dict[str, Any],
@@ -138,8 +189,13 @@ class OracleAdapter(DialectAdapter):
         all_cols = list(rows[0].keys())
         sql = self._build_merge_sql(tbl, all_cols, index_elements, update_columns, extra_set)
         stmt = text(sql)
+        col_types = self._column_types(table)
         for row in rows:
-            prefixed = {f"p_{k.strip('\"')}": v for k, v in row.items()}
+            prefixed = {
+                f"p_{k.strip('\"')}":
+                    self._coerce_value_for_oracle(v, col_types.get(k))
+                for k, v in row.items()
+            }
             await session.execute(stmt, prefixed)
 
     async def execute_upsert_do_nothing(
@@ -214,3 +270,38 @@ class OracleAdapter(DialectAdapter):
 
     def func_gen_uuid_sql(self) -> str:
         return "SYS_GUID()"
+
+    # ── Vetor (Oracle 23ai AI Vector Search) ─────────────────────────────
+
+    def vector_cosine_distance_sql(self, column_expr: str, param_name: str) -> str:
+        # Oracle 23ai: VECTOR_DISTANCE(v1, v2, metric) — retorna float.
+        # Para coseno, retorna o mesmo range do pgvector <=> (0..2).
+        return f"VECTOR_DISTANCE({column_expr}, :{param_name}, COSINE)"
+
+    def create_vector_index_sql(
+        self,
+        index_name: str,
+        table: str,
+        column: str,
+        *,
+        distance: str = "cosine",
+    ) -> str:
+        metric = {"cosine": "COSINE", "l2": "EUCLIDEAN"}[distance]
+        # Oracle 23ai IVF (NEIGHBOR PARTITIONS): ANN on-disk, não exige
+        # VECTOR_MEMORY_SIZE (que seria necessário para ORGANIZATION INMEMORY
+        # NEIGHBOR GRAPH / HNSW). Se o ambiente tiver VECTOR_MEMORY_SIZE
+        # configurado, basta trocar a ORGANIZATION por INMEMORY NEIGHBOR GRAPH
+        # pra HNSW — performance de build/query similares pra até 100k rows.
+        return (
+            f"CREATE VECTOR INDEX {index_name} ON {table} ({column}) "
+            f"ORGANIZATION NEIGHBOR PARTITIONS DISTANCE {metric} "
+            f"WITH TARGET ACCURACY 95"
+        )
+
+    # ── Busca textual ────────────────────────────────────────────────────
+
+    def unaccent_upper_expr(self, column_expr: str) -> str:
+        # Oracle não tem ``unaccent`` nativo. ``NLS_UPPER`` com
+        # ``NLS_SORT=BINARY_AI`` (Accent Insensitive) faz uppercase sem
+        # acentos de forma consistente pra português.
+        return f"NLS_UPPER({column_expr}, 'NLS_SORT=BINARY_AI')"

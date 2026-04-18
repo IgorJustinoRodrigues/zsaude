@@ -10,11 +10,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Float, ForeignKey, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import JSONType, UUIDType, new_uuid7
+from app.db.types import JSONType, UUIDType, VectorType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -39,7 +38,7 @@ class PatientFaceEmbedding(TenantBase):
         nullable=True,
     )
 
-    embedding: Mapped[list[float]] = mapped_column(Vector(512), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(VectorType(512), nullable=False)
 
     detection_score: Mapped[float] = mapped_column(Float, nullable=False)
     bbox: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)

@@ -27,26 +27,26 @@ class AuditLog(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True, index=True)
-    user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
     municipality_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
     facility_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
-    role: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
+    role: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
 
     module: Mapped[str] = mapped_column(String(10), nullable=False)
     action: Mapped[str] = mapped_column(String(40), nullable=False)
     severity: Mapped[str] = mapped_column(String(10), nullable=False, server_default="info")
 
-    resource: Mapped[str] = mapped_column(String(60), nullable=False, server_default="")
-    resource_id: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    resource: Mapped[str] = mapped_column(String(60), nullable=False, server_default=" ")
+    resource_id: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
 
-    description: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
-    details: Mapped[dict] = mapped_column(JSONType(), nullable=False, server_default=text("'{}'"))
+    description: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
+    details: Mapped[dict] = mapped_column(JSONType(), nullable=False, default=dict)
     before: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
     after: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
 
-    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
-    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
-    request_id: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
+    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
+    request_id: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
 
     at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")

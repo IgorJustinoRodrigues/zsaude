@@ -23,6 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import JSONType, UUIDType
 revision: str = "0009_mun_geo_neighborhoods"
 down_revision: str | None = "0008_rbac_finalize"
 branch_labels: str | Sequence[str] | None = None
@@ -43,16 +44,16 @@ def upgrade() -> None:
         schema="app",
     )
     op.add_column("municipalities",
-        sa.Column("territory", postgresql.JSONB(), nullable=True),
+        sa.Column("territory", JSONType(), nullable=True),
         schema="app",
     )
 
     op.create_table(
         "neighborhoods",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column(
             "municipality_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.municipalities.id", ondelete="CASCADE", name="fk_neighborhoods_mun_id"),
             nullable=False,
         ),
@@ -60,9 +61,9 @@ def upgrade() -> None:
         sa.Column("population", sa.Integer(), nullable=True),
         sa.Column("latitude", sa.Numeric(10, 7), nullable=True),
         sa.Column("longitude", sa.Numeric(10, 7), nullable=True),
-        sa.Column("territory", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("territory", JSONType(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("municipality_id", "name", name="uq_neighborhood_mun_name"),
         schema="app",
     )

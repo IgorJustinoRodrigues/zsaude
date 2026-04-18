@@ -71,10 +71,10 @@ class AIProvider(Base, TimestampedMixin):
         Enum(AISdkKind, name="ai_sdk_kind", native_enum=False, length=20),
         nullable=False,
     )
-    base_url_default: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    base_url_default: Mapped[str] = mapped_column(String(300), nullable=False, server_default=" ")
     # Capabilities que o provider suporta (ex: ["chat","chat_vision","embed_text"]).
     capabilities: Mapped[list[str]] = mapped_column(
-        ArrayAsJSON(String(30)), nullable=False, server_default=text("'[]'")
+        ArrayAsJSON(String(30)), nullable=False, default=list,
     )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
@@ -97,7 +97,7 @@ class AIModel(Base, TimestampedMixin):
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     capabilities: Mapped[list[str]] = mapped_column(
-        ArrayAsJSON(String(30)), nullable=False, server_default=text("'[]'")
+        ArrayAsJSON(String(30)), nullable=False, default=list,
     )
     # Preços em centavos de US$ por 1 milhão de tokens — evita float.
     input_cost_per_mtok: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -120,7 +120,7 @@ class AIPromptTemplate(Base, TimestampedMixin):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     # JSON schema esperado da resposta (quando operation precisa saída estruturada).
     response_schema: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
-    description: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    description: Mapped[str] = mapped_column(String(300), nullable=False, server_default=" ")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"))
 
 
@@ -154,10 +154,10 @@ class AIMunicipalityKey(Base, TimestampedMixin):
     # Token ``fernet:v1:<base64>``. Nunca é retornado pro frontend.
     encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
     # Sobrescreve base_url do provider (ex: Ollama numa LAN específica).
-    base_url_override: Mapped[str] = mapped_column(String(300), nullable=False, server_default="")
+    base_url_override: Mapped[str] = mapped_column(String(300), nullable=False, server_default=" ")
     # Exibido na UI pra identificar a chave sem decifrar.
-    key_fingerprint: Mapped[str] = mapped_column(String(16), nullable=False, server_default="")
-    key_last4: Mapped[str] = mapped_column(String(4), nullable=False, server_default="")
+    key_fingerprint: Mapped[str] = mapped_column(String(16), nullable=False, server_default=" ")
+    key_last4: Mapped[str] = mapped_column(String(4), nullable=False, server_default=" ")
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
@@ -315,18 +315,18 @@ class AIUsageLog(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(), nullable=True
     )
-    module_code: Mapped[str] = mapped_column(String(20), nullable=False, server_default="")
+    module_code: Mapped[str] = mapped_column(String(20), nullable=False, server_default=" ")
     operation_slug: Mapped[str] = mapped_column(String(80), nullable=False)
     capability: Mapped[str] = mapped_column(String(30), nullable=False)
 
     provider_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(), nullable=True
     )
-    provider_slug: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
+    provider_slug: Mapped[str] = mapped_column(String(40), nullable=False, server_default=" ")
     model_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType(), nullable=True
     )
-    model_slug: Mapped[str] = mapped_column(String(100), nullable=False, server_default="")
+    model_slug: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
 
     tokens_in: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -338,11 +338,11 @@ class AIUsageLog(Base):
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, index=True)
-    error_code: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
-    error_message: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+    error_code: Mapped[str] = mapped_column(String(40), nullable=False, server_default=" ")
+    error_message: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
 
-    prompt_template_slug: Mapped[str] = mapped_column(String(80), nullable=False, server_default="")
+    prompt_template_slug: Mapped[str] = mapped_column(String(80), nullable=False, server_default=" ")
     prompt_template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     client_idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")

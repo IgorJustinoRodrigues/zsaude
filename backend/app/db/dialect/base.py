@@ -117,3 +117,51 @@ class DialectAdapter(ABC):
 
         PG: ``gen_random_uuid()``. Oracle: ``SYS_GUID()``.
         """
+
+    # ── Vetor (reconhecimento facial / embeddings) ───────────────────────
+
+    @abstractmethod
+    def vector_cosine_distance_sql(self, column_expr: str, param_name: str) -> str:
+        """SQL para distância coseno entre uma coluna vetorial e um parâmetro.
+
+        Retorna uma **expressão** (não statement), já parametrizada.
+        Distância coseno: 0 = idêntico, 1 = ortogonal, 2 = oposto.
+
+        - PG (pgvector): ``column <=> CAST(:param AS vector)``.
+        - Oracle 23ai:   ``VECTOR_DISTANCE(column, :param, COSINE)``.
+
+        Exemplo::
+
+            sql = adapter.vector_cosine_distance_sql("fe.embedding", "q")
+            stmt = text(f"SELECT ... WHERE {sql} <= :max_dist ORDER BY {sql} ASC")
+        """
+
+    @abstractmethod
+    def create_vector_index_sql(
+        self,
+        index_name: str,
+        table: str,
+        column: str,
+        *,
+        distance: str = "cosine",
+    ) -> str:
+        """SQL para criar índice de busca vetorial (HNSW / IVF_FLAT).
+
+        Chamado pelo provisioning Oracle e pelas migrations PG. Retorna um
+        comando completo ``CREATE ... INDEX ...``.
+
+        ``distance``: ``"cosine"`` (default) ou ``"l2"``.
+        """
+
+    # ── Busca textual (case/accent insensitive) ──────────────────────────
+
+    @abstractmethod
+    def unaccent_upper_expr(self, column_expr: str) -> str:
+        """SQL que retorna o valor da coluna em UPPERCASE e sem acentos.
+
+        Uso típico: ``WHERE {unaccent_upper_expr(col)} LIKE :pattern`` onde
+        ``pattern`` já vem em upper + sem acentos. Portável:
+
+        - PG: usa extensão ``unaccent`` → ``UPPER(unaccent(col))``.
+        - Oracle: ``UTL_RAW``/``TRANSLATE`` ou ``NLS_UPPER(..., 'NLS_SORT=BINARY_AI')``.
+        """

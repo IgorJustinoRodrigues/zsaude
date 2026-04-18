@@ -1,4 +1,4 @@
-"""Tabela patient_face_embeddings (reconhecimento facial local)
+"""Tabela patient_face_embeddings (reconhecimento facial local).
 
 Revision ID: t0007_face_embeddings
 Revises: t0006_patient_lat_lng
@@ -6,11 +6,17 @@ Create Date: 2026-04-17
 
 Embedding facial gerado por InsightFace (ArcFace buffalo_l, 512-dim).
 Um embedding ativo por paciente (UNIQUE patient_id). Índice HNSW com
-vector_cosine_ops pra busca sub-10ms em até 100k pacientes.
+``vector_cosine_ops`` pra busca sub-10ms em até 100k pacientes.
 
 Requer:
-- pgvector >= 0.5 (HNSW) — imagem pgvector/pgvector:pg17
-- Migration app `0023_pgvector_extension` aplicada antes desta.
+- pgvector >= 0.5 (HNSW) — imagem ``pgvector/pgvector:pg17``.
+- Migration app ``0023_pgvector_extension`` aplicada antes desta.
+
+**Portabilidade**: esta migration é **Postgres-only** — usa o tipo
+``vector(512)`` e índice HNSW, que não existem em Oracle. Em Oracle o
+schema tenant é provisionado via ``metadata.create_all`` (ver
+``app/db/tenant_schemas.py``), que usa ``VectorType`` (fallback ``BLOB``).
+O módulo de reconhecimento facial requer Postgres em runtime.
 """
 from __future__ import annotations
 

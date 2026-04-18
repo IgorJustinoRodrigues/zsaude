@@ -25,6 +25,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import ArrayAsJSON, JSONType, UUIDType
 revision: str = "0019_ai_core_tables"
 down_revision: str | None = "0018_cadsus_password_fernet"
 branch_labels: str | Sequence[str] | None = None
@@ -64,14 +65,14 @@ def upgrade() -> None:
     # ── ai_providers ────────────────────────────────────────────────────
     op.create_table(
         "ai_providers",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("slug", sa.String(40), nullable=False),
         sa.Column("display_name", sa.String(120), nullable=False),
         sa.Column("sdk_kind", sa.String(20), nullable=False),
-        sa.Column("base_url_default", sa.String(300), nullable=False, server_default=""),
+        sa.Column("base_url_default", sa.String(300), nullable=False, server_default=" "),
         sa.Column(
             "capabilities",
-            postgresql.ARRAY(sa.String(30)),
+            ArrayAsJSON(sa.String(30)),
             nullable=False,
             server_default=sa.text("'{}'::varchar[]"),
         ),
@@ -87,13 +88,13 @@ def upgrade() -> None:
     # ── ai_models ───────────────────────────────────────────────────────
     op.create_table(
         "ai_models",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", UUIDType(), primary_key=True),
+        sa.Column("provider_id", UUIDType(), nullable=False),
         sa.Column("slug", sa.String(100), nullable=False),
         sa.Column("display_name", sa.String(160), nullable=False),
         sa.Column(
             "capabilities",
-            postgresql.ARRAY(sa.String(30)),
+            ArrayAsJSON(sa.String(30)),
             nullable=False,
             server_default=sa.text("'{}'::varchar[]"),
         ),
@@ -116,12 +117,12 @@ def upgrade() -> None:
     # ── ai_prompt_templates ────────────────────────────────────────────
     op.create_table(
         "ai_prompt_templates",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("slug", sa.String(80), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("body", sa.Text(), nullable=False),
-        sa.Column("response_schema", postgresql.JSONB(), nullable=True),
-        sa.Column("description", sa.String(300), nullable=False, server_default=""),
+        sa.Column("response_schema", JSONType(), nullable=True),
+        sa.Column("description", sa.String(300), nullable=False, server_default=" "),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=False), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=False), nullable=False, server_default=sa.func.now()),
@@ -133,13 +134,13 @@ def upgrade() -> None:
     # ── ai_municipality_keys ───────────────────────────────────────────
     op.create_table(
         "ai_municipality_keys",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("municipality_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("provider_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", UUIDType(), primary_key=True),
+        sa.Column("municipality_id", UUIDType(), nullable=False),
+        sa.Column("provider_id", UUIDType(), nullable=False),
         sa.Column("encrypted_api_key", sa.Text(), nullable=False),
-        sa.Column("base_url_override", sa.String(300), nullable=False, server_default=""),
-        sa.Column("key_fingerprint", sa.String(16), nullable=False, server_default=""),
-        sa.Column("key_last4", sa.String(4), nullable=False, server_default=""),
+        sa.Column("base_url_override", sa.String(300), nullable=False, server_default=" "),
+        sa.Column("key_fingerprint", sa.String(16), nullable=False, server_default=" "),
+        sa.Column("key_last4", sa.String(4), nullable=False, server_default=" "),
         sa.Column("rotated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=False), nullable=False, server_default=sa.func.now()),
@@ -171,12 +172,12 @@ def upgrade() -> None:
     # ── ai_capability_routes ───────────────────────────────────────────
     op.create_table(
         "ai_capability_routes",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("scope", sa.String(20), nullable=False),
-        sa.Column("municipality_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("municipality_id", UUIDType(), nullable=True),
         sa.Column("module_code", sa.String(20), nullable=True),
         sa.Column("capability", sa.String(30), nullable=False),
-        sa.Column("model_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("model_id", UUIDType(), nullable=False),
         sa.Column("priority", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=False), nullable=False, server_default=sa.func.now()),
@@ -210,8 +211,8 @@ def upgrade() -> None:
     # ── ai_quotas ──────────────────────────────────────────────────────
     op.create_table(
         "ai_quotas",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("municipality_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", UUIDType(), primary_key=True),
+        sa.Column("municipality_id", UUIDType(), nullable=False),
         sa.Column("period", sa.String(10), nullable=False, server_default="month"),
         sa.Column("max_tokens", sa.BigInteger(), nullable=False, server_default=sa.text("0")),
         sa.Column("max_cost_cents", sa.Integer(), nullable=False, server_default=sa.text("0")),
@@ -235,8 +236,8 @@ def upgrade() -> None:
     # ── ai_quota_alerts ────────────────────────────────────────────────
     op.create_table(
         "ai_quota_alerts",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("municipality_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", UUIDType(), primary_key=True),
+        sa.Column("municipality_id", UUIDType(), nullable=False),
         sa.Column("year_month", sa.String(7), nullable=False),
         sa.Column("threshold", sa.Integer(), nullable=False),
         sa.Column("alerted_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),

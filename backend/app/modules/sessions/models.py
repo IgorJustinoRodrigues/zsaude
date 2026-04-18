@@ -47,5 +47,5 @@ class UserSession(Base, TimestampedMixin):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
-    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default="")
-    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default="")
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
+    user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")

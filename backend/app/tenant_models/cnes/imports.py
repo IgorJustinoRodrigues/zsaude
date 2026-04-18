@@ -37,9 +37,9 @@ class CnesImport(TenantBase):
     # snapshot do usuário (sem FK cross-schema — ver comentário do `created_by`
     # em tenant_models/patients.py).
     uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
-    uploaded_by_user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    uploaded_by_user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
 
-    zip_filename: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    zip_filename: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
     zip_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     status: Mapped[CnesImportStatus] = mapped_column(
@@ -55,7 +55,7 @@ class CnesImport(TenantBase):
         index=True,
     )
 
-    error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default="")
+    error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default=" ")
 
     total_rows_processed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
@@ -92,8 +92,8 @@ class CnesImportFile(TenantBase):
     rows_updated: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     rows_skipped: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    warnings: Mapped[list] = mapped_column(JSONType(), nullable=False, server_default="[]")
-    error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default="")
+    warnings: Mapped[list] = mapped_column(JSONType(), nullable=False, default=list)
+    error_message: Mapped[str] = mapped_column(String(2000), nullable=False, server_default=" ")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),

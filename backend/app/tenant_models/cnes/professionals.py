@@ -21,12 +21,12 @@ class CnesProfessional(TenantBase):
     id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
 
     id_profissional: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
-    cpf: Mapped[str] = mapped_column(String(11), nullable=False, server_default="", index=True)
-    cns: Mapped[str] = mapped_column(String(15), nullable=False, server_default="", index=True)
-    nome: Mapped[str] = mapped_column(String(200), nullable=False, server_default="")
+    cpf: Mapped[str] = mapped_column(String(11), nullable=False, server_default=" ", index=True)
+    cns: Mapped[str] = mapped_column(String(15), nullable=False, server_default=" ", index=True)
+    nome: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="Ativo")
-    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
+    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default=" ")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
@@ -60,13 +60,13 @@ class CnesProfessionalUnit(TenantBase):
     carga_horaria_ambulatorial: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     carga_horaria_hospitalar: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    id_conselho: Mapped[str] = mapped_column(String(2), nullable=False, server_default="")
-    num_conselho: Mapped[str] = mapped_column(String(10), nullable=False, server_default="")
+    id_conselho: Mapped[str] = mapped_column(String(2), nullable=False, server_default=" ")
+    num_conselho: Mapped[str] = mapped_column(String(10), nullable=False, server_default=" ")
 
     # Status traduzido: 'Ativo' | 'Bloqueado'
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="Ativo", index=True)
 
-    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default="")
+    competencia_ultima_importacao: Mapped[str] = mapped_column(String(6), nullable=False, server_default=" ")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),

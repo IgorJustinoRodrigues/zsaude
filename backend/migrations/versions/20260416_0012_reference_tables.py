@@ -23,6 +23,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import UUIDType
 revision: str = "0012_reference_tables"
 down_revision: str | None = "0011_sigtap_tables"
 branch_labels: str | Sequence[str] | None = None
@@ -514,13 +515,13 @@ LOGRADOUROS: list[tuple[str, str]] = [
 def _create_table(name: str, codigo_len: int, descricao_len: int) -> None:
     op.create_table(
         name,
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("codigo", sa.String(codigo_len), nullable=False),
         sa.Column("descricao", sa.String(descricao_len), nullable=False),
         sa.Column("is_system", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("codigo", name=f"uq_{name}_codigo"),
         schema="app",
     )
