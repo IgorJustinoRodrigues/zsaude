@@ -95,6 +95,16 @@ _FIELD_LABELS: dict[str, str] = {
     "key":                  "chave",
     "value":                "valor",
     "description":          "descrição",
+    # Município / unidade
+    "short_name":           "nome curto",
+    "type":                 "tipo",
+    "cnes":                 "CNES",
+    "ibge":                 "código IBGE",
+    "state":                "UF",
+    "neighborhoods":        "bairros",
+    "archived":             "arquivado",
+    "codigo":               "código",
+    "descricao":            "descrição",
     # Timestamps (raramente vão pro audit, mas por segurança)
     "created_at":           "criado em",
     "updated_at":           "atualizado em",

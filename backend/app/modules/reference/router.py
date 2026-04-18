@@ -9,8 +9,10 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.sql import expression
 
+from app.core.audit import get_audit_context
 from app.core.deps import DB, MasterDep
 from app.core.pagination import Page, PageParams
+from app.modules.audit.helpers import describe_change
 from app.modules.audit.writer import write_audit
 from app.modules.reference.models import (
     RefDeficiencia,
@@ -56,6 +58,29 @@ def _get_model(kind: str) -> tuple[Any, str]:
     if kind not in _TABLES:
         raise HTTPException(status_code=404, detail=f"Tabela de referência desconhecida: {kind!r}.")
     return _TABLES[kind]
+
+
+# Label singular legível pro audit ("ref_etnia" → "etnia", "ref_tipo_sanguineo" → "tipo sanguíneo").
+_RESOURCE_LABEL: dict[str, str] = {
+    "ref_nacionalidade":      "nacionalidade",
+    "ref_raca":               "raça",
+    "ref_etnia":              "etnia",
+    "ref_logradouro":         "tipo de logradouro",
+    "ref_tipo_documento":     "tipo de documento",
+    "ref_estado_civil":       "estado civil",
+    "ref_escolaridade":       "escolaridade",
+    "ref_religiao":           "religião",
+    "ref_tipo_sanguineo":     "tipo sanguíneo",
+    "ref_povo_tradicional":   "povo tradicional",
+    "ref_deficiencia":        "deficiência",
+    "ref_parentesco":         "parentesco",
+    "ref_orientacao_sexual":  "orientação sexual",
+    "ref_identidade_genero":  "identidade de gênero",
+}
+
+
+def _label(resource: str) -> str:
+    return _RESOURCE_LABEL.get(resource, resource.replace("_", " "))
 
 
 from app.db.query_helpers import unaccent_ilike as _unaccent_ilike
@@ -118,10 +143,15 @@ async def create_ref(kind: str, payload: RefCreate, db: DB, user: MasterDep) -> 
     db.add(row)
     await db.flush()
 
+    actor = get_audit_context().user_name
     await write_audit(
-        db, module="sys", action="reference_create", severity="info",
+        db, module="reference", action="reference_create", severity="info",
         resource=resource, resource_id=str(row.id),
-        description=f"Criou {resource} {row.codigo}",
+        description=describe_change(
+            actor=actor, verb="cadastrou",
+            target_kind=_label(resource),
+            target_name=f"{row.descricao} ({row.codigo})",
+        ),
         details={"codigo": row.codigo, "descricao": row.descricao},
     )
     return RefOut.model_validate(row, from_attributes=True)
@@ -148,10 +178,17 @@ async def update_ref(kind: str, ref_id: UUID, payload: RefUpdate, db: DB, user: 
 
     if changes:
         await db.flush()
+        actor = get_audit_context().user_name
+        field_labels = [{"descricao": "descrição", "active": "ativo"}.get(k, k) for k in changes]
         await write_audit(
-            db, module="sys", action="reference_update", severity="info",
+            db, module="reference", action="reference_update", severity="info",
             resource=resource, resource_id=str(row.id),
-            description=f"Atualizou {resource} {row.codigo}",
+            description=describe_change(
+                actor=actor, verb="editou",
+                target_kind=_label(resource),
+                target_name=f"{row.descricao} ({row.codigo})",
+                changed_fields=field_labels,
+            ),
             details={"codigo": row.codigo, "changes": changes},
         )
 
@@ -171,9 +208,14 @@ async def delete_ref(kind: str, ref_id: UUID, db: DB, user: MasterDep) -> None:
     await db.delete(row)
     await db.flush()
 
+    actor = get_audit_context().user_name
     await write_audit(
-        db, module="sys", action="reference_delete", severity="warning",
+        db, module="reference", action="reference_delete", severity="warning",
         resource=resource, resource_id=str(ref_id),
-        description=f"Removeu {resource} {row.codigo}",
+        description=describe_change(
+            actor=actor, verb="removeu",
+            target_kind=_label(resource),
+            target_name=f"{row.descricao} ({row.codigo})",
+        ),
         details={"codigo": row.codigo, "descricao": row.descricao},
     )

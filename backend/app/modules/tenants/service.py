@@ -189,20 +189,26 @@ class TenantService:
 
         # Audit com nomes (não só IDs) — assim os logs ficam legíveis sem
         # precisar resolver UUIDs posteriormente.
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
         from app.modules.audit.writer import write_audit
+
         fac_type = facility.type.value if hasattr(facility.type, "value") else str(facility.type)
-        desc = (
-            f"Entrou em {facility.name} ({fac_type}) · {mun.name}/{mun.state}"
-            + (f" · módulo {payload.module.upper()}" if payload.module else "")
-        )
+        actor = get_audit_context().user_name
+        extra = f"{mun.name}/{mun.state}" + (f" · módulo {payload.module.upper()}" if payload.module else "")
         await write_audit(
             self.session,
-            module="AUTH",
+            module="auth",
             action="select_context",
             severity="info",
             resource="WorkContext",
             resource_id=str(facility.id),
-            description=desc,
+            description=describe_change(
+                actor=actor, verb="entrou em",
+                target_kind="unidade",
+                target_name=f"{facility.name} ({fac_type})",
+                extra=extra,
+            ),
             user_id=user_id,
             municipality_id=mun.id,
             facility_id=facility.id,
@@ -411,15 +417,24 @@ class TenantService:
             changes["neighborhoods"] = {"from": None, "to": f"{len(payload.neighborhoods)} item(ns)"}
 
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
+
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="sys",
+                action="municipality_update",
                 severity="info",
                 resource="Municipality",
                 resource_id=str(mun.id),
-                description=f"Editou município {mun.name}",
+                description=describe_change(
+                    actor=actor, verb="editou",
+                    target_kind="município", target_name=mun.name,
+                    changed_fields=field_labels,
+                ),
                 details={"municipalityId": str(mun.id), "changes": changes},
             )
         return await self._municipality_detail(mun)
@@ -465,15 +480,24 @@ class TenantService:
         )
         await self.session.flush()
 
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
         from app.modules.audit.writer import write_audit
+
+        actor = get_audit_context().user_name
         await write_audit(
             self.session,
-            module="SYS",
-            action="delete",
+            module="sys",
+            action="municipality_archive",
             severity="warning",
             resource="Municipality",
             resource_id=str(mun.id),
-            description=f"Arquivou município {mun.name}/{mun.state} (IBGE {mun.ibge})",
+            description=describe_change(
+                actor=actor, verb="arquivou",
+                target_kind="município",
+                target_name=f"{mun.name}/{mun.state}",
+                extra=f"IBGE {mun.ibge} · {int(fac_count)} unidade(s) arquivada(s) junto",
+            ),
             details={
                 "municipalityId": str(mun.id),
                 "municipalityName": mun.name,
@@ -491,15 +515,23 @@ class TenantService:
         mun.archived = False
         await self.session.flush()
 
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
         from app.modules.audit.writer import write_audit
+
+        actor = get_audit_context().user_name
         await write_audit(
             self.session,
-            module="SYS",
-            action="edit",
+            module="sys",
+            action="municipality_unarchive",
             severity="info",
             resource="Municipality",
             resource_id=str(mun.id),
-            description=f"Reativou município {mun.name}/{mun.state}",
+            description=describe_change(
+                actor=actor, verb="reativou",
+                target_kind="município",
+                target_name=f"{mun.name}/{mun.state}",
+            ),
             details={
                 "municipalityId": str(mun.id),
                 "municipalityName": mun.name,
@@ -561,15 +593,24 @@ class TenantService:
         await self.session.flush()
 
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
+
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="sys",
+                action="facility_update",
                 severity="info",
                 resource="Facility",
                 resource_id=str(fac.id),
-                description=f"Editou unidade {fac.name}",
+                description=describe_change(
+                    actor=actor, verb="editou",
+                    target_kind="unidade", target_name=fac.name,
+                    changed_fields=field_labels,
+                ),
                 details={"facilityId": str(fac.id), "changes": changes},
             )
         return fac
@@ -593,16 +634,24 @@ class TenantService:
         fac.archived = True
         await self.session.flush()
 
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
         from app.modules.audit.writer import write_audit
+
         details = await self._facility_audit_common(fac)
+        actor = get_audit_context().user_name
         await write_audit(
             self.session,
-            module="SYS",
-            action="delete",
+            module="sys",
+            action="facility_archive",
             severity="warning",
             resource="Facility",
             resource_id=str(fac.id),
-            description=f"Arquivou unidade {fac.name} ({details['municipalityName']}/{details['municipalityState']})",
+            description=describe_change(
+                actor=actor, verb="arquivou",
+                target_kind="unidade", target_name=fac.name,
+                extra=f"{details['municipalityName']}/{details['municipalityState']}",
+            ),
             details=details,
         )
         return fac
@@ -614,16 +663,24 @@ class TenantService:
         fac.archived = False
         await self.session.flush()
 
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
         from app.modules.audit.writer import write_audit
+
         details = await self._facility_audit_common(fac)
+        actor = get_audit_context().user_name
         await write_audit(
             self.session,
-            module="SYS",
-            action="edit",
+            module="sys",
+            action="facility_unarchive",
             severity="info",
             resource="Facility",
             resource_id=str(fac.id),
-            description=f"Reativou unidade {fac.name} ({details['municipalityName']}/{details['municipalityState']})",
+            description=describe_change(
+                actor=actor, verb="reativou",
+                target_kind="unidade", target_name=fac.name,
+                extra=f"{details['municipalityName']}/{details['municipalityState']}",
+            ),
             details=details,
         )
         return fac

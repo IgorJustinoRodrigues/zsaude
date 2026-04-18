@@ -68,7 +68,7 @@ class AuthService:
                 reason = "Usuário inativo ou bloqueado."
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="warning",
                 resource="Session",
@@ -85,7 +85,7 @@ class AuthService:
         if user.status == UserStatus.BLOQUEADO:
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="error",
                 resource="Session",
@@ -101,7 +101,7 @@ class AuthService:
         if user.status == UserStatus.INATIVO:
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="warning",
                 resource="Session",
@@ -123,7 +123,7 @@ class AuthService:
         pair = await self._issue_pair(user, ip, ua)
         await write_audit(
             self.session,
-            module="AUTH",
+            module="auth",
             action="login",
             severity="info",
             resource="Session",
@@ -162,7 +162,7 @@ class AuthService:
             target_user = await self.users.get_by_id(token.user_id)
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="critical",
                 resource="Session",
@@ -227,7 +227,7 @@ class AuthService:
             await SessionService(self.session).end_by_family(token.family_id, SessionEndReason.LOGOUT)
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="logout",
                 severity="info",
                 resource="Session",

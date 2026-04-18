@@ -69,7 +69,9 @@ SKIP_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"/api/v1/sigtap/imports$"),
     re.compile(r"/api/v1/cnes/imports$"),
     # Reference tables (CRUD): router grava com {resource}/{codigo} explícito.
-    re.compile(r"/api/v1/reference/[^/]+(?:/[^/]+)?$"),
+    re.compile(r"/api/v1/sys/reference/[^/]+(?:/[^/]+)?$"),
+    # AI MASTER admin (catálogo/modelos): router grava audit humano.
+    re.compile(r"/api/v1/sys/ai/.*"),
 )
 
 
@@ -138,11 +140,12 @@ PATH_TO_MODULE: list[tuple[str, str]] = [
     ("/api/v1/work-context",     "auth"),
     ("/api/v1/auth/",            "auth"),
     ("/api/v1/roles",            "roles"),
-    ("/api/v1/reference/",       "reference"),
+    ("/api/v1/sys/reference/",   "reference"),
+    ("/api/v1/sys/ai/",          "ai"),
+    ("/api/v1/sys/",             "sys"),
     ("/api/v1/sigtap/",          "sigtap"),
     ("/api/v1/cnes/",            "cnes"),
     ("/api/v1/ai/",              "ai"),
-    ("/api/v1/sys/ai/",          "ai"),
     ("/api/v1/cln/",             "cln"),
     ("/api/v1/dgn/",             "dgn"),
     ("/api/v1/hsp/",             "hsp"),
@@ -260,6 +263,12 @@ PATH_DESCRIPTION: list[tuple[re.Pattern[str], str]] = [
     # Auth/work-context
     (re.compile(r"/work-context/select$"),                  "Selecionou contexto de trabalho"),
     (re.compile(r"/auth/change-password$"),                 "Alterou a própria senha"),
+    # Sessões
+    (re.compile(r"/users/[^/]+/sessions/[^/]+/revoke$"),    "Revogou sessão de usuário"),
+    # DGN (stub)
+    (re.compile(r"/dgn/exams$"),                            "Solicitou exame"),
+    # AI operations
+    (re.compile(r"/ai/operations/[^/]+$"),                  "Executou operação de IA"),
 ]
 
 
@@ -267,9 +276,15 @@ def _describe(method: str, path: str) -> str:
     for pat, desc in PATH_DESCRIPTION:
         if pat.search(path):
             return desc
-    # fallback genérico
-    verb = {"POST": "Criou", "PATCH": "Editou", "PUT": "Atualizou", "DELETE": "Removeu"}.get(method, "Ação em")
-    return f"{verb} recurso em {path}"
+    # Fallback: mensagem genérica porém legível, sem expor a URL interna.
+    # O path completo continua disponível em ``details.path`` para diagnóstico.
+    verb = {
+        "POST":   "Registrou nova operação",
+        "PATCH":  "Atualizou informações",
+        "PUT":    "Atualizou informações",
+        "DELETE": "Removeu registro",
+    }.get(method, "Executou operação")
+    return verb
 
 
 class AuditWriterMiddleware(BaseHTTPMiddleware):

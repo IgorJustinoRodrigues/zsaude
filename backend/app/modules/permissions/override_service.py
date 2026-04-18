@@ -177,18 +177,23 @@ class AccessPermissionService:
             await self.db.flush()
 
             # Audit trail.
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change
             from app.modules.audit.writer import write_audit
+
             user = await self.db.get(User, user_id)
+            actor = get_audit_context().user_name
             await write_audit(
                 self.db,
                 module="roles",
-                action="override_set",
+                action="permission_override",
                 severity="warning",
                 resource="facility_access",
                 resource_id=str(access_id),
-                description=(
-                    f"overrides aplicados em {user.name if user else user_id} "
-                    f"({len(diff)} permissão(ões))"
+                description=describe_change(
+                    actor=actor, verb="ajustou permissões do usuário",
+                    target_name=user.name if user else str(user_id),
+                    extra=f"{len(diff)} permissão(ões) alterada(s)",
                 ),
                 details={
                     "targetUserId": str(user_id),

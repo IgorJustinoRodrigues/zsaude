@@ -363,16 +363,26 @@ class UserService:
 
         # Se alguma coisa mudou, grava um único audit log com o diff enxuto.
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
 
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes.keys()]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="users",
+                action="user_update",
                 severity="info",
                 resource="User",
                 resource_id=str(user.id),
-                description=f"Editou usuário {user.name}",
+                description=describe_change(
+                    actor=actor,
+                    verb="editou",
+                    target_kind="usuário",
+                    target_name=user.name,
+                    changed_fields=field_labels,
+                ),
                 details={
                     "targetUserId": str(user.id),
                     "targetUserName": user.name,

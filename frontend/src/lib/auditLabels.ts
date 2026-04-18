@@ -110,8 +110,15 @@ export const ACTION_LABELS: Record<string, string> = {
 
   // Municípios e unidades
   municipality_create:        'Cadastro de município',
+  municipality_update:        'Edição de município',
+  municipality_archive:       'Arquivamento de município',
+  municipality_unarchive:     'Reativação de município',
   facility_create:            'Cadastro de unidade',
+  facility_update:            'Edição de unidade',
+  facility_archive:           'Arquivamento de unidade',
+  facility_unarchive:         'Reativação de unidade',
   select_context:             'Entrou no sistema',
+  permission_override:        'Ajuste de permissões',
   edit:                       'Edição',
   delete:                     'Arquivamento',
 
