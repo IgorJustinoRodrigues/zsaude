@@ -111,7 +111,26 @@ export function MinhaContaPage() {
       const updated = await authApi.updateMe(payload)
       setMe(updated)
       useAuthStore.setState({ user: updated })
-      toast.success('Perfil atualizado', 'Suas informações foram salvas.')
+      // Ressincroniza o form com o backend. Importante pro e-mail: se o
+      // usuário pediu troca, o backend mantém o ``email`` atual e coloca o
+      // novo em ``pending_email``. Sem este reset, o state local ficaria
+      // com o valor digitado e o badge "aguardando confirmação" nem
+      // apareceria até o próximo refresh.
+      setName(updated.name ?? '')
+      setSocialName(updated.socialName ?? '')
+      setPhone(updated.phone ?? '')
+      setEmail(updated.email ?? '')
+      setBirthDate(updated.birthDate ?? '')
+      setFaceOptIn(!!updated.faceOptIn)
+
+      if (updated.pendingEmail) {
+        toast.success(
+          'Link de confirmação enviado',
+          `Confirme em ${updated.pendingEmail} para ativar o novo e-mail.`,
+        )
+      } else {
+        toast.success('Perfil atualizado', 'Suas informações foram salvas.')
+      }
       void loadLogs()
     } catch (e) {
       const msg = e instanceof HttpError ? e.message : 'Falha ao salvar.'
