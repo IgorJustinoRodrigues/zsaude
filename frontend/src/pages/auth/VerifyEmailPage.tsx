@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { authApi } from '../../api/auth'
 import { HttpError } from '../../api/client'
+import { useAuthStore } from '../../store/authStore'
 import { BrandName } from '../../components/shared/BrandName'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -26,14 +27,26 @@ export function VerifyEmailPage() {
   useEffect(() => {
     if (!token || called.current) return
     called.current = true
-    authApi.confirmEmail(token)
-      .then(() => setState('ok'))
-      .catch(err => {
+    // Se já existe sessão autenticada, desloga antes — evita caso do user
+    // logado como A clicar no link de verificação de B e ficar com estado
+    // cruzado. Logout do authStore é best-effort: limpa tokens locais
+    // mesmo se a chamada ao /auth/logout falhar (rede, 401, etc.).
+    const { isAuthenticated, logout } = useAuthStore.getState()
+    const run = async () => {
+      if (isAuthenticated) {
+        try { await logout() } catch { /* segue — confirmação é mais importante */ }
+      }
+      try {
+        await authApi.confirmEmail(token)
+        setState('ok')
+      } catch (err) {
         let msg = 'Este link é inválido ou expirou.'
         if (err instanceof HttpError && err.message) msg = err.message
         setErrorMsg(msg)
         setState('invalid')
-      })
+      }
+    }
+    void run()
   }, [token])
 
   return (

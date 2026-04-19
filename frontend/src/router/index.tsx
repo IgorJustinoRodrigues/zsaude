@@ -114,9 +114,13 @@ export const router = createBrowserRouter([
       { path: '/login',           element: <LoginPage /> },
       { path: '/esqueci-senha',   element: <ForgotPasswordPage /> },
       { path: '/redefinir-senha', element: <ResetPasswordPage /> },
-      { path: '/verificar-email', element: <VerifyEmailPage /> },
     ],
   },
+
+  // Acessível com ou sem auth: a própria página cuida de deslogar se
+  // o usuário já tiver sessão (evita usar token de verificação de
+  // alguém diferente do logado).
+  { path: '/verificar-email', element: <VerifyEmailPage /> },
 
   // Erros globais (acessíveis com ou sem auth)
   { path: '/403', element: <ForbiddenPage /> },
