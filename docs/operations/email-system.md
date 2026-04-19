@@ -124,14 +124,114 @@ de nascimento e aniversário de cadastro pros usuários elegíveis.
   personalizada; os sem customização consolidam num só envio genérico
   (o "município canônico" é o de menor UUID entre os do usuário).
 
-### 3.2 Frequência recomendada
+### 3.2 Regras de seleção (quem recebe o quê)
+
+**Elegibilidade** — pra receber qualquer parabéns, o usuário precisa
+atender todas estas condições:
+
+- `status = 'Ativo'` (inativo/bloqueado não recebe);
+- `email_verified_at IS NOT NULL` (e-mail confirmado);
+- `email IS NOT NULL` (óbvio);
+- Ter pelo menos um `FacilityAccess` ativo em alguma unidade.
+
+**Dois eventos possíveis no mesmo dia** — se ambos casarem, saem os dois:
+
+- `birthday_birth` — quando `MM-DD` de `users.birth_date` bate com a data
+  local do município. Variáveis extra: `age` (idade que está completando).
+- `birthday_usage` — quando `MM-DD` de `users.created_at` bate E o usuário
+  tem pelo menos 1 ano completo de cadastro. Variáveis extra: `years`.
+
+**Timing** — o runner dispara entre 08:00 e 08:59 no **fuso local do
+município** (`municipalities.timezone`). Fora dessa janela, o município é
+ignorado naquela rodada.
+
+### 3.3 Regra do multi-município (importante)
+
+Um usuário pode estar vinculado a vários municípios (atua em A, B, C).
+Como saber quantos e-mails mandar sem gerar spam?
+
+**Princípio**: cada município que tem **template customizado** pra esse
+código (`birthday_birth` ou `birthday_usage` com `scope_type='municipality'`
+e `is_active=true`) manda seu próprio e-mail com a identidade dele.
+Municípios **sem** template customizado consolidam num **único envio
+genérico** que cai no template SYSTEM (fallback).
+
+Em código, o "município canônico" do envio genérico é o de **menor UUID**
+entre os do usuário que **não** têm customização. Isso garante idempotência
+(a cada rodada o mesmo município é escolhido) e evita duplicatas.
+
+**Cenários** — usuário em 3 municípios A, B, C (UUIDs A < B < C):
+
+| Municípios com custom | E-mails enviados |
+|---|---|
+| Nenhum | **1** genérico (disparado por A) |
+| Só A | **1** personalizado A |
+| Só B | **1** personalizado B **+ 1** genérico (disparado por A) |
+| Só C | **1** personalizado C **+ 1** genérico (disparado por A) |
+| A + B | **2** personalizados (A, B) **+ 1** genérico (disparado por C) |
+| A + B + C | **3** personalizados (A, B, C) — nenhum genérico |
+
+Pergunta clássica: "quando A tem custom e é o menor UUID, quem dispara o
+genérico?" → **B**, que é o menor entre os não-customizados. A entra
+pelo ramo personalizado; B e C caem no fallback; o código elege B como
+canônico porque `sorted([B, C])[0] == B`.
+
+### 3.4 Anti-duplicação (idempotência)
+
+Toda chamada ao dispatcher passa uma chave única por destino/ano:
+
+```
+birthday_birth:{user_id}:{year}:{scope}
+birthday_usage:{user_id}:{year}:{scope}
+```
+
+Onde `scope` é `str(municipality.id)` pro envio personalizado ou a string
+literal `generic` pro unificado. Antes de enviar, o dispatcher consulta
+`email_send_log.idempotency_key` — se já existe linha com `status='sent'`
+pra essa chave, retorna `status=skipped` sem chamar o SES de novo.
+
+Consequências:
+
+- Rodar o cronjob duas vezes no mesmo dia (ou três, ou N) **não duplica**
+  envios.
+- Se o sistema ficou fora do ar o dia todo, o dia foi perdido — não há
+  "disparo retroativo" no dia seguinte. Essa é a regra de produto
+  (pular > enviar com atraso).
+- Se houve `status='failed'` na tentativa anterior, o dispatcher tenta
+  de novo (idempotência só pula quando havia sucesso).
+
+### 3.5 Personalização do template — como funciona na prática
+
+Na tela `/sys/templates-email` (PR 3b), o MASTER edita **templates SYSTEM**
+(fallback genérico pra todos). Admin da cidade, quando a UI de escopo
+município for aberta, edita **templates MUNICIPALITY** do(s) município(s)
+dele. A resolução em runtime é em cascata, do mais específico pro mais
+genérico:
+
+```
+FACILITY (unidade) ──▶ se existe e is_active=true, vence
+     ↓ senão
+MUNICIPALITY       ──▶ vence sobre SYSTEM
+     ↓ senão
+SYSTEM (banco)     ──▶ o padrão editável
+     ↓ senão
+ARQUIVO de fábrica ──▶ fallback final em app/templates/email/
+```
+
+Pro parabéns, o `_has_municipality_template` só olha o nível MUNICIPALITY —
+por isso uma unidade personalizar (`FACILITY` scope) sozinha não impede o
+envio genérico do município dela: a lógica de multi-vínculo opera no nível
+município. Se você quiser essa granularidade, vira decisão de produto
+(e mudança de código).
+
+### 3.6 Frequência recomendada
 
 **Hora em hora**. A janela de 60 min dentro do runner garante que o
 disparo acontece em 08:XX locais mesmo se o scheduler tiver drift de
 alguns minutos. Rodar mais frequente (15 min) é desperdício — idempotência
 protege, mas cada rodada ainda varre N municípios × M usuários.
 
-### 3.3 Manifesto k8s CronJob
+### 3.7 Manifesto k8s CronJob
 
 Quando for ao ar:
 
@@ -183,7 +283,7 @@ Pontos:
   não duplique. O CronJob usa o mesmo.
 - **Memória**: o runner não carrega InsightFace; 256Mi sobra.
 
-### 3.4 Alternativa: systemd timer (VM única)
+### 3.8 Alternativa: systemd timer (VM única)
 
 Se o deploy for numa VM só (sem k8s), use timer do systemd:
 
@@ -223,7 +323,7 @@ sudo systemctl list-timers zsaude-birthday.timer
 perdido durante downtime. Combina com a idempotência — não reenvia se já
 mandou no ciclo correto.
 
-### 3.5 Alternativa: docker compose (dev/homologação)
+### 3.9 Alternativa: docker compose (dev/homologação)
 
 Não roda em produção, mas pra smoke em staging:
 

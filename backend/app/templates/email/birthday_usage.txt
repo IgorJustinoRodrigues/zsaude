@@ -2,7 +2,7 @@
 
 Oi, {{ user_first_name }}.
 
-Hoje marca {{ years }} {% if years == 1 %}ano{% else %}anos{% endif %} {% if municipality_name %}na Prefeitura de {{ municipality_name }}{% else %}com a gente{% endif %}.
+Hoje marca {{ years }} {% if years == 1 %}ano{% else %}anos{% endif %}{% if municipality_name %} na Prefeitura de {{ municipality_name }}{% else %} com a gente{% endif %}.
 
 Obrigado por fazer parte do que o zSaúde é hoje.
 

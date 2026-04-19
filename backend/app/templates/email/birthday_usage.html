@@ -23,8 +23,8 @@
             <td style="font-size:14px;line-height:1.65;color:#374151;padding-bottom:20px;text-align:center;">
               Oi, {{ user_first_name }}.
               <br><br>
-              Hoje marca {{ years }} {% if years == 1 %}ano{% else %}anos{% endif %}
-              {% if municipality_name %}na Prefeitura de {{ municipality_name }}{% else %}com a gente{% endif %}.
+
+              Hoje marca {{ years }} {% if years == 1 %}ano{% else %}anos{% endif %}{% if municipality_name %} na Prefeitura de {{ municipality_name }}{% else %} com a gente{% endif %}.
               <br>
               Obrigado por fazer parte do que o zSaúde é hoje.
             </td>

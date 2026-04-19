@@ -206,17 +206,34 @@ class BirthdayEmailService:
 
         return counts
 
+    async def _canonical_generic_muni(
+        self, *, user_id: UUID, code: str,
+    ) -> UUID | None:
+        """Município "canônico" pra disparar o envio genérico deste user.
+
+        Percorre os vínculos do user e devolve o menor UUID dos municípios
+        **que NÃO têm** template custom pro ``code``. Se todos têm custom,
+        não há genérico — retorna None. Se nenhum tem custom, retorna o
+        menor UUID de todos.
+        """
+        all_ids = sorted(await self._all_user_municipality_ids(user_id))
+        uncustomized: list[UUID] = []
+        for mid in all_ids:
+            if not await self._has_municipality_template(code, mid):
+                uncustomized.append(mid)
+        return uncustomized[0] if uncustomized else None
+
     async def _dispatch_birth(
         self, *, user: User, municipality: Municipality, today_local: date,
     ) -> str:
         """Envia parabéns de nascimento.
 
-        Regra multi-vínculo: se o município tem template customizado,
-        envia uma instância com o branding dele. Municípios sem template
-        caem num único envio genérico (SYSTEM). Se o usuário tem mais de
-        um município E este aqui não tem template, ele pode ser o escolhido
-        pra mandar o genérico. Pra evitar duplicatas, só um — o de menor
-        UUID — dispara o genérico.
+        Regra multi-vínculo:
+
+        - Município com template custom → envia personalizado com o branding dele.
+        - Municípios sem template custom consolidam num ÚNICO envio genérico
+          (template SYSTEM). Pra evitar duplicatas, esse disparo só sai quando
+          o município atual é o "canônico" — menor UUID dentre os SEM custom.
         """
         has_custom = await self._has_municipality_template(
             "birthday_birth", municipality.id,
@@ -226,10 +243,11 @@ class BirthdayEmailService:
                 user=user, municipality=municipality, today_local=today_local,
                 code="birthday_birth", kind="birth", personalized=True,
             )
-        # Sem custom: checa se é o município "canônico" pro genérico.
-        mun_ids = sorted(await self._all_user_municipality_ids(user.id))
-        if not mun_ids or mun_ids[0] != municipality.id:
-            # Outro município já vai (ou já foi) disparar o genérico pelo user.
+        canonical = await self._canonical_generic_muni(
+            user_id=user.id, code="birthday_birth",
+        )
+        if canonical != municipality.id:
+            # Outro município sem custom já vai (ou já foi) disparar o genérico.
             return "skipped"
         return await self._do_dispatch(
             user=user, municipality=None, today_local=today_local,
@@ -251,8 +269,10 @@ class BirthdayEmailService:
                 code="birthday_usage", kind="usage", personalized=True,
                 years=years,
             )
-        mun_ids = sorted(await self._all_user_municipality_ids(user.id))
-        if not mun_ids or mun_ids[0] != municipality.id:
+        canonical = await self._canonical_generic_muni(
+            user_id=user.id, code="birthday_usage",
+        )
+        if canonical != municipality.id:
             return "skipped"
         return await self._do_dispatch(
             user=user, municipality=None, today_local=today_local,
