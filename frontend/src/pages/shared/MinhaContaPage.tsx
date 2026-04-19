@@ -57,7 +57,9 @@ export function MinhaContaPage() {
       setMe(res)
       setName(res.name)
       setSocialName(res.socialName || '')
-      setEmail(res.email || '')
+      // Pendente tem prioridade de exibição: se existe, é o e-mail "novo"
+      // que o usuário pediu e quer ver no campo. Antigo vira referência.
+      setEmail(res.pendingEmail || res.email || '')
       setPhone(res.phone || '')
       setBirthDate(res.birthDate || '')
       setFaceOptIn(res.faceOptIn)
@@ -89,7 +91,7 @@ export function MinhaContaPage() {
     return (
       name !== me.name ||
       (socialName || '') !== (me.socialName || '') ||
-      email !== (me.email || '') ||
+      email !== (me.pendingEmail || me.email || '') ||
       phone !== (me.phone || '') ||
       birthDate !== (me.birthDate || '') ||
       faceOptIn !== me.faceOptIn
@@ -103,7 +105,11 @@ export function MinhaContaPage() {
       const payload: UpdateMeInput = {}
       if (name !== me.name) payload.name = name
       if ((socialName || '') !== (me.socialName || '')) payload.socialName = socialName
-      if (email !== (me.email || '')) payload.email = email
+      // Compara contra o que o campo está exibindo hoje (pending se houver).
+      // Se o user não mexer, nada muda; se mexer, o backend decide entre
+      // setar pending novo ou cancelar o existente.
+      const currentDisplayedEmail = me.pendingEmail || me.email || ''
+      if (email !== currentDisplayedEmail) payload.email = email
       if (phone !== (me.phone || '')) payload.phone = phone
       if (birthDate !== (me.birthDate || '')) payload.birthDate = birthDate || null
       if (faceOptIn !== me.faceOptIn) payload.faceOptIn = faceOptIn
@@ -111,15 +117,13 @@ export function MinhaContaPage() {
       const updated = await authApi.updateMe(payload)
       setMe(updated)
       useAuthStore.setState({ user: updated })
-      // Ressincroniza o form com o backend. Importante pro e-mail: se o
-      // usuário pediu troca, o backend mantém o ``email`` atual e coloca o
-      // novo em ``pending_email``. Sem este reset, o state local ficaria
-      // com o valor digitado e o badge "aguardando confirmação" nem
-      // apareceria até o próximo refresh.
+      // Ressincroniza o form com o backend. O campo e-mail exibe o pendente
+      // quando existe — o usuário "trocou de e-mail" do ponto de vista dele,
+      // o antigo fica só como referência discreta no badge abaixo.
       setName(updated.name ?? '')
       setSocialName(updated.socialName ?? '')
       setPhone(updated.phone ?? '')
-      setEmail(updated.email ?? '')
+      setEmail(updated.pendingEmail || updated.email || '')
       setBirthDate(updated.birthDate ?? '')
       setFaceOptIn(!!updated.faceOptIn)
 
@@ -448,19 +452,18 @@ function EmailVerificationStatus({
   me: MeResponse
   currentEmail: string
   onResent: () => Promise<void> | void
-  /** Põe este valor no input de e-mail pra usuário corrigir um pending com typo. */
+  /** Reseta o input (desfazer edição). */
   onEditPending: (value: string) => void
 }) {
   const [sending, setSending] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
 
-  // O usuário pode ter editado o campo e ainda não salvado; nesse caso o
-  // "e-mail pendente de verificação" é o que o backend já conhece.
-  const savedEmail = me.email || ''
-  const dirty = currentEmail.trim() !== savedEmail
+  const activeEmail = me.email || ''       // em uso hoje (login/comunicações)
+  const pending = me.pendingEmail           // aguardando confirmação
+  const displayedEmail = pending || activeEmail  // o que o input deveria exibir quando "limpo"
+  const dirty = currentEmail.trim() !== displayedEmail
   const verified = !!me.emailVerifiedAt
-  const pending = me.pendingEmail
 
   const resend = async () => {
     setSending(true)
@@ -478,12 +481,12 @@ function EmailVerificationStatus({
   }
 
   const cancelPending = async () => {
-    if (!confirm(`Descartar a troca para ${pending}? O e-mail atual (${savedEmail}) continua válido.`)) return
+    if (!confirm(`Descartar a troca para ${pending}? Volta a usar ${activeEmail}.`)) return
     setCancelling(true)
     try {
       // Re-submeter o e-mail atual sinaliza ao backend pra limpar o pending.
-      await authApi.updateMe({ email: savedEmail })
-      toast.success('Troca cancelada', `Mantido ${savedEmail}`)
+      await authApi.updateMe({ email: activeEmail })
+      toast.success('Troca cancelada', `Mantido ${activeEmail}`)
       await onResent()
     } catch (err) {
       const msg = err instanceof HttpError ? err.message : 'Erro ao cancelar.'
@@ -493,49 +496,46 @@ function EmailVerificationStatus({
     }
   }
 
+  // ── Dirty (usuário está digitando algo diferente) ─────────────────────
   if (dirty) {
-    // Dois casos: usuário está corrigindo um typo no pending, ou está
-    // digitando uma troca nova (sem pending). O texto muda pra não
-    // confundir — e no caso de correção oferece desfazer.
-    const editingPending = pending && currentEmail.trim() !== pending
-    if (pending) {
-      return (
-        <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 text-xs">
-          <Pencil size={13} className="text-sky-500 mt-0.5 shrink-0" />
-          <div className="flex-1 text-sky-800 dark:text-sky-300 space-y-1">
-            <p>
-              {editingPending
-                ? <>Corrigindo o pendente <strong className="break-all">{pending}</strong>. Salve pra substituir.</>
-                : <>Pendente <strong className="break-all">{pending}</strong> carregado no campo — edite e salve.</>}
-            </p>
-            <button
-              type="button"
-              onClick={() => onEditPending(savedEmail)}
-              className="inline-flex items-center gap-1 font-medium text-sky-700 dark:text-sky-300 hover:underline"
-              title="Desistir da edição e voltar ao e-mail atual"
-            >
-              <X size={11} />
-              Desfazer edição
-            </button>
-          </div>
-        </div>
-      )
-    }
     return (
-      <p className="text-[11px] text-slate-400 mt-1">
-        Salve as alterações para confirmar o novo e-mail.
-      </p>
+      <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 text-xs">
+        <Pencil size={13} className="text-sky-500 mt-0.5 shrink-0" />
+        <div className="flex-1 text-sky-800 dark:text-sky-300 space-y-1">
+          <p>
+            {pending
+              ? <>Corrigindo o pendente. Salve pra substituir <strong className="break-all">{pending}</strong>.</>
+              : <>Salve as alterações pra confirmar o novo e-mail.</>}
+          </p>
+          <button
+            type="button"
+            onClick={() => onEditPending(displayedEmail)}
+            className="inline-flex items-center gap-1 font-medium text-sky-700 dark:text-sky-300 hover:underline"
+            title="Desfazer e voltar ao valor anterior"
+          >
+            <X size={11} />
+            Desfazer edição
+          </button>
+        </div>
+      </div>
     )
   }
 
+  // ── Pendente aguardando confirmação (input já mostra ele) ─────────────
   if (pending) {
     return (
       <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs">
         <Clock size={13} className="text-amber-500 mt-0.5 shrink-0" />
         <div className="flex-1 text-amber-800 dark:text-amber-300 space-y-1.5">
           <p>
-            Aguardando confirmação de <strong className="break-all">{pending}</strong>.
+            Aguardando confirmação deste e-mail.
             {sentTo === pending && ' Verifique a caixa de entrada.'}
+            {activeEmail && (
+              <>
+                {' '}Até confirmar, o login continua usando{' '}
+                <strong className="break-all">{activeEmail}</strong>.
+              </>
+            )}
           </p>
           <div className="flex flex-wrap gap-3">
             <button
@@ -546,20 +546,12 @@ function EmailVerificationStatus({
               {sending ? 'Enviando…' : 'Reenviar link'}
             </button>
             <button
-              type="button" onClick={() => onEditPending(pending)} disabled={sending || cancelling}
-              className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300 hover:underline disabled:opacity-50"
-              title="Editar o e-mail pendente (corrigir typo)"
-            >
-              <Pencil size={11} />
-              Editar
-            </button>
-            <button
               type="button" onClick={cancelPending} disabled={sending || cancelling}
               className="inline-flex items-center gap-1 font-medium text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50"
               title="Descartar a troca e manter o e-mail atual"
             >
               <X size={11} />
-              {cancelling ? 'Cancelando…' : 'Cancelar'}
+              {cancelling ? 'Cancelando…' : 'Cancelar troca'}
             </button>
           </div>
         </div>
