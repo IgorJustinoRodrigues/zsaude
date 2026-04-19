@@ -82,6 +82,7 @@ import { SysFacilityListPage } from '../pages/sys/SysFacilityListPage'
 import { SysFacilityFormPage } from '../pages/sys/SysFacilityFormPage'
 import { SysUserAdminPage } from '../pages/sys/SysUserAdminPage'
 import { SysSettingsPage } from '../pages/sys/SysSettingsPage'
+import { SysEmailTemplatesPage } from '../pages/sys/SysEmailTemplatesPage'
 import { SysAuditPage } from '../pages/sys/SysAuditPage'
 import { SysRoleListPage } from '../pages/sys/SysRoleListPage'
 import { SysRoleDetailPage } from '../pages/sys/SysRoleDetailPage'
@@ -154,6 +155,7 @@ export const router = createBrowserRouter([
               { path: '/sys/cadsus',                element: <SysCadsusPage /> },
               { path: '/sys/ia',                    element: <SysAiPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
+              { path: '/sys/templates-email',       element: <SysEmailTemplatesPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
               { path: '/sys/minha-conta',           element: <MinhaContaPage /> },
             ],
