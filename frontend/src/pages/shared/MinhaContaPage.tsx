@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   User2, Save, Calendar, Mail, Phone, ScrollText, ScanFace, Loader2,
-  Lock, AlertTriangle, Clock, CheckCircle2, Send,
+  Lock, AlertTriangle, Clock, CheckCircle2, Send, Pencil, X,
 } from 'lucide-react'
 import { authApi, type MeResponse, type UpdateMeInput } from '../../api/auth'
 import { auditApi, type AuditLogItem } from '../../api/audit'
@@ -308,6 +308,7 @@ export function MinhaContaPage() {
                   me={me}
                   currentEmail={email}
                   onResent={loadMe}
+                  onEditPending={v => setEmail(v)}
                 />
               </Field>
               <Field label="Telefone" icon={<Phone size={13} />}>
@@ -442,13 +443,16 @@ const inputCls =
   'w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 text-slate-800 dark:text-slate-200'
 
 function EmailVerificationStatus({
-  me, currentEmail, onResent,
+  me, currentEmail, onResent, onEditPending,
 }: {
   me: MeResponse
   currentEmail: string
   onResent: () => Promise<void> | void
+  /** Põe este valor no input de e-mail pra usuário corrigir um pending com typo. */
+  onEditPending: (value: string) => void
 }) {
   const [sending, setSending] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
 
   // O usuário pode ter editado o campo e ainda não salvado; nesse caso o
@@ -473,6 +477,22 @@ function EmailVerificationStatus({
     }
   }
 
+  const cancelPending = async () => {
+    if (!confirm(`Descartar a troca para ${pending}? O e-mail atual (${savedEmail}) continua válido.`)) return
+    setCancelling(true)
+    try {
+      // Re-submeter o e-mail atual sinaliza ao backend pra limpar o pending.
+      await authApi.updateMe({ email: savedEmail })
+      toast.success('Troca cancelada', `Mantido ${savedEmail}`)
+      await onResent()
+    } catch (err) {
+      const msg = err instanceof HttpError ? err.message : 'Erro ao cancelar.'
+      toast.error('Falha ao cancelar', msg)
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   if (dirty) {
     return (
       <p className="text-[11px] text-slate-400 mt-1">
@@ -485,16 +505,36 @@ function EmailVerificationStatus({
     return (
       <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs">
         <Clock size={13} className="text-amber-500 mt-0.5 shrink-0" />
-        <div className="flex-1 text-amber-800 dark:text-amber-300">
-          Aguardando confirmação de <strong>{pending}</strong>.
-          {sentTo === pending && ' Verifique a caixa de entrada.'}
-          <button
-            type="button" onClick={resend} disabled={sending}
-            className="ml-2 inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300 hover:underline disabled:opacity-50"
-          >
-            <Send size={11} />
-            {sending ? 'Enviando…' : 'Reenviar link'}
-          </button>
+        <div className="flex-1 text-amber-800 dark:text-amber-300 space-y-1.5">
+          <p>
+            Aguardando confirmação de <strong className="break-all">{pending}</strong>.
+            {sentTo === pending && ' Verifique a caixa de entrada.'}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button" onClick={resend} disabled={sending || cancelling}
+              className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300 hover:underline disabled:opacity-50"
+            >
+              <Send size={11} />
+              {sending ? 'Enviando…' : 'Reenviar link'}
+            </button>
+            <button
+              type="button" onClick={() => onEditPending(pending)} disabled={sending || cancelling}
+              className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300 hover:underline disabled:opacity-50"
+              title="Editar o e-mail pendente (corrigir typo)"
+            >
+              <Pencil size={11} />
+              Editar
+            </button>
+            <button
+              type="button" onClick={cancelPending} disabled={sending || cancelling}
+              className="inline-flex items-center gap-1 font-medium text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50"
+              title="Descartar a troca e manter o e-mail atual"
+            >
+              <X size={11} />
+              {cancelling ? 'Cancelando…' : 'Cancelar'}
+            </button>
+          </div>
         </div>
       </div>
     )
