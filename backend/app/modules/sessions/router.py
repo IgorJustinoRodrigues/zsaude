@@ -92,14 +92,33 @@ async def presence(
     db: DB,
     user: CurrentUserDep,
     scope: Annotated[str | None, Query()] = None,  # 'actor' restringe ao escopo
+    municipality_id: Annotated[UUID | None, Query(alias="municipalityId")] = None,
 ) -> list[PresenceItem]:
+    """Lista usuários online agora.
+
+    Sem parâmetros: tudo o que o ator consegue ver (MASTER → global;
+    ADMIN/USER → seus municípios).
+
+    ``?municipalityId=X``: restringe a um município específico. MASTER
+    pode escolher qualquer um; ADMIN/USER só vê os seus.
+    """
     svc_users = UserService(db)
     actor = await db.scalar(select(User).where(User.id == user.id))
     if actor is None:
         raise HTTPException(401)
-    scope_ids = None
+    scope_ids: set[UUID] | None = None
     if scope == "actor" and actor.level != UserLevel.MASTER:
         scope_ids = await svc_users.actor_scope(actor)
+
+    if municipality_id is not None:
+        # Filtro específico por município. Valida que o ator pode ver aquele mun.
+        if actor.level != UserLevel.MASTER:
+            allowed = await svc_users.actor_scope(actor) or set()
+            if municipality_id not in allowed:
+                raise HTTPException(
+                    status_code=403, detail="Sem acesso a este município.",
+                )
+        scope_ids = {municipality_id}
 
     rows = await SessionService(db).presence(scope=scope_ids)
     return [

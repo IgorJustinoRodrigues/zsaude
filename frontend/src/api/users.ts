@@ -107,6 +107,7 @@ export interface UserListParams {
   search?: string
   status?: UserStatus
   module?: SystemId
+  municipalityId?: string
   page?: number
   pageSize?: number
 }
@@ -202,6 +203,7 @@ export const userApi = {
         search: params.search,
         status: params.status,
         module: params.module,
+        municipalityId: params.municipalityId,
         page: params.page,
         pageSize: params.pageSize,
       })}`,

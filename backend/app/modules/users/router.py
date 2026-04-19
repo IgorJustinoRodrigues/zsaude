@@ -223,6 +223,7 @@ async def list_users(
     search: Annotated[str | None, Query()] = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
     module: Annotated[str | None, Query()] = None,
+    municipality_id: Annotated[UUID | None, Query(alias="municipalityId")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100, alias="pageSize")] = 20,
 ) -> Page[UserListItem]:
@@ -235,6 +236,14 @@ async def list_users(
     )
     svc = UserService(db)
     scope = await svc.actor_scope(actor)
+    if municipality_id is not None:
+        # Filtro explícito por município. Valida que está dentro do escopo
+        # do ator (MASTER aceita qualquer; ADMIN só os seus).
+        if scope is not None and municipality_id not in scope:
+            raise HTTPException(
+                status_code=403, detail="Sem acesso a este município.",
+            )
+        scope = {municipality_id}
     return await svc.list(params, scope=scope)
 
 

@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Search, Wifi, WifiOff, Clock } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Search, Wifi, WifiOff, Clock, MapPin } from 'lucide-react'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { userApi, type UserListItem } from '../../api/users'
+import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { initials, normalize, cn } from '../../lib/utils'
+import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
 
 function formatRelativeTime(iso: string): string {
   const diffMins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
@@ -36,12 +38,21 @@ export function UsersPage() {
   const [presence, setPresence] = useState<PresenceItem[]>([])
   const [users,    setUsers]    = useState<UserListItem[]>([])
   const [loading,  setLoading]  = useState(true)
+  const [municipalities, setMunicipalities] = useState<MunicipalityDto[]>([])
+  const [munFilter, setMunFilter] = useState<string | null>(null)
+
+  // Carrega municípios disponíveis pro ator (MASTER vê tudo, ADMIN só os seus).
+  useEffect(() => {
+    directoryApi.listMunicipalities('actor')
+      .then(setMunicipalities)
+      .catch(() => setMunicipalities([]))
+  }, [])
 
   const load = useCallback(async () => {
     try {
       const [p, u] = await Promise.all([
-        sessionsApi.presence('actor'),
-        userApi.list({ pageSize: 100 }),
+        sessionsApi.presence('actor', munFilter),
+        userApi.list({ pageSize: 100, municipalityId: munFilter ?? undefined }),
       ])
       setPresence(p)
       setUsers(u.items)
@@ -49,7 +60,7 @@ export function UsersPage() {
       // permissão negada pra listar usuários se não for admin? lista presença só
       if (e instanceof HttpError && e.status === 403) {
         try {
-          const p = await sessionsApi.presence('actor')
+          const p = await sessionsApi.presence('actor', munFilter)
           setPresence(p)
         } catch {
           toast.error('Falha ao carregar presença')
@@ -60,7 +71,7 @@ export function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [munFilter])
 
   useEffect(() => { void load() }, [load])
 
@@ -155,6 +166,21 @@ export function UsersPage() {
             className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 transition-colors text-slate-800 dark:text-slate-200 placeholder-slate-400"
           />
         </div>
+        {municipalities.length > 1 && (
+          <div className="sm:w-64 flex items-center gap-2">
+            <MapPin size={13} className="text-slate-400 shrink-0" />
+            <ComboBox
+              value={munFilter}
+              onChange={setMunFilter}
+              placeholder="Todos os municípios"
+              options={useMemo<ComboBoxOption[]>(
+                () => municipalities.map(m => ({ value: m.id, label: m.name, hint: m.state })),
+                [municipalities],
+              )}
+              className="flex-1"
+            />
+          </div>
+        )}
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg self-start">
           {([['all', 'Todos'], ['online', 'Online'], ['offline', 'Offline']] as const).map(([key, label]) => (
             <button
