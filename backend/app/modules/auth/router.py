@@ -11,7 +11,6 @@ from slowapi.util import get_remote_address
 from app.core.config import settings
 from app.core.deps import DB, CurrentUserDep, client_ip
 from app.core.email import EmailMessage, EmailServiceDep
-from app.core.email_templates import render
 from app.core.logging import get_logger
 from app.modules.auth.schemas import (
     ChangePasswordRequest,
@@ -85,6 +84,8 @@ async def forgot_password(
     db: DB,
     email_service: EmailServiceDep,
 ) -> MessageResponse:
+    from app.modules.email_templates.service import EmailTemplateService
+
     svc = AuthService(db)
     token = await svc.forgot_password(payload.email, client_ip(request))
     if token:
@@ -96,14 +97,17 @@ async def forgot_password(
             "reset_link": reset_link,
             "expires_in_minutes": settings.jwt_reset_ttl_minutes,
         }
-        html, text = render("password_reset", ctx)
+        # Recuperação de senha é um fluxo ANÔNIMO — não sabemos município
+        # ainda. Resolve só com escopo SYSTEM (ou fallback de arquivo).
+        rendered = await EmailTemplateService(db).render("password_reset", ctx)
         try:
             await email_service.send(
                 EmailMessage(
                     to=[payload.email],
-                    subject="Redefinição de senha",
-                    html=html,
-                    text=text,
+                    subject=rendered.subject,
+                    html=rendered.html,
+                    text=rendered.text,
+                    from_name=rendered.from_name,
                     tags={"category": "password_reset"},
                 )
             )

@@ -19,6 +19,7 @@ from app.modules.ai.models import (  # noqa: F401
 from app.modules.audit.models import AuditLog  # noqa: F401
 from app.modules.auth.models import LoginAttempt, PasswordReset, RefreshToken  # noqa: F401
 from app.modules.branding.models import BrandingConfig  # noqa: F401
+from app.modules.email_templates.models import EmailTemplate  # noqa: F401
 from app.modules.permissions.models import (  # noqa: F401
     FacilityAccessPermissionOverride,
     Permission,
