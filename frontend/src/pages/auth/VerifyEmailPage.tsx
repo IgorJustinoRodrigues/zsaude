@@ -78,32 +78,34 @@ export function VerifyEmailPage() {
                 E-mail confirmado
               </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Pronto. Agora você pode usar este e-mail para fazer login no zSaúde.
+                Pronto! Agora você pode entrar no sistema usando este e-mail.
               </p>
               <Link
                 to="/login"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-sky-600 dark:text-sky-400"
+                className="mt-2 w-full h-11 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-sky-500/20 dark:shadow-sky-500/10"
               >
-                Ir para o login
+                Entrar no sistema
               </Link>
             </>
           )}
 
           {state === 'invalid' && (
             <>
-              <div className="mx-auto w-14 h-14 rounded-full bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center">
-                <AlertTriangle size={28} className="text-amber-500" />
+              <div className="mx-auto w-14 h-14 rounded-full bg-rose-50 dark:bg-rose-950/40 flex items-center justify-center">
+                <AlertTriangle size={28} className="text-rose-500" />
               </div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">
                 Link inválido ou expirado
               </h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">{errorMsg}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 px-2">
+                {errorMsg}
+              </p>
               <p className="text-xs text-slate-400">
                 Entre na sua conta e peça um novo link em <strong>Minha Conta</strong>.
               </p>
               <Link
                 to="/login"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-sky-600 dark:text-sky-400"
+                className="mt-2 w-full h-11 inline-flex items-center justify-center gap-2 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-semibold rounded-xl transition-all hover:bg-slate-700 dark:hover:bg-white"
               >
                 <ArrowLeft size={14} />
                 Voltar para o login
