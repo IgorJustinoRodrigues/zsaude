@@ -5,6 +5,7 @@ import { userApi, type UserListItem } from '../../api/users'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
 import { initials, normalize, cn } from '../../lib/utils'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
 
@@ -39,7 +40,12 @@ export function UsersPage() {
   const [users,    setUsers]    = useState<UserListItem[]>([])
   const [loading,  setLoading]  = useState(true)
   const [municipalities, setMunicipalities] = useState<MunicipalityDto[]>([])
-  const [munFilter, setMunFilter] = useState<string | null>(null)
+  // Se o usuário está dentro de um work context (atuando num módulo de
+  // uma unidade), começa o filtro no município desse contexto. Faz mais
+  // sentido que "Todos" — ele está olhando a operação local. Se estiver
+  // no shell sem contexto (ex.: /sys ou /shared), fica em "Todos".
+  const contextMunicipalityId = useAuthStore(s => s.context?.municipality.id ?? null)
+  const [munFilter, setMunFilter] = useState<string | null>(contextMunicipalityId)
 
   // Carrega municípios disponíveis pro ator (MASTER vê tudo, ADMIN só os seus).
   useEffect(() => {
