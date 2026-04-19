@@ -48,6 +48,11 @@ export function UsersPage() {
       .catch(() => setMunicipalities([]))
   }, [])
 
+  const municipalityOptions = useMemo<ComboBoxOption[]>(
+    () => municipalities.map(m => ({ value: m.id, label: m.name, hint: m.state })),
+    [municipalities],
+  )
+
   const load = useCallback(async () => {
     try {
       const [p, u] = await Promise.all([
@@ -173,10 +178,7 @@ export function UsersPage() {
               value={munFilter}
               onChange={setMunFilter}
               placeholder="Todos os municípios"
-              options={useMemo<ComboBoxOption[]>(
-                () => municipalities.map(m => ({ value: m.id, label: m.name, hint: m.state })),
-                [municipalities],
-              )}
+              options={municipalityOptions}
               className="flex-1"
             />
           </div>
