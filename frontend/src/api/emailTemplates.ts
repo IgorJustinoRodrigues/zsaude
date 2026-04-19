@@ -15,6 +15,9 @@ export interface TemplateCatalogEntry {
   label: string
   description: string
   defaultSubject: string
+  /** Source raw dos templates de arquivo — serve de ponto de partida no editor. */
+  defaultBodyHtml: string | null
+  defaultBodyText: string | null
   variables: TemplateVariable[]
 }
 

@@ -16,12 +16,20 @@ class TemplateVariableRead(BaseModel):
 
 
 class TemplateCatalogRead(BaseModel):
-    """Item do catálogo. Pra UI listar códigos + variáveis de cada um."""
+    """Item do catálogo. Pra UI listar códigos + variáveis de cada um.
+
+    ``defaultBodyHtml``/``defaultBodyText`` carregam o **source cru** dos
+    templates de arquivo (com ``{{ variáveis }}``) — o que roda hoje
+    quando não há override no banco. A UI pré-preenche o editor com eles,
+    assim o admin começa do ponto atual e edita a partir daí.
+    """
 
     code: str
     label: str
     description: str
     default_subject: str = Field(alias="defaultSubject")
+    default_body_html: str | None = Field(default=None, alias="defaultBodyHtml")
+    default_body_text: str | None = Field(default=None, alias="defaultBodyText")
     variables: list[TemplateVariableRead]
 
     model_config = ConfigDict(populate_by_name=True)

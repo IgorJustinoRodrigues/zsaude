@@ -113,10 +113,12 @@ function TemplateEditor({ entry }: { entry: TemplateCatalogEntry }) {
         setFromName(current.fromName ?? '')
         setIsActive(current.isActive)
       } else {
-        // Sem override: começa do default do catálogo como ponto de partida
+        // Sem override: começa do que o sistema ENVIA hoje (fallback de
+        // arquivo em app/templates/email/). Editor mostra o HTML completo
+        // com CSS, o admin pode ajustar a partir dali.
         setSubject(entry.defaultSubject)
-        setBodyHtml('')
-        setBodyText('')
+        setBodyHtml(entry.defaultBodyHtml ?? '')
+        setBodyText(entry.defaultBodyText ?? '')
         setFromName('')
         setIsActive(true)
       }

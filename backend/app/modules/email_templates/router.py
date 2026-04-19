@@ -66,12 +66,23 @@ def _row_to_read(row: EmailTemplate) -> EmailTemplateRead:
 
 @router.get("/catalog", response_model=list[TemplateCatalogRead])
 async def list_catalog(_: MasterDep) -> list[TemplateCatalogRead]:
+    from pathlib import Path
+    templates_dir = Path(__file__).resolve().parents[2] / "templates" / "email"
+
+    def _read(code: str, ext: str) -> str | None:
+        path = templates_dir / f"{code}.{ext}"
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+        return None
+
     return [
         TemplateCatalogRead(
             code=e.code,
             label=e.label,
             description=e.description,
             default_subject=e.default_subject,
+            default_body_html=_read(e.code, "html"),
+            default_body_text=_read(e.code, "txt"),
             variables=[
                 TemplateVariableRead(
                     name=v.name, description=v.description, example=v.example,
