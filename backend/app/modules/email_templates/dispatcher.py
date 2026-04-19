@@ -29,6 +29,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.email import EmailMessage, EmailService
 from app.core.logging import get_logger
+from app.modules.email_credentials.service import EmailCredentialsService
 from app.modules.email_templates.log_model import EmailSendLog
 from app.modules.email_templates.service import EmailTemplateService
 
@@ -55,6 +56,10 @@ class EmailDispatcher:
         self, session: "AsyncSession", email_service: EmailService,
     ) -> None:
         self.session = session
+        # ``email_service`` é o transporte default (``get_email_service``).
+        # A cada send o dispatcher resolve credenciais por escopo: se houver
+        # linha em ``email_credentials``, sobrescreve e instancia um
+        # transporte ad-hoc. Sem linha, cai no default.
         self.email_service = email_service
 
     async def _already_sent(self, idempotency_key: str) -> EmailSendLog | None:
@@ -96,12 +101,30 @@ class EmailDispatcher:
             code, context,
             municipality_id=municipality_id, facility_id=facility_id,
         )
+
+        # Resolve credenciais pelo mesmo caminho do template. Se houver
+        # linha em ``email_credentials`` pro escopo (ou ancestral), usa.
+        # Senão cai no default boot-time (``self.email_service``).
+        cred_svc = EmailCredentialsService(self.session)
+        creds = await cred_svc.resolve(
+            municipality_id=municipality_id, facility_id=facility_id,
+        )
+        if creds.source != "env":
+            transport = cred_svc.build_email_service(creds)
+            from_email_override: str | None = creds.from_email
+            from_name_override = rendered.from_name or creds.from_name
+        else:
+            transport = self.email_service
+            from_email_override = None
+            from_name_override = rendered.from_name
+
         msg = EmailMessage(
             to=[to],
             subject=rendered.subject,
             html=rendered.html,
             text=rendered.text,
-            from_name=rendered.from_name,
+            from_email=from_email_override,
+            from_name=from_name_override,
             tags={"category": code, **(tags or {})},
         )
 
@@ -109,11 +132,14 @@ class EmailDispatcher:
         error: str | None = None
         message_id = ""
         try:
-            message_id = await self.email_service.send(msg)
+            message_id = await transport.send(msg)
         except Exception as exc:  # noqa: BLE001
             status = "failed"
             error = str(exc)
-            log.error("email_dispatch_failed", code=code, to=to, error=error)
+            log.error(
+                "email_dispatch_failed",
+                code=code, to=to, error=error, source=creds.source,
+            )
 
         entry = EmailSendLog(
             user_id=user_id,

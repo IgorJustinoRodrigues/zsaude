@@ -69,6 +69,7 @@ export function SysShell() {
           <SysNavItem to="/sys/ia"              icon={<Sparkles size={15} />}>Gateway de IA</SysNavItem>
           <SysNavItem to="/sys/configuracoes"  icon={<Settings size={15} />}>Configurações</SysNavItem>
           <SysNavItem to="/sys/templates-email" icon={<Mail size={15} />}>Templates de e-mail</SysNavItem>
+          <SysNavItem to="/sys/credenciais-email" icon={<KeyRound size={15} />}>Credenciais SES</SysNavItem>
           <SysNavItem to="/sys/logs"           icon={<ScrollText size={15} />}>Logs do sistema</SysNavItem>
         </nav>
 

@@ -15,6 +15,7 @@ from app.modules.branding.router import (
     router as branding_router,
 )
 from app.modules.cnes.router import router as cnes_router
+from app.modules.email_credentials.router import router as email_credentials_router
 from app.modules.email_templates.router import router as email_templates_router
 from app.modules.dgn.router import router as dgn_router
 from app.modules.hsp.router import router as hsp_router
@@ -60,3 +61,4 @@ api_v1.include_router(ai_sys_router)
 api_v1.include_router(branding_admin_router)
 api_v1.include_router(branding_router)
 api_v1.include_router(email_templates_router)
+api_v1.include_router(email_credentials_router)
