@@ -161,7 +161,13 @@ class UserUpdate(CamelModel):
 
 
 class UserUpdateMe(CamelModel):
-    """Campos que o próprio usuário pode editar em "Minha Conta"."""
+    """Campos que o próprio usuário pode editar em "Minha Conta".
+
+    ``email`` aceita ``null`` ou string vazia pra **remover** o e-mail —
+    só se o usuário tiver CPF (mantendo a regra "CPF ou e-mail
+    obrigatório"). O service distingue "não enviou" (``model_fields_set``)
+    de "enviou null" pra aplicar a semântica certa.
+    """
 
     name: str | None = Field(default=None, min_length=2, max_length=200)
     social_name: str | None = Field(default=None, max_length=200)
@@ -169,6 +175,16 @@ class UserUpdateMe(CamelModel):
     email: EmailStr | None = None
     birth_date: date | None = None
     face_opt_in: bool | None = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _blank_email_to_none(cls, v):
+        # Frontend pode mandar "" quando o user limpa o campo. Normaliza
+        # pra None — o service sabe que None com a chave presente em
+        # ``model_fields_set`` significa "remover".
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 def user_read_from_orm(user: "User") -> UserRead:

@@ -134,18 +134,33 @@ class UserService:
             user.face_opt_in = payload.face_opt_in
 
         email_change_requested = False
-        if payload.email is not None:
-            new_email = payload.email
-            if new_email == user.email:
-                # Re-submissão do e-mail atual: cancela qualquer pending pendente.
+        # ``"email" in model_fields_set`` distingue "campo ausente" de
+        # "campo enviado com null" — o segundo é o sinal de "remover".
+        if "email" in payload.model_fields_set:
+            new_email = payload.email  # pode ser None = "remover"
+            if new_email is None:
+                if user.email is None and user.pending_email is None:
+                    pass  # já está vazio, nada a fazer
+                else:
+                    # Regra de negócio: CPF OU e-mail obrigatório.
+                    if not user.cpf:
+                        raise ConflictError(
+                            "Não é possível remover o e-mail sem um CPF "
+                            "cadastrado — o sistema exige ao menos um dos dois.",
+                        )
+                    user.email = None
+                    user.pending_email = None
+                    user.email_verified_at = None
+            elif new_email == user.email:
+                # Re-submissão do e-mail atual: cancela qualquer pending.
                 user.pending_email = None
             elif new_email == user.pending_email:
-                # Mesmo alvo pendente — nada a fazer (o usuário pode reenviar link
-                # pelo endpoint /verify-request).
+                # Mesmo alvo pendente — nada a fazer (reenviar via endpoint
+                # /verify-request se o link se perdeu).
                 pass
             else:
-                # Checagem de colisão: nenhum outro usuário pode ter esse e-mail
-                # como ativo.
+                # Checagem de colisão: nenhum outro usuário pode ter esse
+                # e-mail como ativo.
                 other = await self.repo.get_by_email(new_email)
                 if other and other.id != user.id:
                     raise ConflictError("E-mail já cadastrado para outro usuário.")

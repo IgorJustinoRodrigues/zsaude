@@ -44,7 +44,8 @@ export interface UpdateMeInput {
   name?: string
   socialName?: string
   phone?: string
-  email?: string
+  /** ``null`` (ou string vazia) remove o e-mail — só aceito se usuário tem CPF. */
+  email?: string | null
   birthDate?: string | null
   faceOptIn?: boolean
 }

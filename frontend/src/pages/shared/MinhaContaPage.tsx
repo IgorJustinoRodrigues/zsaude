@@ -109,7 +109,10 @@ export function MinhaContaPage() {
       // Se o user não mexer, nada muda; se mexer, o backend decide entre
       // setar pending novo ou cancelar o existente.
       const currentDisplayedEmail = me.pendingEmail || me.email || ''
-      if (email !== currentDisplayedEmail) payload.email = email
+      if (email !== currentDisplayedEmail) {
+        // Campo vazio = remover (só funciona se tiver CPF — backend valida).
+        payload.email = email.trim() || null
+      }
       if (phone !== (me.phone || '')) payload.phone = phone
       if (birthDate !== (me.birthDate || '')) payload.birthDate = birthDate || null
       if (faceOptIn !== me.faceOptIn) payload.faceOptIn = faceOptIn
