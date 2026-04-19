@@ -68,20 +68,37 @@ function ScopePicker({
   municipalities: MunicipalityDto[]
   facilities: FacilityDto[]
 }) {
+  // Filtro de município pra restringir a lista de unidades. Separado do
+  // ``selection.id`` porque a "unidade escolhida" só fica definida depois
+  // que o user escolhe o município e a unidade dentro dele.
+  const [facilityMunicipalityId, setFacilityMunicipalityId] = useState<string | null>(null)
+
+  // Quando uma unidade já está selecionada (load inicial / reload), descobre
+  // o município dela pra pré-preencher o filtro.
+  useEffect(() => {
+    if (selection.type === 'facility' && selection.id) {
+      const fac = facilities.find(f => f.id === selection.id)
+      if (fac) setFacilityMunicipalityId(fac.municipalityId)
+    }
+  }, [selection, facilities])
+
   const munOptions = useMemo<ComboBoxOption[]>(
     () => municipalities.map(m => ({ value: m.id, label: m.name, hint: m.state })),
     [municipalities],
   )
   const facOptions = useMemo<ComboBoxOption[]>(
-    () => facilities.map(f => ({ value: f.id, label: f.shortName })),
-    [facilities],
+    () => facilities
+      .filter(f => !facilityMunicipalityId || f.municipalityId === facilityMunicipalityId)
+      .map(f => ({ value: f.id, label: f.shortName })),
+    [facilities, facilityMunicipalityId],
   )
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
       <div className="flex items-center gap-1 mb-3">
         <ScopeTab
-          active={selection.type === 'system'} onClick={() => onChange({ type: 'system', id: null })}
+          active={selection.type === 'system'}
+          onClick={() => { onChange({ type: 'system', id: null }); setFacilityMunicipalityId(null) }}
           icon={<Globe size={13} />}
         >
           Plataforma
@@ -111,12 +128,38 @@ function ScopePicker({
         />
       )}
       {selection.type === 'facility' && (
-        <ComboBox
-          value={selection.id}
-          onChange={val => onChange({ type: 'facility', id: val })}
-          placeholder="Selecione a unidade…"
-          options={facOptions}
-        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+              Município
+            </label>
+            <ComboBox
+              value={facilityMunicipalityId}
+              onChange={val => {
+                setFacilityMunicipalityId(val)
+                // Se a unidade selecionada pertence a outro município, descarta.
+                const fac = facilities.find(f => f.id === selection.id)
+                if (!fac || fac.municipalityId !== val) {
+                  onChange({ type: 'facility', id: null })
+                }
+              }}
+              placeholder="Selecione o município…"
+              options={munOptions}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+              Unidade
+            </label>
+            <ComboBox
+              value={selection.id}
+              onChange={val => onChange({ type: 'facility', id: val })}
+              placeholder={facilityMunicipalityId ? 'Selecione a unidade…' : 'Escolha o município primeiro'}
+              options={facOptions}
+              disabled={!facilityMunicipalityId}
+            />
+          </div>
+        </div>
       )}
       {selection.type === 'system' && (
         <p className="text-xs text-slate-400">
