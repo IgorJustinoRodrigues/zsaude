@@ -467,6 +467,7 @@ function EmailVerificationStatus({
   const displayedEmail = pending || activeEmail  // o que o input deveria exibir quando "limpo"
   const dirty = currentEmail.trim() !== displayedEmail
   const verified = !!me.emailVerifiedAt
+  const hasAnyEmail = !!activeEmail || !!pending
 
   const resend = async () => {
     setSending(true)
@@ -497,6 +498,15 @@ function EmailVerificationStatus({
     } finally {
       setCancelling(false)
     }
+  }
+
+  // ── Sem e-mail cadastrado nem em troca: nada a mostrar ────────────────
+  if (!hasAnyEmail && !dirty) {
+    return (
+      <p className="text-[11px] text-slate-400 mt-1">
+        Nenhum e-mail cadastrado. CPF é o único meio de login.
+      </p>
+    )
   }
 
   // ── Dirty (usuário está digitando algo diferente) ─────────────────────
