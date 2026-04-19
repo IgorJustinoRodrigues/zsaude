@@ -226,7 +226,11 @@ class UserPhotoService:
             return EnrollOutcome("low_quality")
 
         # ── Detecção de duplicata ──────────────────────────────────────
-        duplicate = await self._find_duplicate(user.id, result.embedding)
+        # Comparação é escopada por ``level``: MASTER só colide com MASTER,
+        # ADMIN com ADMIN, USER com USER. Evita falso positivo tipo
+        # "MASTER bate com ADMIN de outro município" — contextos distintos.
+        level_str = user.level.value if hasattr(user.level, "value") else str(user.level)
+        duplicate = await self._find_duplicate(user.id, result.embedding, level=level_str)
         if duplicate is not None:
             log.info(
                 "user_face_enroll_duplicate",
@@ -262,9 +266,18 @@ class UserPhotoService:
         return EnrollOutcome("ok")
 
     async def _find_duplicate(
-        self, exclude_user_id: UUID, embedding: list[float],
+        self,
+        exclude_user_id: UUID,
+        embedding: list[float],
+        *,
+        level: str,
     ) -> DuplicateUserMatch | None:
-        """Retorna o usuário mais similar (acima do threshold de duplicata)."""
+        """Retorna o usuário mais similar, limitado ao mesmo ``level``.
+
+        ``level`` é o nível do usuário que está subindo a foto. Só
+        comparamos contra embeddings de usuários com o mesmo nível —
+        MASTER não colide com ADMIN, ADMIN não colide com USER, etc.
+        """
         adapter = get_adapter(self.db.bind.dialect.name)
         dist = adapter.vector_cosine_distance_sql("fe.embedding", "q")
         dialect = self.db.bind.dialect.name
@@ -276,6 +289,7 @@ class UserPhotoService:
               FROM user_face_embeddings fe
               JOIN users u ON u.id = fe.user_id
              WHERE fe.user_id <> :exclude
+               AND u.level = :level
                AND ({dist}) <= :max_dist
              ORDER BY ({dist}) ASC
             {limit_clause}
@@ -293,7 +307,10 @@ class UserPhotoService:
 
         row = (await self.db.execute(
             text(sql),
-            {"q": q_param, "max_dist": max_distance, "exclude": exclude_param},
+            {
+                "q": q_param, "max_dist": max_distance,
+                "exclude": exclude_param, "level": level,
+            },
         )).mappings().first()
 
         if row is None:
