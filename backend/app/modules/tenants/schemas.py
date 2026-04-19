@@ -102,6 +102,7 @@ class MunicipalityCreate(CamelModel):
     neighborhoods: list[NeighborhoodInput] = Field(default_factory=list)
     # Módulos operacionais habilitados. Se omitido, usa o conjunto completo.
     enabled_modules: list[str] | None = None
+    timezone: str = Field(default="America/Sao_Paulo", min_length=3, max_length=64)
 
 
 class MunicipalityUpdate(CamelModel):
@@ -118,6 +119,7 @@ class MunicipalityUpdate(CamelModel):
     enabled_modules: list[str] | None = None
     cadsus_user: str | None = Field(default=None, max_length=100)
     cadsus_password: str | None = Field(default=None, max_length=200)
+    timezone: str | None = Field(default=None, min_length=3, max_length=64)
 
 
 class MunicipalityDetail(CamelModel):
@@ -137,6 +139,7 @@ class MunicipalityDetail(CamelModel):
     enabled_modules: list[str] = Field(default_factory=list)
     cadsus_user: str = ""
     cadsus_password_set: bool = False
+    timezone: str = "America/Sao_Paulo"
 
 
 class FacilityCreate(CamelModel):

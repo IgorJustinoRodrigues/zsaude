@@ -303,6 +303,7 @@ class TenantService:
             enabled_modules=sorted(self._enabled_modules_set(mun)),
             cadsus_user=mun.cadsus_user or "",
             cadsus_password_set=bool(mun.cadsus_password),
+            timezone=mun.timezone,
             neighborhoods=[
                 NeighborhoodOut(
                     id=n.id,
@@ -334,6 +335,7 @@ class TenantService:
             center_longitude=payload.center_longitude,
             territory=payload.territory,
             enabled_modules=enabled,
+            timezone=payload.timezone,
         )
         self.session.add(mun)
         await self.session.flush()
@@ -392,6 +394,10 @@ class TenantService:
             if new_mods != current_mods:
                 changes["enabledModules"] = {"from": current_mods, "to": new_mods}
                 mun.enabled_modules = new_mods
+
+        if "timezone" in fields and payload.timezone and payload.timezone != mun.timezone:
+            changes["timezone"] = {"from": mun.timezone, "to": payload.timezone}
+            mun.timezone = payload.timezone
 
         if "cadsus_user" in fields and payload.cadsus_user != mun.cadsus_user:
             changes["cadsusUser"] = {"from": mun.cadsus_user or "", "to": payload.cadsus_user or ""}

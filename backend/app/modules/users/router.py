@@ -7,6 +7,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.deps import DB, CurrentUserDep, client_ip
 from app.core.email import EmailServiceDep
@@ -36,6 +38,7 @@ from app.modules.users.schemas import (
 from app.modules.users.service import UserService
 
 router = APIRouter(prefix="/users", tags=["users"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ─── Self endpoints (/users/me) ───────────────────────────────────────────────
@@ -48,8 +51,26 @@ async def read_me(db: DB, user: CurrentUserDep) -> UserRead:
 
 
 @router.patch("/me", response_model=UserRead)
-async def update_me(payload: UserUpdateMe, db: DB, user: CurrentUserDep) -> UserRead:
-    record = await UserService(db).update_me(user.id, payload)
+async def update_me(
+    payload: UserUpdateMe,
+    request: Request,
+    db: DB,
+    user: CurrentUserDep,
+    email_service: EmailServiceDep,
+) -> UserRead:
+    record, email_changed = await UserService(db).update_me(user.id, payload)
+    # Dispara o e-mail de verificação quando o usuário pediu troca de
+    # endereço — o novo e-mail ficou em ``pending_email`` e precisa ser
+    # confirmado antes de se tornar o ativo.
+    if email_changed and record.pending_email:
+        from app.modules.users.email_verification_service import EmailVerificationService
+        try:
+            await EmailVerificationService(db, email_service).request(
+                record.id, client_ip(request),
+            )
+        except Exception:  # noqa: BLE001 — log e segue, não quebra o PATCH
+            import structlog
+            structlog.get_logger(__name__).exception("email_verification_dispatch_failed")
     return user_read_from_orm(record)
 
 
@@ -63,6 +84,7 @@ class EmailVerificationRequestResponse(MessageResponse):
     "/me/email/verify-request",
     response_model=EmailVerificationRequestResponse,
 )
+@limiter.limit("5/hour")
 async def request_email_verification(
     request: Request,
     db: DB,
@@ -112,6 +134,34 @@ async def require_admin(db: DB, user: CurrentUserDep) -> User:
 
 
 AdminDep = Annotated[User, Depends(require_admin)]
+
+
+@router.post(
+    "/{user_id}/email/verify-request",
+    response_model=EmailVerificationRequestResponse,
+)
+async def admin_request_email_verification(
+    user_id: UUID,
+    request: Request,
+    db: DB,
+    actor: AdminDep,
+    email_service: EmailServiceDep,
+) -> EmailVerificationRequestResponse:
+    """ADMIN/MASTER dispara o link de verificação pra outro usuário.
+
+    Útil quando o usuário perdeu o e-mail original — o admin pode
+    reenviar o link de confirmação pro endereço que está no cadastro.
+    """
+    from app.modules.users.email_verification_service import EmailVerificationService
+
+    result = await EmailVerificationService(db, email_service).request(
+        user_id, client_ip(request),
+    )
+    return EmailVerificationRequestResponse(
+        message=f"Link de verificação enviado para {result.email_target}.",
+        email_target=result.email_target,
+        expires_at=result.expires_at.isoformat(),
+    )
 
 
 def _check_create_level(actor: User, target_level: UserLevel) -> None:

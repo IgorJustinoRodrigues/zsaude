@@ -115,6 +115,33 @@ class AuthService:
             await self.session.commit()
             raise UnauthorizedError("Usuário inativo.")
 
+        # Quando configurado, bloqueia login via e-mail se o endereço não
+        # foi verificado. Login por CPF permanece sempre válido como
+        # escape hatch — a política só afeta quem usa e-mail.
+        if (
+            settings.enforce_email_verification_login
+            and "@" in identifier
+            and user.email_verified_at is None
+        ):
+            await write_audit(
+                self.session,
+                module="auth",
+                action="login_failed",
+                severity="warning",
+                resource="Session",
+                description=f"Login por e-mail não verificado — {user.name}",
+                details={"identifier": identifier, "reason": "email_unverified"},
+                user_id=user.id,
+                user_name=user.name,
+                ip=ip,
+                user_agent=ua,
+            )
+            await self.session.commit()
+            raise UnauthorizedError(
+                "E-mail não verificado. Confirme pelo link que enviamos "
+                "ou entre usando seu CPF.",
+            )
+
         if needs_rehash(user.password_hash):
             user.password_hash = hash_password(password)
             await self.users.update(user)

@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     jwt_reset_ttl_minutes: int = 15
     work_context_ttl_minutes: int = 480
     email_verification_ttl_hours: int = 24
+    # Quando True, tentativa de login via e-mail exige que ``email_verified_at``
+    # esteja preenchido. Login por CPF nunca é afetado. Default False pra não
+    # quebrar usuários existentes — flip para True depois do backfill.
+    enforce_email_verification_login: bool = False
 
     # ── Segurança ──────────────────────────────────────────────────────
     password_pepper: str = Field(min_length=32)

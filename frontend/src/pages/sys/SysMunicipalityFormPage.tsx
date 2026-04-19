@@ -14,6 +14,26 @@ import { cn } from '../../lib/utils'
 
 const DEFAULT_ENABLED: SystemId[] = SYSTEMS.map(s => s.id)
 
+// Fusos horários brasileiros. Todos com offset fixo (Brasil não tem DST
+// desde 2019). Cobre 100% dos estados — a maioria é UTC-3 (SP).
+const BR_TIMEZONES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: 'America/Sao_Paulo',  label: 'Brasília (UTC−3) — maioria dos estados' },
+  { value: 'America/Manaus',     label: 'Amazonas oeste (UTC−4)' },
+  { value: 'America/Cuiaba',     label: 'Mato Grosso (UTC−4)' },
+  { value: 'America/Campo_Grande', label: 'Mato Grosso do Sul (UTC−4)' },
+  { value: 'America/Porto_Velho', label: 'Rondônia (UTC−4)' },
+  { value: 'America/Boa_Vista',  label: 'Roraima (UTC−4)' },
+  { value: 'America/Rio_Branco', label: 'Acre (UTC−5)' },
+  { value: 'America/Eirunepe',   label: 'Amazonas extremo oeste (UTC−5)' },
+  { value: 'America/Belem',      label: 'Pará / Amapá (UTC−3)' },
+  { value: 'America/Fortaleza',  label: 'Nordeste (UTC−3)' },
+  { value: 'America/Recife',     label: 'Pernambuco (UTC−3)' },
+  { value: 'America/Bahia',      label: 'Bahia (UTC−3)' },
+  { value: 'America/Maceio',     label: 'Alagoas / Sergipe (UTC−3)' },
+  { value: 'America/Santarem',   label: 'Pará oeste (UTC−3)' },
+  { value: 'America/Noronha',    label: 'Fernando de Noronha (UTC−2)' },
+]
+
 // ─── Tipos internos ────────────────────────────────────────────────────────
 
 interface HoodDraft {
@@ -77,6 +97,9 @@ export function SysMunicipalityFormPage() {
   const [cadsusPasswordSet, setCadsusPasswordSet] = useState(false)
   const [cadsusPasswordDraft, setCadsusPasswordDraft] = useState<string | null>(null)
 
+  // Fuso horário IANA. Usado por features time-aware (parabéns, agenda).
+  const [timezone, setTimezone] = useState('America/Sao_Paulo')
+
   // Modo do mapa
   const [mapMode, setMapMode] = useState<MapMode>('idle')
   /** Alvo do modo — 'mun' = centro/território do município; 'hood:<tempId>' = bairro específico. */
@@ -120,6 +143,7 @@ export function SysMunicipalityFormPage() {
     setCadsusUser(m.cadsusUser ?? '')
     setCadsusPasswordSet(!!m.cadsusPasswordSet)
     setCadsusPasswordDraft(null)
+    setTimezone(m.timezone || 'America/Sao_Paulo')
   }
 
   const toggleModule = (id: SystemId) =>
@@ -249,6 +273,7 @@ export function SysMunicipalityFormPage() {
     cadsusUser: cadsusUser.trim(),
     // Só envia cadsusPassword se o user alterou/limpou (draft é string) — senão não mexe.
     ...(cadsusPasswordDraft !== null ? { cadsusPassword: cadsusPasswordDraft } : {}),
+    timezone,
   })
 
   const handleSubmit = async (ev: React.FormEvent) => {
@@ -383,17 +408,33 @@ export function SysMunicipalityFormPage() {
 
       {/* 2. Demografia */}
       <Section title="2. Demografia">
-        <Field label="População total" hint="Estimativa atual, opcional">
-          <div className="relative max-w-xs">
-            <Users size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={population}
-              onChange={e => setPopulation(e.target.value.replace(/\D/g, ''))}
-              placeholder="Ex: 1500000"
-              className={cn(inputCls(false), 'pl-8')}
-            />
-          </div>
-        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+          <Field label="População total" hint="Estimativa atual, opcional">
+            <div className="relative">
+              <Users size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={population}
+                onChange={e => setPopulation(e.target.value.replace(/\D/g, ''))}
+                placeholder="Ex: 1500000"
+                className={cn(inputCls(false), 'pl-8')}
+              />
+            </div>
+          </Field>
+          <Field
+            label="Fuso horário"
+            hint="Usado para envios programados (ex.: parabéns às 8h locais)"
+          >
+            <select
+              value={timezone}
+              onChange={e => setTimezone(e.target.value)}
+              className={inputCls(false)}
+            >
+              {BR_TIMEZONES.map(tz => (
+                <option key={tz.value} value={tz.value}>{tz.label}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
       </Section>
 
       {/* 3. Mapa */}

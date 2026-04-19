@@ -75,6 +75,12 @@ class Municipality(Base, TimestampedMixin):
     cadsus_user: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
     cadsus_password: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
 
+    # Fuso horário IANA (ex.: "America/Sao_Paulo"). Usado por features
+    # time-aware — parabéns enviado às 8h locais, auditoria, agenda.
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="America/Sao_Paulo",
+    )
+
     __table_args__ = (UniqueConstraint("name", "state", name="uq_municipality_name_state"),)
 
 

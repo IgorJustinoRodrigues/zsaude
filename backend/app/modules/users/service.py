@@ -105,14 +105,21 @@ class UserService:
                     "Você não pode atribuir acesso a município fora do seu escopo."
                 )
 
-    async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> User:
+    async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> tuple[User, bool]:
+        """Atualiza dados do próprio usuário.
+
+        Troca de e-mail **não** substitui ``email`` direto — grava em
+        ``pending_email``, mantém o atual válido pra login/comunicações
+        e o router é quem dispara o e-mail de verificação. Retorna
+        ``(user, email_change_requested)``.
+        """
         from app.core.audit import get_audit_context
         from app.modules.audit.helpers import describe_change, diff_fields, snapshot_fields
         from app.modules.audit.writer import write_audit
 
         user = await self.get_or_404(user_id)
         before = snapshot_fields(
-            user, ["name", "social_name", "phone", "email", "birth_date", "face_opt_in"]
+            user, ["name", "social_name", "phone", "email", "pending_email", "birth_date", "face_opt_in"]
         )
 
         if payload.name is not None:
@@ -125,16 +132,29 @@ class UserService:
             user.birth_date = payload.birth_date
         if payload.face_opt_in is not None:
             user.face_opt_in = payload.face_opt_in
+
+        email_change_requested = False
         if payload.email is not None:
-            # checa colisão
-            other = await self.repo.get_by_email(payload.email)
-            if other and other.id != user.id:
-                raise ConflictError("E-mail já cadastrado para outro usuário.")
-            user.email = payload.email
+            new_email = payload.email
+            if new_email == user.email:
+                # Re-submissão do e-mail atual: cancela qualquer pending pendente.
+                user.pending_email = None
+            elif new_email == user.pending_email:
+                # Mesmo alvo pendente — nada a fazer (o usuário pode reenviar link
+                # pelo endpoint /verify-request).
+                pass
+            else:
+                # Checagem de colisão: nenhum outro usuário pode ter esse e-mail
+                # como ativo.
+                other = await self.repo.get_by_email(new_email)
+                if other and other.id != user.id:
+                    raise ConflictError("E-mail já cadastrado para outro usuário.")
+                user.pending_email = new_email
+                email_change_requested = True
         await self.repo.update(user)
 
         after = snapshot_fields(
-            user, ["name", "social_name", "phone", "email", "birth_date", "face_opt_in"]
+            user, ["name", "social_name", "phone", "email", "pending_email", "birth_date", "face_opt_in"]
         )
         changes = diff_fields(before, after)
         if changes:
@@ -152,7 +172,7 @@ class UserService:
                 ),
                 details={"changes": [c.as_dict() for c in changes]},
             )
-        return user
+        return user, email_change_requested
 
     # ─── Admin: listagem ─────────────────────────────────────────────────────
 
