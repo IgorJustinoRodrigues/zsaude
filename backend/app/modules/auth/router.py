@@ -85,7 +85,7 @@ async def forgot_password(
     db: DB,
     email_service: EmailServiceDep,
 ) -> MessageResponse:
-    from app.modules.email_templates.service import EmailTemplateService
+    from app.modules.email_templates.dispatcher import EmailDispatcher
 
     svc = AuthService(db)
     token = await svc.forgot_password(payload.email, client_ip(request))
@@ -100,31 +100,14 @@ async def forgot_password(
         }
         # Recuperação de senha é um fluxo ANÔNIMO — não sabemos município
         # ainda. Resolve só com escopo SYSTEM (ou fallback de arquivo).
-        rendered = await EmailTemplateService(db).render("password_reset", ctx)
-        try:
-            await email_service.send(
-                EmailMessage(
-                    to=[payload.email],
-                    subject=rendered.subject,
-                    html=rendered.html,
-                    text=rendered.text,
-                    from_name=rendered.from_name,
-                    tags={"category": "password_reset"},
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            # Não vaza info ao usuário, mas registra pra ops.
-            log.error(
-                "password_reset_email_failed",
-                email=payload.email,
-                error=str(exc),
-            )
-        else:
-            log.info(
-                "password_reset_email_sent",
-                email=payload.email,
-                token_preview=token[:8] + "...",
-            )
+        # Sem idempotency_key — cada solicitação gera um novo link, e o
+        # rate-limit já protege contra abuso.
+        await EmailDispatcher(db, email_service).send(
+            code="password_reset",
+            to=payload.email,
+            context=ctx,
+            user_id=user.id if user else None,
+        )
     # Resposta sempre genérica, não revela se e-mail existe
     return MessageResponse(
         message="Se o e-mail existir, enviaremos instruções para redefinir a senha."

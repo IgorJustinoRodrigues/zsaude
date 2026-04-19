@@ -23,12 +23,12 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.core.email import EmailMessage, EmailService
+from app.core.email import EmailService
 from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError
 from app.core.logging import get_logger
 from app.core.security import generate_opaque_token, hash_opaque_token
 from app.modules.auth.models import EmailVerification
-from app.modules.email_templates.service import EmailTemplateService
+from app.modules.email_templates.dispatcher import EmailDispatcher
 from app.modules.users.models import User
 
 if TYPE_CHECKING:
@@ -70,18 +70,11 @@ class EmailVerificationService:
             "verify_link": self._build_link(plaintext),
             "expires_in_hours": settings.email_verification_ttl_hours,
         }
-        rendered = await EmailTemplateService(self.session).render(
-            "email_verification", ctx,
-        )
-        await self.email_service.send(
-            EmailMessage(
-                to=[target_email],
-                subject=rendered.subject,
-                html=rendered.html,
-                text=rendered.text,
-                from_name=rendered.from_name,
-                tags={"category": "email_verification"},
-            )
+        await EmailDispatcher(self.session, self.email_service).send(
+            code="email_verification",
+            to=target_email,
+            context=ctx,
+            user_id=user.id,
         )
         log.info(
             "email_verification_sent",

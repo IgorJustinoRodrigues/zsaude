@@ -1,0 +1,13 @@
+{{ years }} {% if years == 1 %}ano{% else %}anos{% endif %} com o {{ app_name }}!
+
+Oi, {{ user_first_name }}.
+
+Hoje marca {{ years }} {% if years == 1 %}ano{% else %}anos{% endif %} {% if municipality_name %}na Prefeitura de {{ municipality_name }}{% else %}com a gente{% endif %}.
+
+Obrigado por fazer parte do que o zSaúde é hoje.
+
+Um brinde ao próximo ciclo,
+{% if municipality_name %}Prefeitura de {{ municipality_name }}{% else %}{{ app_name }}{% endif %}
+
+—
+Este e-mail foi enviado automaticamente, não responda.

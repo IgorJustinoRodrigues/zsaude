@@ -80,6 +80,65 @@ CATALOG: dict[str, TemplateCatalogEntry] = {
             ),
         ),
     ),
+    "birthday_birth": TemplateCatalogEntry(
+        code="birthday_birth",
+        label="Parabéns — aniversário",
+        description=(
+            "Enviado no dia do aniversário do usuário, às 8h (fuso do "
+            "município). Só usuários ativos com e-mail verificado recebem. "
+            "O template pode ser personalizado por município/unidade."
+        ),
+        default_subject="Feliz aniversário, {{ user_first_name }}! 🎉",
+        variables=(
+            TemplateVariable("app_name", "Nome do produto/plataforma.", "zSaúde"),
+            TemplateVariable(
+                "user_name",
+                "Nome completo do destinatário (ou social_name quando preenchido).",
+                "Igor",
+            ),
+            TemplateVariable(
+                "user_first_name", "Primeiro nome do destinatário.", "Igor",
+            ),
+            TemplateVariable(
+                "municipality_name",
+                "Nome do município do destinatário. Vazio quando o envio é genérico (sem personalização).",
+                "Anápolis",
+            ),
+            TemplateVariable(
+                "age",
+                "Idade que o usuário está completando neste aniversário.",
+                "36",
+            ),
+        ),
+    ),
+    "birthday_usage": TemplateCatalogEntry(
+        code="birthday_usage",
+        label="Aniversário de uso da plataforma",
+        description=(
+            "Disparado no aniversário da data de criação da conta. Comemora "
+            "cada ano completo que o usuário está com o zSaúde."
+        ),
+        default_subject="{{ years }} {% if years == 1 %}ano{% else %}anos{% endif %} com o {{ app_name }}!",
+        variables=(
+            TemplateVariable("app_name", "Nome do produto/plataforma.", "zSaúde"),
+            TemplateVariable(
+                "user_name", "Nome completo do destinatário.", "Igor Justino",
+            ),
+            TemplateVariable(
+                "user_first_name", "Primeiro nome do destinatário.", "Igor",
+            ),
+            TemplateVariable(
+                "municipality_name",
+                "Nome do município do destinatário (ou vazio em envios genéricos).",
+                "Anápolis",
+            ),
+            TemplateVariable(
+                "years",
+                "Quantos anos completos de uso (cadastro) o usuário está comemorando.",
+                "2",
+            ),
+        ),
+    ),
 }
 
 
