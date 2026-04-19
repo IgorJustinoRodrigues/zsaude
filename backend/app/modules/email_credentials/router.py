@@ -139,6 +139,8 @@ async def test_send(
                     f"Região: {creds.aws_region}</p>"
                     "<p>Se você recebeu este e-mail, as credenciais estão OK.</p>"
                 ),
+                from_email=creds.from_email,
+                from_name=creds.from_name,
                 tags={"category": "credentials_test"},
             )
         )
