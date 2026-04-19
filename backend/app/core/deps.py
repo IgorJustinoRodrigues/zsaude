@@ -283,6 +283,23 @@ async def current_context(
         conn = await db.connection()
         await adapter.set_search_path(conn, ctx.municipality_ibge)
 
+    # Atualiza o contexto ATIVO da sessão (quem está operando neste
+    # município/unidade agora). Usado pela query de presence pra não
+    # marcar o user como online em cidade onde ele só tem acesso mas
+    # não está atuando. Best-effort — falhas não quebram o request.
+    sid_raw = payload.get("sid")
+    if sid_raw:
+        try:
+            from app.modules.sessions.service import SessionService
+            await SessionService(db).touch(
+                UUID(str(sid_raw)),
+                user_id=user.id,
+                municipality_id=ctx.municipality_id,
+                facility_id=ctx.facility_id,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     return ctx
 
 

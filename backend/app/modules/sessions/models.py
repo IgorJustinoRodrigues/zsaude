@@ -49,3 +49,14 @@ class UserSession(Base, TimestampedMixin):
 
     ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
     user_agent: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
+
+    # Contexto ativo da sessão — qual município/unidade o usuário está
+    # atuando AGORA. Preenchido no touch quando o request carrega
+    # X-Work-Context; None quando a sessão está no shell antes de
+    # escolher contexto (ou pra MASTER, que opera em /sys sem contexto).
+    active_municipality_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(), nullable=True, index=True,
+    )
+    active_facility_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(), nullable=True,
+    )
