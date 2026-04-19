@@ -313,13 +313,15 @@ function TemplateEditor({ entry }: { entry: TemplateCatalogEntry }) {
         </div>
 
         {/* Coluna 2: preview */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
+        <div className="bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
             <Eye size={14} className="text-sky-500" />
-            Prévia
-            <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
-              com dados de exemplo
-            </span>
+            Prévia — igual ao que chega no e-mail
+            {preview?.credentialsSource && (
+              <span className="text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300">
+                creds: {preview.credentialsSource}
+              </span>
+            )}
           </h3>
 
           {previewError ? (
@@ -328,39 +330,61 @@ function TemplateEditor({ entry }: { entry: TemplateCatalogEntry }) {
               <p>{previewError}</p>
             </div>
           ) : !preview ? (
-            <p className="text-sm text-slate-400">Edite os campos para ver a prévia.</p>
+            <p className="text-sm text-slate-400 py-6 text-center">Edite os campos para ver a prévia.</p>
           ) : (
-            <div className="space-y-3">
-              <div className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/60 dark:bg-slate-800/40">
-                <p className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">Assunto</p>
-                <p className="text-slate-800 dark:text-slate-200 font-medium">{preview.subject}</p>
-              </div>
-              {preview.bodyHtml && (
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400 px-3 py-2 bg-slate-50 dark:bg-slate-800/60">
-                    HTML
-                  </p>
-                  <iframe
-                    srcDoc={preview.bodyHtml}
-                    title="Prévia HTML"
-                    sandbox=""
-                    className="w-full h-[320px] bg-white"
-                  />
+            /* Client-mockup: header estilo Gmail + iframe do body na largura 640px */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden">
+              {/* Header simulando linha do Gmail */}
+              <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 space-y-2">
+                <p className="text-[15px] font-semibold text-slate-900 dark:text-slate-100 leading-snug">
+                  {preview.subject}
+                </p>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <div className="w-7 h-7 rounded-full bg-violet-500/80 flex items-center justify-center text-white font-semibold text-[11px] shrink-0">
+                    {(preview.fromName || preview.fromEmail || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-slate-700 dark:text-slate-300 truncate">
+                      <span className="font-medium">{preview.fromName || '—'}</span>{' '}
+                      <span className="text-slate-400">&lt;{preview.fromEmail || '?'}&gt;</span>
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      para igor98rodrigues@gmail.com · {new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                    </p>
+                  </div>
                 </div>
-              )}
-              {preview.bodyText && (
-                <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 bg-slate-50/60 dark:bg-slate-800/40">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400 mb-2">Texto puro</p>
-                  <pre className="text-[12px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
+              </div>
+
+              {/* Body */}
+              {preview.bodyHtml ? (
+                <iframe
+                  srcDoc={preview.bodyHtml}
+                  title="Prévia HTML"
+                  sandbox=""
+                  className="w-full bg-white block"
+                  style={{ height: '560px' }}
+                />
+              ) : preview.bodyText ? (
+                <div className="p-5 bg-white dark:bg-slate-900">
+                  <pre className="text-[13px] text-slate-800 dark:text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">
                     {preview.bodyText}
                   </pre>
                 </div>
+              ) : (
+                <p className="p-5 text-sm text-slate-400 italic">Sem corpo de mensagem.</p>
               )}
-              {preview.fromName && (
-                <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <CheckCircle2 size={11} className="text-emerald-500" />
-                  Remetente: <span className="font-medium text-slate-600 dark:text-slate-300">{preview.fromName}</span>
-                </p>
+
+              {/* Fallback texto quando tem os dois */}
+              {preview.bodyHtml && preview.bodyText && (
+                <details className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 bg-slate-50/60 dark:bg-slate-800/30">
+                  <summary className="cursor-pointer text-[11px] uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <CheckCircle2 size={10} className="text-emerald-500" />
+                    Fallback texto puro (clientes sem HTML)
+                  </summary>
+                  <pre className="text-[12px] text-slate-600 dark:text-slate-400 whitespace-pre-wrap font-sans leading-relaxed mt-2">
+                    {preview.bodyText}
+                  </pre>
+                </details>
               )}
             </div>
           )}

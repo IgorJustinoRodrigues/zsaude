@@ -56,6 +56,9 @@ export interface PreviewResponse {
   bodyHtml: string | null
   bodyText: string | null
   fromName: string | null
+  fromEmail: string | null
+  /** 'system' | 'municipality' | 'facility' | 'env' — de onde vieram as creds. */
+  credentialsSource: string | null
 }
 
 function qs(params: Record<string, unknown>): string {

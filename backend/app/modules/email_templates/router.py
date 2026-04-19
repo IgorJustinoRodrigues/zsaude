@@ -193,15 +193,31 @@ async def preview(
     db: DB,
     _: MasterDep,
 ) -> EmailTemplatePreviewResponse:
-    """Renderiza com contexto de exemplo.
+    """Renderiza com contexto de exemplo, **igual ao que chega no e-mail**.
 
-    Se ``subject``/``bodyHtml``/``bodyText`` vierem no body, renderiza
-    AQUELAS fontes (preview ao vivo durante edição, sem salvar). Senão,
-    resolve via cascata a partir de ``scopeType``/``scopeId`` (preview do
-    estado atualmente gravado).
+    Preview reflete:
+    - Template renderizado pelo mesmo ``render_string`` do envio real.
+    - Assunto renderizado igual ao real.
+    - ``from_name``/``from_email`` resolvidos via
+      :class:`EmailCredentialsService` com o mesmo escopo — assim o
+      remetente que aparecer no header do preview é o mesmo que vai
+      aparecer no cliente de e-mail do destinatário.
+
+    Se ``subject``/``bodyHtml``/``bodyText`` vierem no body → renderiza
+    aquelas fontes (edição ao vivo). Senão → resolve a cascata do banco.
     """
+    from app.modules.email_credentials.service import EmailCredentialsService
+
     entry = _catalog_entry_or_404(code)
     context = payload.context or entry.example_context()
+
+    mun_id = payload.scope_id if payload.scope_type == "municipality" else None
+    fac_id = payload.scope_id if payload.scope_type == "facility" else None
+
+    # Credenciais resolvidas — o que o destinatário vai ver como remetente.
+    creds = await EmailCredentialsService(db).resolve(
+        municipality_id=mun_id, facility_id=fac_id,
+    )
 
     # Edição ao vivo: renderiza o source passado no body.
     if payload.subject is not None or payload.body_html is not None or payload.body_text is not None:
@@ -222,23 +238,25 @@ async def preview(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return EmailTemplatePreviewResponse(
-            subject=subject, body_html=html, body_text=text, from_name=None,
+            subject=subject,
+            body_html=html,
+            body_text=text,
+            from_name=creds.from_name,
+            from_email=creds.from_email,
+            credentials_source=creds.source,
         )
 
     # Preview do estado gravado (cascata).
     rendered = await EmailTemplateService(db).render(
-        code,
-        context,
-        municipality_id=(
-            payload.scope_id if payload.scope_type == "municipality" else None
-        ),
-        facility_id=(
-            payload.scope_id if payload.scope_type == "facility" else None
-        ),
+        code, context, municipality_id=mun_id, facility_id=fac_id,
     )
     return EmailTemplatePreviewResponse(
         subject=rendered.subject,
         body_html=rendered.html,
         body_text=rendered.text,
-        from_name=rendered.from_name,
+        # from_name do template vence o das credenciais, se o template
+        # gravado tiver um (espelha o comportamento do dispatcher real).
+        from_name=rendered.from_name or creds.from_name,
+        from_email=creds.from_email,
+        credentials_source=creds.source,
     )

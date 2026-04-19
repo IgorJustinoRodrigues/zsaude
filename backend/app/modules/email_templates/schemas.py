@@ -87,5 +87,9 @@ class EmailTemplatePreviewResponse(BaseModel):
     body_html: str | None = Field(default=None, alias="bodyHtml")
     body_text: str | None = Field(default=None, alias="bodyText")
     from_name: str | None = Field(default=None, alias="fromName")
+    from_email: str | None = Field(default=None, alias="fromEmail")
+    # Indica de qual escopo as credenciais vieram ('system'|'municipality'|
+    # 'facility'|'env'). Útil pra deixar óbvio no preview.
+    credentials_source: str | None = Field(default=None, alias="credentialsSource")
 
     model_config = ConfigDict(populate_by_name=True)
