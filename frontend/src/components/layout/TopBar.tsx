@@ -41,18 +41,24 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
 
   const [onlineUsers, setOnlineUsers] = useState<PresenceItem[]>([])
 
+  // Quando o usuário está dentro de um contexto (módulo numa unidade),
+  // o widget mostra presença daquele município. Fora de contexto (shell
+  // /sys), mostra o total do escopo do ator. Mantém consistência com o
+  // filtro default da UsersPage.
+  const munFilterForPresence = context?.municipality.id ?? null
+
   useEffect(() => {
     let alive = true
     const load = async () => {
       try {
-        const list = await sessionsApi.presence('actor')
+        const list = await sessionsApi.presence('actor', munFilterForPresence)
         if (alive) setOnlineUsers(list)
       } catch { /* silencioso — presença não quebra topbar */ }
     }
     void load()
     const id = setInterval(load, 15_000)
     return () => { alive = false; clearInterval(id) }
-  }, [])
+  }, [munFilterForPresence])
 
   const goToUsers = () => {
     setUsersOpen(false)
