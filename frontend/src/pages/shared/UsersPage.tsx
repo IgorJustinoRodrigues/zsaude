@@ -8,6 +8,9 @@ import { toast } from '../../store/toastStore'
 import { useAuthStore } from '../../store/authStore'
 import { initials, normalize, cn } from '../../lib/utils'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
+import { ExportMenuButton } from '../../components/ui/ExportMenuButton'
+import { useBranding } from '../../hooks/useBranding'
+import type { ExportBranding, ExportOptions } from '../../lib/export'
 
 function formatRelativeTime(iso: string): string {
   const diffMins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
@@ -46,6 +49,8 @@ export function UsersPage() {
   // no shell sem contexto (ex.: /sys ou /shared), fica em "Todos".
   const contextMunicipalityId = useAuthStore(s => s.context?.municipality.id ?? null)
   const [munFilter, setMunFilter] = useState<string | null>(contextMunicipalityId)
+  const context = useAuthStore(s => s.context)
+  const branding = useBranding()
 
   // Carrega municípios disponíveis pro ator (MASTER vê tudo, ADMIN só os seus).
   useEffect(() => {
@@ -189,6 +194,19 @@ export function UsersPage() {
             />
           </div>
         )}
+        <ExportMenuButton<Row>
+          options={buildExportOptions(filtered, {
+            munName: municipalities.find(m => m.id === munFilter)?.name ?? null,
+            contextLabel: context
+              ? `${context.municipality.name}/${context.municipality.state} · ${context.facility.shortName}`
+              : null,
+            counts: { online: online.length, offline: offline.length, total: rows.length },
+            branding,
+          })}
+          label="Relatório"
+          pdfOrientation="landscape"
+          className="self-start"
+        />
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg self-start">
           {([['all', 'Todos'], ['online', 'Online'], ['offline', 'Offline']] as const).map(([key, label]) => (
             <button
@@ -332,4 +350,48 @@ function UserRow({ row }: { row: Row }) {
       )}
     </div>
   )
+}
+
+// ─── Export do relatório de presença ──────────────────────────────────────────
+
+function buildExportOptions(
+  rows: Row[],
+  opts: {
+    munName: string | null
+    contextLabel: string | null
+    counts: { online: number; offline: number; total: number }
+    branding?: ExportBranding
+  },
+): ExportOptions<Row> {
+  const { counts } = opts
+  const scopeSuffix = opts.contextLabel || opts.munName || 'Todos os municípios'
+  return {
+    title: 'Relatório de usuários online',
+    subtitle: `${counts.online} online · ${counts.offline} offline · ${counts.total} total`,
+    context: scopeSuffix,
+    filename: `usuarios-online-${new Date().toISOString().slice(0, 10)}`,
+    rows,
+    columns: [
+      { header: 'Usuário',    get: r => r.name, bold: true },
+      { header: 'E-mail',     get: r => r.email || '—' },
+      { header: 'Perfil',     get: r => r.role || '—' },
+      {
+        header: 'Status',
+        get: r => r.online ? 'Online' : 'Offline',
+        align: 'center', width: 70,
+      },
+      {
+        header: 'Desde',
+        get: r => r.since || '—',
+        align: 'center', width: 65,
+      },
+      {
+        header: 'Última atividade',
+        get: r => r.lastSeenIso ? formatRelativeTime(r.lastSeenIso) : 'nunca logou',
+        align: 'right', width: 110,
+      },
+    ],
+    rowHighlight: r => r.online ? 'green' : null,
+    branding: opts.branding,
+  }
 }
