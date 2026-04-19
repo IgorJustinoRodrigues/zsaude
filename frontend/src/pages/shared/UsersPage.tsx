@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Search, Wifi, WifiOff, Clock, MapPin } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Search, Wifi, WifiOff, Clock } from 'lucide-react'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { userApi, type UserListItem } from '../../api/users'
-import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { useAuthStore } from '../../store/authStore'
 import { initials, normalize, cn } from '../../lib/utils'
-import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
 import { ExportMenuButton } from '../../components/ui/ExportMenuButton'
 import { useBranding } from '../../hooks/useBranding'
 import type { ExportBranding, ExportOptions } from '../../lib/export'
@@ -42,27 +40,11 @@ export function UsersPage() {
   const [presence, setPresence] = useState<PresenceItem[]>([])
   const [users,    setUsers]    = useState<UserListItem[]>([])
   const [loading,  setLoading]  = useState(true)
-  const [municipalities, setMunicipalities] = useState<MunicipalityDto[]>([])
-  // Se o usuário está dentro de um work context (atuando num módulo de
-  // uma unidade), começa o filtro no município desse contexto. Faz mais
-  // sentido que "Todos" — ele está olhando a operação local. Se estiver
-  // no shell sem contexto (ex.: /sys ou /shared), fica em "Todos".
-  const contextMunicipalityId = useAuthStore(s => s.context?.municipality.id ?? null)
-  const [munFilter, setMunFilter] = useState<string | null>(contextMunicipalityId)
+  // A lista SEMPRE respeita o município do contexto ativo. Sem contexto
+  // (ex.: /sys), não filtra e devolve o escopo amplo do ator.
   const context = useAuthStore(s => s.context)
+  const munFilter = context?.municipality.id ?? null
   const branding = useBranding()
-
-  // Carrega municípios disponíveis pro ator (MASTER vê tudo, ADMIN só os seus).
-  useEffect(() => {
-    directoryApi.listMunicipalities('actor')
-      .then(setMunicipalities)
-      .catch(() => setMunicipalities([]))
-  }, [])
-
-  const municipalityOptions = useMemo<ComboBoxOption[]>(
-    () => municipalities.map(m => ({ value: m.id, label: m.name, hint: m.state })),
-    [municipalities],
-  )
 
   const load = useCallback(async () => {
     try {
@@ -182,21 +164,8 @@ export function UsersPage() {
             className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 transition-colors text-slate-800 dark:text-slate-200 placeholder-slate-400"
           />
         </div>
-        {municipalities.length > 1 && (
-          <div className="sm:w-64 flex items-center gap-2">
-            <MapPin size={13} className="text-slate-400 shrink-0" />
-            <ComboBox
-              value={munFilter}
-              onChange={setMunFilter}
-              placeholder="Todos os municípios"
-              options={municipalityOptions}
-              className="flex-1"
-            />
-          </div>
-        )}
         <ExportMenuButton<Row>
           options={buildExportOptions(filtered, {
-            munName: municipalities.find(m => m.id === munFilter)?.name ?? null,
             contextLabel: context
               ? `${context.municipality.name}/${context.municipality.state} · ${context.facility.shortName}`
               : null,
@@ -357,14 +326,13 @@ function UserRow({ row }: { row: Row }) {
 function buildExportOptions(
   rows: Row[],
   opts: {
-    munName: string | null
     contextLabel: string | null
     counts: { online: number; offline: number; total: number }
     branding?: ExportBranding
   },
 ): ExportOptions<Row> {
   const { counts } = opts
-  const scopeSuffix = opts.contextLabel || opts.munName || 'Todos os municípios'
+  const scopeSuffix = opts.contextLabel || 'Escopo do usuário'
   return {
     title: 'Relatório de usuários online',
     subtitle: `${counts.online} online · ${counts.offline} offline · ${counts.total} total`,
