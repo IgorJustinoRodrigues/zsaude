@@ -41,6 +41,8 @@ dependencies = [
     "oracledb>=2.0",
     "prometheus-client>=0.21.0",
     "aioboto3>=13.0.0",
+    "jinja2>=3.1.4",
+    "aiosmtplib>=3.0.0",
 ]
 
 [dependency-groups]

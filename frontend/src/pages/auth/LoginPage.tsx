@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -175,9 +175,9 @@ export function LoginPage() {
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   Senha
                 </label>
-                <a href="#" className="text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 font-medium">
+                <Link to="/esqueci-senha" className="text-xs text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 font-medium">
                   Esqueceu?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <input

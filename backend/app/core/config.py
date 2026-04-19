@@ -53,12 +53,30 @@ class Settings(BaseSettings):
     #   python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
     secrets_encryption_key: str = Field(default="", min_length=0)
 
-    # ── SMTP ───────────────────────────────────────────────────────────
+    # ── E-mail ─────────────────────────────────────────────────────────
+    # Backend genérico usado pra reset de senha, verificação, parabéns,
+    # relatórios, etc. Em testes: "null" (não envia). Em dev: "smtp" (MailHog).
+    # Em prod: "ses" (AWS SES via aioboto3).
+    email_backend: Literal["smtp", "ses", "null"] = "smtp"
+    email_from: str = "nao-responder@zsaude.local"
+    email_from_name: str = "zSaúde"
+    # URL pública do frontend, usada para montar links (reset, verify, etc.)
+    app_public_url: str = "http://localhost:5179"
+
+    # SMTP (dev → MailHog)
     smtp_host: str = "mailhog"
     smtp_port: int = 1025
     smtp_user: str = ""
     smtp_password: str = ""
+    smtp_use_tls: bool = False
+    # Retrocompat: `smtp_from` continua lido, mas `email_from` é o canônico.
     smtp_from: str = "nao-responder@zsaude.local"
+
+    # SES (prod → AWS)
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    ses_configuration_set: str = ""
 
     # ── Gateway de IA ──────────────────────────────────────────────────
     ai_default_timeout_seconds: int = 30

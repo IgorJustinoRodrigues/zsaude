@@ -8,6 +8,8 @@ import { RequireMaster } from '../components/auth/RequireMaster'
 import { RedirectIfAuthed } from '../components/auth/RedirectIfAuthed'
 
 import { LoginPage } from '../pages/auth/LoginPage'
+import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage'
 import { SystemSelectPage } from '../pages/auth/SystemSelectPage'
 import { ContextSelectPage } from '../pages/auth/ContextSelectPage'
 import { ModulePlaceholder } from '../pages/ModulePlaceholder'
@@ -106,7 +108,9 @@ export const router = createBrowserRouter([
   {
     element: <RedirectIfAuthed />,
     children: [
-      { path: '/login', element: <LoginPage /> },
+      { path: '/login',           element: <LoginPage /> },
+      { path: '/esqueci-senha',   element: <ForgotPasswordPage /> },
+      { path: '/redefinir-senha', element: <ResetPasswordPage /> },
     ],
   },
 

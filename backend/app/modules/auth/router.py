@@ -8,7 +8,10 @@ from fastapi import APIRouter, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import settings
 from app.core.deps import DB, CurrentUserDep, client_ip
+from app.core.email import EmailMessage, EmailServiceDep
+from app.core.email_templates import render
 from app.core.logging import get_logger
 from app.modules.auth.schemas import (
     ChangePasswordRequest,
@@ -80,12 +83,43 @@ async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     db: DB,
+    email_service: EmailServiceDep,
 ) -> MessageResponse:
     svc = AuthService(db)
     token = await svc.forgot_password(payload.email, client_ip(request))
     if token:
-        # TODO: enviar email via MailHog/SMTP (ARQ job). Por ora, logar (dev only).
-        log.info("password_reset_issued", email=payload.email, token_preview=token[:8] + "...")
+        user = await svc.users.get_by_identifier(payload.email)
+        reset_link = f"{settings.app_public_url.rstrip('/')}/redefinir-senha?token={token}"
+        ctx = {
+            "app_name": settings.email_from_name,
+            "user_name": user.name if user else "",
+            "reset_link": reset_link,
+            "expires_in_minutes": settings.jwt_reset_ttl_minutes,
+        }
+        html, text = render("password_reset", ctx)
+        try:
+            await email_service.send(
+                EmailMessage(
+                    to=[payload.email],
+                    subject="Redefinição de senha",
+                    html=html,
+                    text=text,
+                    tags={"category": "password_reset"},
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Não vaza info ao usuário, mas registra pra ops.
+            log.error(
+                "password_reset_email_failed",
+                email=payload.email,
+                error=str(exc),
+            )
+        else:
+            log.info(
+                "password_reset_email_sent",
+                email=payload.email,
+                token_preview=token[:8] + "...",
+            )
     # Resposta sempre genérica, não revela se e-mail existe
     return MessageResponse(
         message="Se o e-mail existir, enviaremos instruções para redefinir a senha."
