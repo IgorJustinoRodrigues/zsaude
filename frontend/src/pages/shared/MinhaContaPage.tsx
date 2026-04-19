@@ -494,6 +494,33 @@ function EmailVerificationStatus({
   }
 
   if (dirty) {
+    // Dois casos: usuário está corrigindo um typo no pending, ou está
+    // digitando uma troca nova (sem pending). O texto muda pra não
+    // confundir — e no caso de correção oferece desfazer.
+    const editingPending = pending && currentEmail.trim() !== pending
+    if (pending) {
+      return (
+        <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 text-xs">
+          <Pencil size={13} className="text-sky-500 mt-0.5 shrink-0" />
+          <div className="flex-1 text-sky-800 dark:text-sky-300 space-y-1">
+            <p>
+              {editingPending
+                ? <>Corrigindo o pendente <strong className="break-all">{pending}</strong>. Salve pra substituir.</>
+                : <>Pendente <strong className="break-all">{pending}</strong> carregado no campo — edite e salve.</>}
+            </p>
+            <button
+              type="button"
+              onClick={() => onEditPending(savedEmail)}
+              className="inline-flex items-center gap-1 font-medium text-sky-700 dark:text-sky-300 hover:underline"
+              title="Desistir da edição e voltar ao e-mail atual"
+            >
+              <X size={11} />
+              Desfazer edição
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <p className="text-[11px] text-slate-400 mt-1">
         Salve as alterações para confirmar o novo e-mail.
