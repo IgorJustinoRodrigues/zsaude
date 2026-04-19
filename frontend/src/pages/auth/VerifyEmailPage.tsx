@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Mail, ShieldCheck, CheckCircle2, AlertTriangle,
@@ -17,9 +17,15 @@ export function VerifyEmailPage() {
   const token = params.get('token') ?? ''
   const [state, setState] = useState<State>(token ? 'working' : 'missing')
   const [errorMsg, setErrorMsg] = useState('')
+  // Guarda contra chamada dupla do ``useEffect`` em React StrictMode (dev):
+  // a primeira consome o token (200), a segunda cairia em 401 por token
+  // já usado e sobrescreveria o state pra "invalid". Persistência do ref
+  // entre re-renders mantém a checagem idempotente por sessão de página.
+  const called = useRef(false)
 
   useEffect(() => {
-    if (!token) return
+    if (!token || called.current) return
+    called.current = true
     authApi.confirmEmail(token)
       .then(() => setState('ok'))
       .catch(err => {
