@@ -33,6 +33,10 @@ export interface MeResponse {
   passwordExpired: boolean
   /** Senha é provisória (gerada por admin em reset). Precisa trocar ao entrar. */
   mustChangePassword: boolean
+  /** Null enquanto o e-mail não foi confirmado. */
+  emailVerifiedAt: string | null
+  /** Novo e-mail em troca, aguardando confirmação via link. */
+  pendingEmail: string | null
   createdAt: string
 }
 
@@ -78,6 +82,20 @@ export const authApi = {
 
   /** Dados pro modal de aniversário (isBirthday + stats do último ano). */
   anniversary: () => api.get<AnniversaryResponse>('/api/v1/users/me/anniversary'),
+
+  /** Solicita (ou reenvia) o link de verificação do e-mail do próprio usuário. */
+  requestEmailVerification: () =>
+    api.post<{
+      message: string
+      emailTarget: string
+      expiresAt: string
+    }>('/api/v1/users/me/email/verify-request'),
+
+  /** Confirma e-mail via token recebido no link. Público. */
+  confirmEmail: (token: string) =>
+    api.post<{ message: string }>(
+      '/api/v1/auth/email/confirm', { token }, { anonymous: true },
+    ),
 }
 
 export interface AnniversaryStats {

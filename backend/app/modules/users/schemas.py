@@ -41,6 +41,10 @@ class UserRead(CamelModel):
     # Quando True, usuário precisa trocar a senha antes de usar o sistema
     # (senha provisória gerada por admin).
     must_change_password: bool = False
+    # Verificação de e-mail. ``email_verified_at=None`` = não confirmado.
+    # ``pending_email`` != None = troca em andamento aguardando confirmação.
+    email_verified_at: datetime | None = None
+    pending_email: EmailStr | None = None
     created_at: datetime
 
 

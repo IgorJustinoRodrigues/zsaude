@@ -56,6 +56,30 @@ CATALOG: dict[str, TemplateCatalogEntry] = {
             ),
         ),
     ),
+    "email_verification": TemplateCatalogEntry(
+        code="email_verification",
+        label="Verificação de e-mail",
+        description=(
+            "Link de confirmação do e-mail cadastrado. Enviado quando o "
+            "usuário solicita verificação (ou troca o endereço). Só após "
+            "a confirmação o e-mail pode ser usado pra login."
+        ),
+        default_subject="Confirme seu e-mail no {{ app_name }}",
+        variables=(
+            TemplateVariable("app_name", "Nome do produto/plataforma.", "zSaúde"),
+            TemplateVariable("user_name", "Nome completo do destinatário.", "Igor Justino"),
+            TemplateVariable(
+                "verify_link",
+                "URL pública para o usuário confirmar o e-mail.",
+                "https://zsaude.example/verificar-email?token=ABC",
+            ),
+            TemplateVariable(
+                "expires_in_hours",
+                "Horas de validade do link.",
+                "24",
+            ),
+        ),
+    ),
 }
 
 

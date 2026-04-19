@@ -1,0 +1,13 @@
+Olá{% if user_name %}, {{ user_name }}{% endif %}.
+
+Recebemos um pedido para confirmar este endereço de e-mail no {{ app_name }}.
+
+Abra o link abaixo (válido por {{ expires_in_hours }} horas) para confirmar:
+{{ verify_link }}
+
+Depois da confirmação, você poderá usar este e-mail para entrar no sistema.
+
+Se você não pediu essa confirmação, ignore este e-mail — nada vai mudar na sua conta.
+
+—
+Este e-mail foi enviado automaticamente, não responda.

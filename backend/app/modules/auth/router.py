@@ -14,6 +14,7 @@ from app.core.email import EmailMessage, EmailServiceDep
 from app.core.logging import get_logger
 from app.modules.auth.schemas import (
     ChangePasswordRequest,
+    ConfirmEmailRequest,
     ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
@@ -145,3 +146,17 @@ async def change_password(
     record = await UserService(db).get_or_404(user.id)
     await AuthService(db).change_password(record, payload.current_password, payload.new_password)
     return MessageResponse(message="Senha alterada.")
+
+
+@router.post("/email/confirm", response_model=MessageResponse)
+async def confirm_email(payload: ConfirmEmailRequest, db: DB) -> MessageResponse:
+    """Confirma um e-mail a partir do token recebido por e-mail.
+
+    Endpoint público — quem tem o token tem autoridade suficiente pra
+    marcar aquele endereço como verificado.
+    """
+    from app.core.email import get_email_service
+    from app.modules.users.email_verification_service import EmailVerificationService
+
+    await EmailVerificationService(db, get_email_service()).confirm(payload.token)
+    return MessageResponse(message="E-mail confirmado.")

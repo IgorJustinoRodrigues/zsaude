@@ -55,5 +55,9 @@ class ChangePasswordRequest(CamelModel):
         return validate_password_strength(v)
 
 
+class ConfirmEmailRequest(CamelModel):
+    token: str
+
+
 class MessageResponse(CamelModel):
     message: str

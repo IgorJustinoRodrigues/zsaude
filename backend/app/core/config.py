@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_days: int = 30
     jwt_reset_ttl_minutes: int = 15
     work_context_ttl_minutes: int = 480
+    email_verification_ttl_hours: int = 24
 
     # ── Segurança ──────────────────────────────────────────────────────
     password_pepper: str = Field(min_length=32)

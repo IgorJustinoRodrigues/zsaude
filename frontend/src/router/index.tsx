@@ -10,6 +10,7 @@ import { RedirectIfAuthed } from '../components/auth/RedirectIfAuthed'
 import { LoginPage } from '../pages/auth/LoginPage'
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage'
+import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage'
 import { SystemSelectPage } from '../pages/auth/SystemSelectPage'
 import { ContextSelectPage } from '../pages/auth/ContextSelectPage'
 import { ModulePlaceholder } from '../pages/ModulePlaceholder'
@@ -112,6 +113,7 @@ export const router = createBrowserRouter([
       { path: '/login',           element: <LoginPage /> },
       { path: '/esqueci-senha',   element: <ForgotPasswordPage /> },
       { path: '/redefinir-senha', element: <ResetPasswordPage /> },
+      { path: '/verificar-email', element: <VerifyEmailPage /> },
     ],
   },
 

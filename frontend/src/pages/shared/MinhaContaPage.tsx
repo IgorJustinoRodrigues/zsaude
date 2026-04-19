@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   User2, Save, Calendar, Mail, Phone, ScrollText, ScanFace, Loader2,
-  Lock, AlertTriangle, Clock,
+  Lock, AlertTriangle, Clock, CheckCircle2, Send,
 } from 'lucide-react'
 import { authApi, type MeResponse, type UpdateMeInput } from '../../api/auth'
 import { auditApi, type AuditLogItem } from '../../api/audit'
@@ -285,6 +285,11 @@ export function MinhaContaPage() {
                   onChange={e => setEmail(e.target.value)}
                   className={inputCls}
                 />
+                <EmailVerificationStatus
+                  me={me}
+                  currentEmail={email}
+                  onResent={loadMe}
+                />
               </Field>
               <Field label="Telefone" icon={<Phone size={13} />}>
                 <input
@@ -416,3 +421,88 @@ function Field({
 
 const inputCls =
   'w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 text-slate-800 dark:text-slate-200'
+
+function EmailVerificationStatus({
+  me, currentEmail, onResent,
+}: {
+  me: MeResponse
+  currentEmail: string
+  onResent: () => Promise<void> | void
+}) {
+  const [sending, setSending] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+
+  // O usuário pode ter editado o campo e ainda não salvado; nesse caso o
+  // "e-mail pendente de verificação" é o que o backend já conhece.
+  const savedEmail = me.email || ''
+  const dirty = currentEmail.trim() !== savedEmail
+  const verified = !!me.emailVerifiedAt
+  const pending = me.pendingEmail
+
+  const resend = async () => {
+    setSending(true)
+    try {
+      const r = await authApi.requestEmailVerification()
+      setSentTo(r.emailTarget)
+      toast.success('Link enviado', `Confirme em ${r.emailTarget}`)
+      await onResent()
+    } catch (err) {
+      const msg = err instanceof HttpError ? err.message : 'Erro ao enviar link.'
+      toast.error('Falha ao enviar link', msg)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (dirty) {
+    return (
+      <p className="text-[11px] text-slate-400 mt-1">
+        Salve as alterações para confirmar o novo e-mail.
+      </p>
+    )
+  }
+
+  if (pending) {
+    return (
+      <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs">
+        <Clock size={13} className="text-amber-500 mt-0.5 shrink-0" />
+        <div className="flex-1 text-amber-800 dark:text-amber-300">
+          Aguardando confirmação de <strong>{pending}</strong>.
+          {sentTo === pending && ' Verifique a caixa de entrada.'}
+          <button
+            type="button" onClick={resend} disabled={sending}
+            className="ml-2 inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-300 hover:underline disabled:opacity-50"
+          >
+            <Send size={11} />
+            {sending ? 'Enviando…' : 'Reenviar link'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (verified) {
+    return (
+      <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+        <CheckCircle2 size={12} />
+        E-mail verificado
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-start gap-2 mt-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs">
+      <AlertTriangle size={13} className="text-amber-500 mt-0.5 shrink-0" />
+      <div className="flex-1 text-slate-700 dark:text-slate-300">
+        E-mail não verificado.{' '}
+        <button
+          type="button" onClick={resend} disabled={sending}
+          className="inline-flex items-center gap-1 font-medium text-sky-600 dark:text-sky-400 hover:underline disabled:opacity-50"
+        >
+          <Send size={11} />
+          {sending ? 'Enviando…' : 'Enviar link de confirmação'}
+        </button>
+      </div>
+    </div>
+  )
+}

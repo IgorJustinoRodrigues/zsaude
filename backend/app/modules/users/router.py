@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
 
-from app.core.deps import DB, CurrentUserDep
+from app.core.deps import DB, CurrentUserDep, client_ip
+from app.core.email import EmailServiceDep
 from app.core.exceptions import ForbiddenError
 from app.core.pagination import Page
 from app.modules.users.models import User, UserLevel, UserStatus
@@ -50,6 +51,39 @@ async def read_me(db: DB, user: CurrentUserDep) -> UserRead:
 async def update_me(payload: UserUpdateMe, db: DB, user: CurrentUserDep) -> UserRead:
     record = await UserService(db).update_me(user.id, payload)
     return user_read_from_orm(record)
+
+
+class EmailVerificationRequestResponse(MessageResponse):
+    """Resposta do pedido de verificação com o e-mail alvo e expiração."""
+    email_target: str
+    expires_at: str
+
+
+@router.post(
+    "/me/email/verify-request",
+    response_model=EmailVerificationRequestResponse,
+)
+async def request_email_verification(
+    request: Request,
+    db: DB,
+    user: CurrentUserDep,
+    email_service: EmailServiceDep,
+) -> EmailVerificationRequestResponse:
+    """Dispara (ou redispara) o e-mail de verificação pra conta logada.
+
+    O alvo é o ``pending_email`` quando está trocando, senão o ``email``
+    atual. Usa o tempo de expiração configurado (default 24h).
+    """
+    from app.modules.users.email_verification_service import EmailVerificationService
+
+    result = await EmailVerificationService(db, email_service).request(
+        user.id, client_ip(request),
+    )
+    return EmailVerificationRequestResponse(
+        message=f"Link de verificação enviado para {result.email_target}.",
+        email_target=result.email_target,
+        expires_at=result.expires_at.isoformat(),
+    )
 
 
 @router.get("/me/anniversary", response_model=UserAnniversaryResponse)

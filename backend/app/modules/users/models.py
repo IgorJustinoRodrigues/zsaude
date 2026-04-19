@@ -99,6 +99,15 @@ class User(Base, TimestampedMixin):
         Boolean, nullable=False, server_default=text("0"),
     )
 
+    # Verificação de e-mail.
+    # - ``email_verified_at`` NULL = não verificado. Não bloqueia login por CPF.
+    # - ``pending_email`` guarda o novo e-mail durante troca; vira ``email``
+    #   após confirmação via link.
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    pending_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     # Foto ativa do usuário (FK lógica -> user_photos.id). FK não declarada
     # na coluna para evitar ciclo (UserPhoto.user_id -> users.id).
     current_photo_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)

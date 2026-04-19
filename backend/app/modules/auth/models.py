@@ -57,6 +57,28 @@ class PasswordReset(Base, TimestampedMixin):
     ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
 
 
+class EmailVerification(Base, TimestampedMixin):
+    """Tokens de confirmação de e-mail.
+
+    Uso único, espelho de :class:`PasswordReset`. ``email_target`` guarda
+    a caixa postal sendo verificada (pode ser o ``email`` atual do usuário
+    ou o ``pending_email`` durante uma troca) — assim o link só funciona
+    pro e-mail pro qual foi emitido, mesmo que o usuário mude depois.
+    """
+
+    __tablename__ = "email_verifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    email_target: Mapped[str] = mapped_column(String(200), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, server_default=" ")
+
+
 class LoginAttempt(Base):
     """Tentativas de login (para rate-limit persistente + auditoria)."""
 
