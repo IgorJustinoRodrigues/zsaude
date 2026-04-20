@@ -81,6 +81,8 @@ export interface FacilityAdmin {
   type: string
   cnes: string | null
   municipalityId: string
+  /** ``null`` = herda os módulos do município; array = personalização. */
+  enabledModules: SystemId[] | null
 }
 
 export interface FacilityCreateInput {
@@ -89,6 +91,7 @@ export interface FacilityCreateInput {
   shortName: string
   type: string
   cnes?: string | null
+  enabledModules?: SystemId[] | null
 }
 
 export interface FacilityUpdateInput {
@@ -96,6 +99,8 @@ export interface FacilityUpdateInput {
   shortName?: string
   type?: string
   cnes?: string | null
+  /** Passar ``null`` explicitamente = voltar a herdar. Omitir = não mexe. */
+  enabledModules?: SystemId[] | null
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

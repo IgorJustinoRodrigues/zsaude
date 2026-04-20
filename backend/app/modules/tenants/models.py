@@ -125,6 +125,11 @@ class Facility(Base, TimestampedMixin):
     cnes: Mapped[str | None] = mapped_column(String(7), nullable=True)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"), index=True)
 
+    # Subset dos módulos do município habilitados nesta unidade. ``None`` =
+    # herda o município. Lista = personalização; intersectada com o
+    # ``Municipality.enabled_modules`` na resolução em tempo real.
+    enabled_modules: Mapped[list | None] = mapped_column(JSONType(), nullable=True)
+
 
 class MunicipalityAccess(Base, TimestampedMixin):
     """Vínculo usuário → município."""

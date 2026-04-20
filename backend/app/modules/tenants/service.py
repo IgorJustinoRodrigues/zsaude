@@ -92,7 +92,6 @@ class TenantService:
             return r.name if r else ""
 
         for mun in muns:
-            enabled = self._enabled_modules_set(mun)
             facilities: list[FacilityWithAccess] = []
 
             if is_master:
@@ -103,7 +102,7 @@ class TenantService:
                     .order_by(Facility.name)
                 )).all())
                 for fac in fac_rows:
-                    mods = sorted(OPERATIONAL_MODULES & enabled)
+                    mods = sorted(self.effective_facility_modules(mun, fac))
                     facilities.append(
                         FacilityWithAccess(
                             facility=FacilityRead.model_validate(fac),
@@ -115,13 +114,13 @@ class TenantService:
                 rows = await self.repo.list_facilities_for_user(user_id, mun.id)
                 for fac, access in rows:
                     resolved = await perm_svc.resolve(user_id, access.id)
-                    available = OPERATIONAL_MODULES if resolved.is_root else resolved.modules() & OPERATIONAL_MODULES
-                    mods = sorted(available & enabled)
+                    effective = self.effective_facility_modules(mun, fac)
+                    available = effective if resolved.is_root else resolved.modules() & effective
                     facilities.append(
                         FacilityWithAccess(
                             facility=FacilityRead.model_validate(fac),
                             role=await role_name(access.role_id),
-                            modules=mods,
+                            modules=sorted(available),
                         )
                     )
 
@@ -165,11 +164,12 @@ class TenantService:
             role = await self.session.get(Role, access.role_id)
             role_name = role.name if role else ""
 
-        enabled = self._enabled_modules_set(mun)
+        # Cascata: município ∩ unidade ∩ role (se não-master).
+        effective = self.effective_facility_modules(mun, facility)
         if resolved.is_root:
-            modules = sorted(OPERATIONAL_MODULES & enabled)
+            modules = sorted(effective)
         else:
-            modules = sorted(resolved.modules() & OPERATIONAL_MODULES & enabled)
+            modules = sorted(resolved.modules() & effective)
 
         if payload.module:
             if payload.module not in modules:
@@ -557,16 +557,57 @@ class TenantService:
             ftype = FacilityType(payload.type)
         except ValueError:
             raise ForbiddenError(f"Tipo de unidade inválido: {payload.type}") from None
+        mods = self._sanitize_facility_modules(mun, payload.enabled_modules)
         fac = Facility(
             municipality_id=mun.id,
             name=payload.name,
             short_name=payload.short_name,
             type=ftype,
             cnes=payload.cnes,
+            enabled_modules=mods,
         )
         self.session.add(fac)
         await self.session.flush()
         return fac
+
+    def _sanitize_facility_modules(
+        self, mun: Municipality, requested: list[str] | None,
+    ) -> list[str] | None:
+        """Intersecta o requested com o que o município permite.
+
+        ``None`` explícito = herda (retorna None). Lista = intersecta
+        com ``Municipality.enabled_modules`` (ou com OPERATIONAL_MODULES
+        se o município ainda não restringiu).
+        """
+        if requested is None:
+            return None
+        mun_allowed = self._enabled_modules_set(mun)
+        return sorted(set(requested) & mun_allowed & OPERATIONAL_MODULES)
+
+    @staticmethod
+    def effective_facility_modules(
+        mun: Municipality, fac: Facility,
+    ) -> frozenset[str]:
+        """Conjunto efetivo de módulos da unidade.
+
+        Regra final aplicada na resolução de contexto:
+
+            role.modules()
+            ∩ Municipality.enabled_modules (fallback OPERATIONAL_MODULES)
+            ∩ Facility.enabled_modules     (quando não None)
+
+        Este helper só faz os 2 últimos — a interseção com o role é
+        feita pelo chamador.
+        """
+        # Município permitido
+        if mun.enabled_modules:
+            mun_set = frozenset(mun.enabled_modules) & OPERATIONAL_MODULES
+        else:
+            mun_set = OPERATIONAL_MODULES
+        # Unidade restringe mais, se configurou
+        if fac.enabled_modules is not None:
+            return frozenset(fac.enabled_modules) & mun_set
+        return mun_set
 
     async def update_facility(self, facility_id: UUID, payload: FacilityUpdate) -> Facility:
         fac = await self.session.scalar(select(Facility).where(Facility.id == facility_id))
@@ -596,6 +637,16 @@ class TenantService:
             if new_cnes != fac.cnes:
                 changes["cnes"] = {"from": fac.cnes, "to": new_cnes}
                 fac.cnes = new_cnes
+        if "enabled_modules" in payload.model_fields_set:
+            mun = await self.repo.get_municipality(fac.municipality_id)
+            new_mods = self._sanitize_facility_modules(mun, payload.enabled_modules)
+            current = list(fac.enabled_modules) if fac.enabled_modules else None
+            if new_mods != current:
+                changes["enabledModules"] = {
+                    "from": current if current is not None else "herdado",
+                    "to": new_mods if new_mods is not None else "herdado",
+                }
+                fac.enabled_modules = new_mods
         await self.session.flush()
 
         if changes:

@@ -10,6 +10,8 @@ export interface FacilityDto {
   type: string
   cnes: string | null
   municipalityId: string
+  /** ``null`` = herda todos do município; array = personalização. */
+  enabledModules?: string[] | null
 }
 
 export interface MunicipalityDto {

@@ -16,6 +16,8 @@ class FacilityRead(CamelModel):
     type: str
     cnes: str | None = None
     municipality_id: UUID
+    # ``None`` = herda do município; lista = personalização.
+    enabled_modules: list[str] | None = None
 
 
 class FacilityWithAccess(CamelModel):
@@ -148,6 +150,8 @@ class FacilityCreate(CamelModel):
     short_name: str = Field(min_length=2, max_length=80)
     type: str = Field(min_length=2, max_length=20)
     cnes: str | None = Field(default=None, max_length=7)
+    # ``None`` = herda todos os módulos do município.
+    enabled_modules: list[str] | None = None
 
 
 class FacilityUpdate(CamelModel):
@@ -155,6 +159,9 @@ class FacilityUpdate(CamelModel):
     short_name: str | None = Field(default=None, min_length=2, max_length=80)
     type: str | None = Field(default=None, min_length=2, max_length=20)
     cnes: str | None = Field(default=None, max_length=7)
+    # ``None`` explicitamente = herda do município. Lista = subset custom.
+    # Omitir o campo no PATCH não mexe no valor atual.
+    enabled_modules: list[str] | None = None
 
 
 class MessageResponse(CamelModel):

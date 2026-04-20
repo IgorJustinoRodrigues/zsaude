@@ -240,27 +240,29 @@ async def current_context(
     if access is None and not permissions.is_root:
         raise HTTPException(status_code=403, detail="Acesso à unidade revogado.")
 
-    # Módulos derivados das permissões (intersecção com módulos operacionais).
-    # MASTER também respeita os ``enabled_modules`` do município — não faz
-    # sentido oferecer HSP numa cidade que desativou o módulo. Se a cidade
-    # nunca configurou (``None``), cai no conjunto completo.
-    from app.modules.tenants.models import Municipality
+    # Módulos derivados: cascata ROLE ∩ MUNICIPALITY ∩ FACILITY. MASTER
+    # também respeita os dois níveis — não faz sentido oferecer HSP numa
+    # unidade cujo município desabilitou, nem numa unidade que
+    # explicitamente desmarcou o módulo.
+    from app.modules.tenants.models import Facility, Municipality
+    from app.modules.tenants.service import TenantService
+
     mun_row = await db.scalar(
-        select(Municipality.enabled_modules).where(
-            Municipality.id == UUID(payload["mun"]),
-        )
+        select(Municipality).where(Municipality.id == UUID(payload["mun"]))
     )
-    enabled_in_municipality: frozenset[str] = (
-        frozenset(mun_row) & _OPERATIONAL_MODULES if mun_row
+    fac_row = await db.scalar(
+        select(Facility).where(Facility.id == facility_id)
+    )
+    effective_modules: frozenset[str] = (
+        TenantService.effective_facility_modules(mun_row, fac_row)
+        if mun_row and fac_row
         else _OPERATIONAL_MODULES
     )
 
     if permissions.is_root:
-        derived_modules = sorted(enabled_in_municipality)
+        derived_modules = sorted(effective_modules)
     else:
-        derived_modules = sorted(
-            permissions.modules() & enabled_in_municipality
-        )
+        derived_modules = sorted(permissions.modules() & effective_modules)
 
     ctx = WorkContext(
         user_id=user.id,

@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
-import { sysApi } from '../../api/sys'
+import { ArrowLeft, Info } from 'lucide-react'
+import { sysApi, type FacilityAdmin } from '../../api/sys'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { SYSTEMS } from '../../mock/users'
+import type { SystemId } from '../../types'
+import { cn } from '../../lib/utils'
 
 const TYPES = ['SMS','UBS','UPA','Hospital','Lab','VISA','Policlínica','CEO','CAPS','Transportes','Outro']
 
@@ -20,6 +23,11 @@ export function SysFacilityFormPage() {
   const [shortName, setShortName] = useState('')
   const [type, setType]           = useState('UBS')
   const [cnes, setCnes]           = useState('')
+
+  // ``null`` = herda os módulos do município; array = personalização.
+  const [enabledModules, setEnabledModules] = useState<SystemId[] | null>(null)
+  // enabled_modules do município escolhido (pra saber o que o user pode marcar)
+  const [munEnabledModules, setMunEnabledModules] = useState<SystemId[] | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -37,12 +45,41 @@ export function SysFacilityFormPage() {
           if (f) {
             setMunicipalityId(f.municipalityId)
             setName(f.name); setShortName(f.shortName); setType(f.type); setCnes(f.cnes ?? '')
+            setEnabledModules(
+              (f.enabledModules as SystemId[] | null | undefined) ?? null,
+            )
           }
         }
       } finally { setLoading(false) }
     }
     void load()
   }, [id, isEdit])
+
+  // Sempre que trocar o município (ou no load), busca os enabled_modules dele.
+  useEffect(() => {
+    if (!municipalityId) { setMunEnabledModules(null); return }
+    sysApi.getMunicipality(municipalityId)
+      .then(m => {
+        setMunEnabledModules((m.enabledModules as SystemId[] | undefined) ?? null)
+      })
+      .catch(() => setMunEnabledModules(null))
+  }, [municipalityId])
+
+  // Opções disponíveis pra marcar: se o município restringiu, só esses;
+  // senão, todos os operacionais (SYSTEMS).
+  const availableModules = useMemo<SystemId[]>(
+    () => munEnabledModules ?? SYSTEMS.map(s => s.id as SystemId),
+    [munEnabledModules],
+  )
+
+  const toggleModule = (m: SystemId) => {
+    // Ao marcar pela primeira vez, deixa de herdar → vira lista.
+    const curr = enabledModules ?? availableModules
+    const next = curr.includes(m) ? curr.filter(x => x !== m) : [...curr, m]
+    setEnabledModules(next)
+  }
+
+  const resetToInherit = () => setEnabledModules(null)
 
   const validate = () => {
     const e: Record<string,string> = {}
@@ -64,11 +101,20 @@ export function SysFacilityFormPage() {
     }
     setSaving(true)
     try {
+      // Se o user customizou (lista não-null), manda a lista; se está
+      // herdando, manda null pro backend limpar a personalização.
+      const payloadMods = enabledModules === null ? null : enabledModules.slice().sort()
       if (isEdit && id) {
-        await sysApi.updateFacility(id, { name, shortName, type, cnes: cnes || null })
+        await sysApi.updateFacility(id, {
+          name, shortName, type, cnes: cnes || null,
+          enabledModules: payloadMods,
+        })
         toast.success('Unidade atualizada', name)
       } else {
-        await sysApi.createFacility({ municipalityId, name, shortName, type, cnes: cnes || null })
+        await sysApi.createFacility({
+          municipalityId, name, shortName, type, cnes: cnes || null,
+          enabledModules: payloadMods,
+        })
         toast.success('Unidade criada', `${shortName} cadastrada.`)
       }
       navigate('/sys/unidades', { replace: true })
@@ -139,6 +185,80 @@ export function SysFacilityFormPage() {
               className={inputCls(!!errors.cnes)} placeholder="0000000" />
           </Field>
         </div>
+      </div>
+
+      {/* Módulos habilitados nesta unidade */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              Módulos habilitados
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Quais sistemas aparecem pra quem opera nesta unidade. Por padrão
+              herda tudo o que o município habilitou; você pode restringir
+              (mas não ampliar — se o município desativou um módulo, ele não
+              fica disponível aqui).
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+            <input
+              type="checkbox"
+              checked={enabledModules === null}
+              onChange={e => {
+                if (e.target.checked) resetToInherit()
+                else setEnabledModules(availableModules.slice())
+              }}
+            />
+            Herdar do município
+          </label>
+        </div>
+
+        {!municipalityId && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs text-slate-500">
+            <Info size={13} className="shrink-0 mt-0.5" />
+            Selecione o município primeiro pra ver os módulos disponíveis.
+          </div>
+        )}
+
+        {municipalityId && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {SYSTEMS.map(sys => {
+              const allowedByMun = availableModules.includes(sys.id as SystemId)
+              const isChecked = enabledModules === null
+                ? allowedByMun              // herdando = marca tudo que o mun permite
+                : enabledModules.includes(sys.id as SystemId)
+              const disabled = !allowedByMun || enabledModules === null
+              return (
+                <label
+                  key={sys.id}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors',
+                    disabled
+                      ? 'border-slate-200 dark:border-slate-800 opacity-50 cursor-not-allowed'
+                      : 'border-slate-200 dark:border-slate-700 cursor-pointer hover:border-violet-400',
+                    isChecked && !disabled && 'bg-violet-50 dark:bg-violet-950/30 border-violet-300 dark:border-violet-700',
+                  )}
+                  title={!allowedByMun ? 'Módulo não habilitado no município' : ''}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={disabled}
+                    onChange={() => toggleModule(sys.id as SystemId)}
+                  />
+                  <span className="flex-1">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">{sys.abbrev}</span>
+                    <span className="text-slate-400 ml-1.5">{sys.name}</span>
+                  </span>
+                  {!allowedByMun && (
+                    <span className="text-[10px] text-slate-400">mun desativou</span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-3">
