@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
   LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download, Database,
-  Sparkles, User, Cake, Mail,
+  Sparkles, User, Cake, Mail, Megaphone,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useTheme } from '../../hooks/useTheme'
@@ -70,6 +70,7 @@ export function SysShell() {
           <SysNavItem to="/sys/configuracoes"  icon={<Settings size={15} />}>Configurações</SysNavItem>
           <SysNavItem to="/sys/templates-email" icon={<Mail size={15} />}>Templates de e-mail</SysNavItem>
           <SysNavItem to="/sys/credenciais-email" icon={<KeyRound size={15} />}>Credenciais SES</SysNavItem>
+          <SysNavItem to="/sys/notificacoes" icon={<Megaphone size={15} />}>Enviar notificação</SysNavItem>
           <SysNavItem to="/sys/logs"           icon={<ScrollText size={15} />}>Logs do sistema</SysNavItem>
         </nav>
 

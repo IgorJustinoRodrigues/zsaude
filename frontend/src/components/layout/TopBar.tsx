@@ -10,6 +10,7 @@ import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import { AccessibilityMenu } from '../ui/AccessibilityMenu'
+import { NotificationDetailModal } from '../ui/NotificationDetailModal'
 import type { SystemId } from '../../types'
 
 const MODULE_COLORS: Record<SystemId, string> = {
@@ -43,6 +44,7 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
   const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen]     = useState(false)
+  const [selectedNotif, setSelectedNotif] = useState<string | null>(null)
   const [usersOpen, setUsersOpen]     = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -272,7 +274,7 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
                   return (
                     <button
                       key={n.id}
-                      onClick={() => { markRead(n.id); setNotifOpen(false); navigate('/notificacoes') }}
+                      onClick={() => { setSelectedNotif(n.id); setNotifOpen(false) }}
                       className={cn(
                         'w-full flex gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors',
                         !n.read && 'bg-sky-50/40 dark:bg-sky-950/20'
@@ -456,6 +458,11 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
           )}
         </div>
       </header>
+
+      <NotificationDetailModal
+        notificationId={selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+      />
     </>
   )
 }

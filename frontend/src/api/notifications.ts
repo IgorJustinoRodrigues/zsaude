@@ -10,11 +10,63 @@ export interface NotificationItem {
   category: string
   title: string
   message: string
+  hasBody: boolean
+  hasAction: boolean
   data: Record<string, unknown> | null
   read: boolean
   dismissed: boolean
   createdAt: string
   readAt: string | null
+}
+
+export interface NotificationDetailItem extends NotificationItem {
+  body: string | null
+  actionUrl: string | null
+  actionLabel: string | null
+  createdByName: string | null
+  scopeLabel: string | null
+}
+
+export type BroadcastScope = 'all' | 'municipality' | 'facility' | 'user'
+
+export interface BroadcastCreateInput {
+  scopeType: BroadcastScope
+  scopeId?: string | null
+  type: NotificationType
+  category?: string
+  title: string
+  message: string
+  body?: string | null
+  actionUrl?: string | null
+  actionLabel?: string | null
+}
+
+export interface BroadcastRead {
+  id: string
+  scopeType: BroadcastScope
+  scopeId: string | null
+  scopeLabel: string
+  type: NotificationType
+  category: string
+  title: string
+  message: string
+  totalRecipients: number
+  readCount: number
+  createdAt: string
+  createdByName: string | null
+}
+
+export interface BroadcastRecipient {
+  userId: string
+  userName: string
+  readAt: string | null
+}
+
+export interface BroadcastDetail extends BroadcastRead {
+  body: string | null
+  actionUrl: string | null
+  actionLabel: string | null
+  recipients: BroadcastRecipient[]
 }
 
 function qs(params: Record<string, unknown>): string {
@@ -33,6 +85,9 @@ export const notificationsApi = {
       })}`,
     ),
 
+  detail: (id: string) =>
+    api.get<NotificationDetailItem>(`/api/v1/notifications/${id}`),
+
   unreadCount: () =>
     api.get<{ count: number }>('/api/v1/notifications/unread-count'),
 
@@ -44,4 +99,15 @@ export const notificationsApi = {
 
   dismiss: (id: string) =>
     api.delete<void>(`/api/v1/notifications/${id}`),
+}
+
+export const notificationsAdminApi = {
+  createBroadcast: (payload: BroadcastCreateInput) =>
+    api.post<BroadcastRead>('/api/v1/admin/notifications/broadcast', payload),
+
+  listBroadcasts: (limit = 50) =>
+    api.get<BroadcastRead[]>(`/api/v1/admin/notifications/broadcasts?limit=${limit}`),
+
+  broadcastDetail: (id: string) =>
+    api.get<BroadcastDetail>(`/api/v1/admin/notifications/broadcasts/${id}`),
 }

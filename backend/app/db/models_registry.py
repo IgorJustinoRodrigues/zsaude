@@ -27,7 +27,10 @@ from app.modules.branding.models import BrandingConfig  # noqa: F401
 from app.modules.email_templates.models import EmailTemplate  # noqa: F401
 from app.modules.email_templates.log_model import EmailSendLog  # noqa: F401
 from app.modules.email_credentials.models import EmailCredentials  # noqa: F401
-from app.modules.notifications.models import Notification  # noqa: F401
+from app.modules.notifications.models import (  # noqa: F401
+    Notification,
+    NotificationBroadcast,
+)
 from app.modules.permissions.models import (  # noqa: F401
     FacilityAccessPermissionOverride,
     Permission,

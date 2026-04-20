@@ -22,7 +22,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, desc, func, or_, select, update
 
-from app.modules.notifications.models import Notification
+from app.modules.notifications.models import Notification, NotificationBroadcast
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,8 +42,13 @@ class NotificationService:
         category: str,
         title: str,
         message: str,
+        body: str | None = None,
+        action_url: str | None = None,
+        action_label: str | None = None,
         data: dict | None = None,
         dedup_key: str | None = None,
+        created_by_user_id: UUID | None = None,
+        broadcast_id: UUID | None = None,
     ) -> Notification | None:
         """Cria uma notificação. Retorna None se já havia uma idêntica
         (mesmo ``dedup_key``) não lida pro mesmo user."""
@@ -64,12 +69,27 @@ class NotificationService:
             category=category,
             title=title,
             message=message,
+            body=body,
+            action_url=action_url,
+            action_label=action_label,
             data=data,
             dedup_key=dedup_key,
+            created_by_user_id=created_by_user_id,
+            broadcast_id=broadcast_id,
         )
         self.session.add(row)
         await self.session.flush()
         return row
+
+    async def get_for_user(
+        self, user_id: UUID, notification_id: UUID,
+    ) -> Notification | None:
+        return await self.session.scalar(
+            select(Notification).where(
+                Notification.id == notification_id,
+                Notification.user_id == user_id,
+            )
+        )
 
     # ── Consulta ──────────────────────────────────────────────────────────
 
