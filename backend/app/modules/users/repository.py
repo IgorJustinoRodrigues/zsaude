@@ -125,11 +125,14 @@ class UserRepository:
         self,
         user_id: UUID,
         municipality_ids: set[UUID],
-        facilities: list[tuple[UUID, UUID]],
+        facilities: list[tuple[UUID, UUID, str | None, str | None, str | None, str | None, str | None]],
     ) -> None:
         """Substitui todos os vínculos do usuário de forma atômica.
 
-        ``facilities`` é lista de tuplas ``(facility_id, role_id)``.
+        ``facilities`` é lista de tuplas
+        ``(facility_id, role_id, cbo_id, cbo_description, cnes_professional_id,
+           cnes_snapshot_cpf, cnes_snapshot_nome)``.
+        Os cinco últimos podem ser ``None`` — acesso sem vínculo CNES.
         """
         from sqlalchemy import delete
 
@@ -138,9 +141,18 @@ class UserRepository:
 
         for mid in municipality_ids:
             self.session.add(MunicipalityAccess(user_id=user_id, municipality_id=mid))
-        for fid, role_id in facilities:
+        for fid, role_id, cbo_id, cbo_desc, cnes_prof_id, snap_cpf, snap_nome in facilities:
             self.session.add(
-                FacilityAccess(user_id=user_id, facility_id=fid, role_id=role_id)
+                FacilityAccess(
+                    user_id=user_id,
+                    facility_id=fid,
+                    role_id=role_id,
+                    cbo_id=cbo_id,
+                    cbo_description=cbo_desc,
+                    cnes_professional_id=cnes_prof_id,
+                    cnes_snapshot_cpf=snap_cpf,
+                    cnes_snapshot_nome=snap_nome,
+                )
             )
         await self.session.flush()
 

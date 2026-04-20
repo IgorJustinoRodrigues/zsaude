@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Send, Megaphone, Users, MapPin, Building2, User as UserIcon,
-  Plus, X, CheckCircle2, Clock, ArrowRight,
+  Plus, X,
 } from 'lucide-react'
 import {
   notificationsAdminApi,
   type BroadcastCreateInput,
-  type BroadcastDetail,
   type BroadcastRead,
   type BroadcastScope,
   type NotificationType,
@@ -26,10 +26,10 @@ const TYPES: { value: NotificationType; label: string; color: string }[] = [
 ]
 
 export function SysNotificationsPage() {
+  const navigate = useNavigate()
   const [broadcasts, setBroadcasts] = useState<BroadcastRead[]>([])
   const [loading, setLoading] = useState(true)
   const [composing, setComposing] = useState(false)
-  const [inspecting, setInspecting] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,7 +82,7 @@ export function SysNotificationsPage() {
       ) : (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
           {broadcasts.map(b => (
-            <BroadcastRow key={b.id} b={b} onClick={() => setInspecting(b.id)} />
+            <BroadcastRow key={b.id} b={b} onClick={() => navigate(`/sys/notificacoes/${b.id}`)} />
           ))}
         </div>
       )}
@@ -91,13 +91,6 @@ export function SysNotificationsPage() {
         <ComposerModal
           onClose={() => setComposing(false)}
           onSent={async () => { setComposing(false); await load() }}
-        />
-      )}
-
-      {inspecting && (
-        <DetailModal
-          broadcastId={inspecting}
-          onClose={() => setInspecting(null)}
         />
       )}
     </div>
@@ -166,186 +159,6 @@ function BroadcastRow({ b, onClick }: { b: BroadcastRead; onClick: () => void })
         </div>
       </div>
     </button>
-  )
-}
-
-// ─── Detalhe: destinatários + status de leitura ────────────────────────────
-
-function DetailModal({ broadcastId, onClose }: { broadcastId: string; onClose: () => void }) {
-  const [detail, setDetail] = useState<BroadcastDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'read' | 'unread'>('all')
-  const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    setLoading(true)
-    notificationsAdminApi.broadcastDetail(broadcastId)
-      .then(setDetail)
-      .catch(() => toast.error('Falha ao carregar destinatários'))
-      .finally(() => setLoading(false))
-  }, [broadcastId])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  const filtered = (detail?.recipients ?? []).filter(r => {
-    const matchFilter = filter === 'all'
-      ? true
-      : filter === 'read' ? !!r.readAt : !r.readAt
-    const q = search.trim().toLowerCase()
-    const matchQ = !q || r.userName.toLowerCase().includes(q)
-    return matchFilter && matchQ
-  })
-
-  const readCount = detail?.readCount ?? 0
-  const total = detail?.totalRecipients ?? 0
-  const pct = total > 0 ? Math.round((readCount / total) * 100) : 0
-
-  return (
-    <div
-      className="fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex-1 min-w-0">
-            {loading ? (
-              <p className="text-sm text-slate-400">Carregando…</p>
-            ) : detail ? (
-              <>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  Detalhe do envio
-                </p>
-                <h2 className="text-base font-bold text-slate-900 dark:text-white leading-snug mt-0.5">
-                  {detail.title}
-                </h2>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  {detail.scopeLabel}
-                  <span className="mx-1">·</span>
-                  {new Date(detail.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                  {detail.createdByName && <><span className="mx-1">·</span>por {detail.createdByName}</>}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-rose-500">Não foi possível carregar.</p>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
-            aria-label="Fechar"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {detail && (
-          <>
-            {/* Content preview (o que foi enviado) */}
-            <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-800 space-y-2 bg-slate-50/60 dark:bg-slate-800/30">
-              <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-                {detail.message}
-              </p>
-              {detail.body && (
-                <details className="text-[11px] text-slate-500">
-                  <summary className="cursor-pointer hover:text-slate-700 dark:hover:text-slate-300">
-                    Ver conteúdo extenso
-                  </summary>
-                  <p className="mt-1.5 whitespace-pre-wrap pl-2 border-l-2 border-slate-200 dark:border-slate-700">
-                    {detail.body}
-                  </p>
-                </details>
-              )}
-              {detail.actionUrl && (
-                <p className="text-[11px] text-slate-400">
-                  CTA: <code className="text-[10px]">{detail.actionLabel}</code> → <code className="text-[10px]">{detail.actionUrl}</code>
-                </p>
-              )}
-            </div>
-
-            {/* Stats + filtros */}
-            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 space-y-3">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex-1 min-w-[180px]">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    {readCount} / {total} <span className="text-slate-400 font-normal">já leram</span>
-                    <span className="ml-2 text-slate-400 font-normal">({pct}%)</span>
-                  </p>
-                  <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mt-1 overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg shrink-0">
-                  {([['all', `Todos (${total})`], ['read', `Lidos (${readCount})`], ['unread', `Não lidos (${total - readCount})`]] as const).map(([v, label]) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setFilter(v)}
-                      className={cn(
-                        'px-3 py-1 rounded-md text-[11px] font-medium transition-colors',
-                        filter === v
-                          ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por nome…"
-                className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400"
-              />
-            </div>
-
-            {/* Recipients list */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
-              {filtered.length === 0 ? (
-                <p className="p-6 text-center text-xs text-slate-400">Nenhum destinatário combina com o filtro.</p>
-              ) : (
-                filtered.map(r => (
-                  <div
-                    key={r.userId}
-                    className="px-5 py-2.5 flex items-center gap-3 text-sm"
-                  >
-                    <div className={cn(
-                      'w-6 h-6 rounded-full flex items-center justify-center shrink-0',
-                      r.readAt
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400',
-                    )}>
-                      {r.readAt ? <CheckCircle2 size={13} /> : <Clock size={12} />}
-                    </div>
-                    <p className="flex-1 min-w-0 text-slate-700 dark:text-slate-200 truncate">
-                      {r.userName}
-                    </p>
-                    <p className="text-[11px] text-slate-400 shrink-0">
-                      {r.readAt
-                        ? new Date(r.readAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-                        : 'não lido'}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
   )
 }
 

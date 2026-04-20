@@ -50,3 +50,39 @@ export const cnesApi = {
     })
   },
 }
+
+// ─── Admin: busca live de profissionais CNES para vínculo CBO ────────────
+
+export interface CnesImportStatusOut {
+  imported: boolean
+  lastImportAt: string | null
+  lastCompetencia: string | null
+  lastStatus: CnesImportStatus | null
+}
+
+export interface CnesProfessionalOption {
+  cnesProfessionalId: string
+  cpf: string
+  nome: string
+  cboId: string
+  cboDescription: string
+  unitCnes: string
+  unitName: string
+  status: string
+}
+
+export const cnesAdminApi = {
+  /** Status do último import CNES do município (pra mostrar banner na UI). */
+  importStatus: (municipalityId: string) =>
+    api.get<CnesImportStatusOut>(
+      `/api/v1/admin/cnes/import-status?municipalityId=${encodeURIComponent(municipalityId)}`,
+    ),
+
+  /** Busca live de profissionais da unidade por nome/CPF. */
+  searchProfessionals: (params: { facilityId: string; q?: string; limit?: number }) => {
+    const qs = new URLSearchParams({ facilityId: params.facilityId })
+    if (params.q) qs.set('q', params.q)
+    if (params.limit) qs.set('limit', String(params.limit))
+    return api.get<CnesProfessionalOption[]>(`/api/v1/admin/cnes/professionals?${qs}`)
+  },
+}

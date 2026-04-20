@@ -86,6 +86,7 @@ import { SysSettingsPage } from '../pages/sys/SysSettingsPage'
 import { SysEmailTemplatesPage } from '../pages/sys/SysEmailTemplatesPage'
 import { SysEmailCredentialsPage } from '../pages/sys/SysEmailCredentialsPage'
 import { SysNotificationsPage } from '../pages/sys/SysNotificationsPage'
+import { SysNotificationDetailPage } from '../pages/sys/SysNotificationDetailPage'
 import { SysAuditPage } from '../pages/sys/SysAuditPage'
 import { SysRoleListPage } from '../pages/sys/SysRoleListPage'
 import { SysRoleDetailPage } from '../pages/sys/SysRoleDetailPage'
@@ -166,6 +167,7 @@ export const router = createBrowserRouter([
               { path: '/sys/templates-email',       element: <SysEmailTemplatesPage /> },
               { path: '/sys/credenciais-email',     element: <SysEmailCredentialsPage /> },
               { path: '/sys/notificacoes',          element: <SysNotificationsPage /> },
+              { path: '/sys/notificacoes/:id',      element: <SysNotificationDetailPage /> },
               { path: '/sys/logs',                  element: <SysAuditPage /> },
               { path: '/sys/minha-conta',           element: <MinhaContaPage /> },
             ],

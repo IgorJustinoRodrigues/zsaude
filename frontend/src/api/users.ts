@@ -33,6 +33,12 @@ export interface FacilityAccessDetail {
   roleId: string
   role: string
   modules: SystemId[]
+  /** Vínculo CNES — null quando nunca foi feito. */
+  cboId: string | null
+  cboDescription: string | null
+  cnesProfessionalId: string | null
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
 }
 
 export interface MunicipalityAccessDetail {
@@ -72,6 +78,13 @@ export interface PageResponse<T> {
 export interface FacilityAccessInput {
   facilityId: string
   roleId: string
+  /** Trio opcional de vínculo CNES. Se enviar um, envie os três. */
+  cboId?: string | null
+  cboDescription?: string | null
+  cnesProfessionalId?: string | null
+  /** Snapshot de CPF/nome no CNES — usado pelo reconciliador pós-importação. */
+  cnesSnapshotCpf?: string | null
+  cnesSnapshotNome?: string | null
 }
 
 export interface MunicipalityAccessInput {

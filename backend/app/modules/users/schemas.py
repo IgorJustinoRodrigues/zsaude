@@ -69,6 +69,16 @@ class UserListItem(CamelModel):
 class FacilityAccessInput(CamelModel):
     facility_id: UUID
     role_id: UUID
+    # Vínculo CNES opcional. Se ``cbo_id`` vier preenchido, ``cbo_description``
+    # e ``cnes_professional_id`` também devem vir — o backend valida e aplica
+    # o trio atômico. Apagar o vínculo = enviar os três como null.
+    cbo_id: str | None = None
+    cbo_description: str | None = None
+    cnes_professional_id: str | None = None
+    # Snapshot de CPF/nome do profissional no CNES no momento do vínculo.
+    # Usado para detectar mudanças na próxima importação.
+    cnes_snapshot_cpf: str | None = None
+    cnes_snapshot_nome: str | None = None
 
 
 class MunicipalityAccessInput(CamelModel):
@@ -85,6 +95,12 @@ class FacilityAccessDetail(CamelModel):
     role_id: UUID
     role: str           # nome do role (exibição)
     modules: list[str]  # derivado das permissões
+    # Vínculo CNES — null quando nunca foi feito.
+    cbo_id: str | None = None
+    cbo_description: str | None = None
+    cnes_professional_id: str | None = None
+    cnes_snapshot_cpf: str | None = None
+    cnes_snapshot_nome: str | None = None
 
 
 class MunicipalityAccessDetail(CamelModel):

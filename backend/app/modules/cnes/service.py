@@ -225,6 +225,26 @@ class CnesImportService:
         )
         if missing:
             log.info("cnes_import_missing_files", missing=sorted(missing))
+
+        # 7. Reconcilia vínculos CNES dos acessos com o estado vigente e
+        #    emite notificações pra usuários afetados + admins/master.
+        #    Falhas aqui nunca devem invalidar o import bem-sucedido.
+        try:
+            from app.modules.cnes.binding_reconciler import BindingReconciler
+            mun = await self.db.scalar(
+                select(Municipality).where(Municipality.ibge == self.expected_ibge)
+            )
+            if mun is not None:
+                await BindingReconciler(self.db).reconcile(
+                    municipality_id=mun.id, competencia=competencia,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "cnes_binding_reconcile_failed",
+                import_id=str(import_row.id),
+                error=str(exc),
+            )
+
         return import_row
 
     # ─────────────────────────────────────────────────────────────────────
