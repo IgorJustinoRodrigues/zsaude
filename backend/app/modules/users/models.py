@@ -52,6 +52,13 @@ class User(Base, TimestampedMixin):
     # pelo próprio usuário em "Minha Conta". Quando vazio, usamos ``name``.
     social_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
     cpf: Mapped[str | None] = mapped_column(String(11), unique=True, nullable=True, index=True)
+    # CNS (Cartão Nacional de Saúde) — opcional. Usado para vincular
+    # profissionais USER/ADMIN a registros CNES/eSUS. MASTER não usa.
+    # UNIQUE permite múltiplos NULL (Postgres/Oracle) — mesma regra de
+    # ``cpf``/``email``.
+    cns: Mapped[str | None] = mapped_column(
+        String(15), unique=True, nullable=True, index=True
+    )
     phone: Mapped[str] = mapped_column(String(20), nullable=False, server_default=" ")
 
     password_hash: Mapped[str] = mapped_column(String(200), nullable=False)

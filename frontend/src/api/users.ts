@@ -14,6 +14,7 @@ export interface UserListItem {
   email: string | null
   name: string
   cpf: string | null
+  cns: string | null
   phone: string
   status: UserStatus
   level: UserLevel
@@ -31,6 +32,10 @@ export interface CnesBinding {
   cnesProfessionalId: string
   cnesSnapshotCpf: string | null
   cnesSnapshotNome: string | null
+  /** ``null`` = herda do acesso pai. */
+  roleId: string | null
+  /** Nome do role específico (apenas quando roleId != null). */
+  role: string | null
 }
 
 export interface FacilityAccessDetail {
@@ -59,6 +64,7 @@ export interface UserDetail {
   email: string | null
   name: string
   cpf: string | null
+  cns: string | null
   phone: string
   status: UserStatus
   level: UserLevel
@@ -66,9 +72,19 @@ export interface UserDetail {
   isActive: boolean
   isSuperuser: boolean
   birthDate: string | null
+  /** ISO ou null. null = e-mail não verificado. */
+  emailVerifiedAt: string | null
+  /** Novo endereço aguardando confirmação (troca em andamento). */
+  pendingEmail: string | null
   createdAt: string
   updatedAt: string
   municipalities: MunicipalityAccessDetail[]
+}
+
+export interface EmailVerificationRequestResponse {
+  message: string
+  emailTarget: string
+  expiresAt: string
 }
 
 export interface PageResponse<T> {
@@ -86,6 +102,8 @@ export interface CnesBindingInput {
   cnesProfessionalId: string
   cnesSnapshotCpf: string | null
   cnesSnapshotNome: string | null
+  /** ``null`` = herda do acesso pai. */
+  roleId?: string | null
 }
 
 export interface FacilityAccessInput {
@@ -106,6 +124,8 @@ export interface UserCreateInput {
   name: string
   /** Opcional quando ``email`` é informado (e vice-versa). Pelo menos um é obrigatório. */
   cpf?: string
+  /** CNS (Cartão Nacional de Saúde) — opcional. Aceita máscara ou só dígitos. */
+  cns?: string
   phone?: string
   primaryRole: string
   password: string
@@ -117,6 +137,8 @@ export interface UserCreateInput {
 export interface UserUpdateInput {
   email?: string
   name?: string
+  /** CNS opcional. Envie ``null`` para limpar o campo. */
+  cns?: string | null
   phone?: string
   primaryRole?: string
   status?: UserStatus
@@ -241,6 +263,12 @@ export const userApi = {
     api.post<AdminResetResponse>(`/api/v1/users/${id}/reset-password`, {
       newPassword: newPassword ?? null,
     }),
+
+  /** Dispara o link de verificação de e-mail para o usuário. */
+  requestEmailVerification: (id: string) =>
+    api.post<EmailVerificationRequestResponse>(
+      `/api/v1/users/${id}/email/verify-request`,
+    ),
 
   activate: (id: string) =>
     api.post<{ message: string }>(`/api/v1/users/${id}/activate`),

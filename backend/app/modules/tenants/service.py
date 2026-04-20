@@ -175,10 +175,6 @@ class TenantService:
             facility, access = row
             if facility.municipality_id != mun.id:
                 raise ForbiddenError("Unidade não pertence ao município informado.")
-            resolved = await PermissionService(self.session).resolve(user_id, access.id)
-            from app.modules.permissions.models import Role
-            role = await self.session.get(Role, access.role_id)
-            role_name = role.name if role else ""
 
             # Resolve o vínculo CBO ativo:
             #  - se o cliente mandou ``cbo_binding_id``, valida que pertence
@@ -193,6 +189,22 @@ class TenantService:
                 chosen_binding = match
             elif len(bindings) == 1:
                 chosen_binding = bindings[0]
+
+            # Papel efetivo: binding.role_id tem precedência sobre
+            # access.role_id quando o binding está ativo e define um role
+            # próprio. Assim, o mesmo usuário pode atuar com perfis
+            # distintos em CBOs diferentes da mesma unidade.
+            effective_role_id = (
+                chosen_binding.role_id
+                if chosen_binding is not None and chosen_binding.role_id is not None
+                else access.role_id
+            )
+            resolved = await PermissionService(self.session).resolve(
+                user_id, access.id, role_id_override=effective_role_id,
+            )
+            from app.modules.permissions.models import Role
+            role = await self.session.get(Role, effective_role_id) if effective_role_id else None
+            role_name = role.name if role else ""
 
         # Cascata: município ∩ unidade ∩ role (se não-master).
         effective = self.effective_facility_modules(mun, facility)

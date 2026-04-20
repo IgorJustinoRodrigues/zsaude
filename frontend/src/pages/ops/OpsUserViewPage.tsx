@@ -239,6 +239,7 @@ export function OpsUserViewPage() {
   const [error, setError] = useState('')
   const [showResetModal, setShowResetModal] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [verifyingEmail, setVerifyingEmail] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -259,6 +260,21 @@ export function OpsUserViewPage() {
   }
 
   useEffect(() => { void load() }, [id]) // eslint-disable-line
+
+  const handleRequestEmailVerification = async () => {
+    if (!user) return
+    setVerifyingEmail(true)
+    try {
+      const res = await userApi.requestEmailVerification(user.id)
+      toast.success('Link enviado', res.message)
+      await load()
+    } catch (e) {
+      const msg = e instanceof HttpError ? e.message : 'Não foi possível enviar o link.'
+      toast.error('Falha ao enviar verificação', msg)
+    } finally {
+      setVerifyingEmail(false)
+    }
+  }
 
   const handleStatus = async (action: 'activate' | 'deactivate' | 'block') => {
     if (!user) return
@@ -376,8 +392,23 @@ export function OpsUserViewPage() {
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
             <ReadField label="Nome completo" value={user.name} className="sm:col-span-2" />
             <ReadField label="CPF" value={user.cpf || '—'} icon={<Lock size={12} />} />
-            <ReadField label="E-mail" value={user.email || '—'} icon={<Mail size={12} />} />
+            <EmailField
+              email={user.email}
+              verifiedAt={user.emailVerifiedAt}
+              pendingEmail={user.pendingEmail}
+              onVerify={handleRequestEmailVerification}
+              verifying={verifyingEmail}
+            />
             <ReadField label="Telefone" value={user.phone || '—'} icon={<Phone size={12} />} />
+            {user.level !== 'master' && (
+              <ReadField
+                label="CNS"
+                value={user.cns
+                  ? `${user.cns.slice(0, 3)} ${user.cns.slice(3, 7)} ${user.cns.slice(7, 11)} ${user.cns.slice(11, 15)}`
+                  : '—'}
+                icon={<Stethoscope size={12} />}
+              />
+            )}
             <ReadField label="Perfil" value={user.primaryRole} icon={<Shield size={12} />} />
           </div>
         </div>
@@ -471,6 +502,12 @@ export function OpsUserViewPage() {
                                       </span>
                                       {b.cboDescription || '—'}
                                     </p>
+                                    {b.role && (
+                                      <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-0.5 flex items-center gap-1">
+                                        <Shield size={10} />
+                                        Perfil próprio: {b.role}
+                                      </p>
+                                    )}
                                     {b.cnesSnapshotCpf && (
                                       <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                                         CPF {b.cnesSnapshotCpf.slice(0,3)}.{b.cnesSnapshotCpf.slice(3,6)}.{b.cnesSnapshotCpf.slice(6,9)}-{b.cnesSnapshotCpf.slice(9,11)}
@@ -703,6 +740,64 @@ function ReadField({
       <div className="flex items-center gap-1.5">
         {icon && <span className="text-slate-300 dark:text-slate-600 shrink-0">{icon}</span>}
         <p className="text-sm text-slate-800 dark:text-slate-200 break-all">{value || '—'}</p>
+      </div>
+    </div>
+  )
+}
+
+function EmailField({
+  email, verifiedAt, pendingEmail, onVerify, verifying,
+}: {
+  email: string | null
+  verifiedAt: string | null
+  pendingEmail: string | null
+  onVerify: () => void
+  verifying: boolean
+}) {
+  // Alvo da verificação: o ``pending_email`` vence sobre o ``email`` atual.
+  const target = pendingEmail || email
+  const status: 'none' | 'verified' | 'pending' | 'unverified' =
+    !email && !pendingEmail
+      ? 'none'
+      : pendingEmail
+        ? 'pending'
+        : verifiedAt
+          ? 'verified'
+          : 'unverified'
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">E-mail</p>
+      <div className="flex items-start gap-1.5">
+        <Mail size={12} className="text-slate-300 dark:text-slate-600 shrink-0 mt-1" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-800 dark:text-slate-200 break-all">{email || '—'}</p>
+          {pendingEmail && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 break-all">
+              Novo: {pendingEmail} (aguardando confirmação)
+            </p>
+          )}
+          {status !== 'none' && (
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <span className={cn(
+                'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded',
+                status === 'verified' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
+                status === 'pending'  && 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
+                status === 'unverified' && 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+              )}>
+                {status === 'verified' && <><Check size={10} />Verificado</>}
+                {status === 'pending'  && <><Clock size={10} />Pendente</>}
+                {status === 'unverified' && <><AlertTriangle size={10} />Não verificado</>}
+              </span>
+              {status !== 'verified' && target && (
+                <button type="button" onClick={onVerify} disabled={verifying}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 disabled:opacity-50">
+                  {verifying ? <RefreshCw size={11} className="animate-spin" /> : <Mail size={11} />}
+                  {status === 'pending' ? 'Reenviar link' : 'Enviar link de verificação'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

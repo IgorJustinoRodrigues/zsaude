@@ -51,6 +51,11 @@ class UserRepository:
             return None
         return await self.session.scalar(select(User).where(User.cpf == cpf))
 
+    async def get_by_cns(self, cns: str | None) -> User | None:
+        if not cns:
+            return None
+        return await self.session.scalar(select(User).where(User.cns == cns))
+
     async def add(self, user: User) -> User:
         self.session.add(user)
         await self.session.flush()
@@ -163,6 +168,7 @@ class UserRepository:
                     cnes_professional_id=b["cnes_professional_id"],
                     cnes_snapshot_cpf=b.get("cnes_snapshot_cpf"),
                     cnes_snapshot_nome=b.get("cnes_snapshot_nome"),
+                    role_id=b.get("role_id"),
                 ))
         await self.session.flush()
 

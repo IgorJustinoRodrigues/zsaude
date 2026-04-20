@@ -11,6 +11,22 @@ from pydantic import EmailStr, Field, field_validator, model_validator
 from app.core.schema_base import CamelModel
 from app.core.validators import validate_cpf, validate_password_strength
 
+
+def _normalize_cns(v: str | None) -> str | None:
+    """Validação leve de CNS: só 15 dígitos, sem checksum.
+
+    A validação rígida (via ``validate_cns`` em ``app.core.validators``)
+    valida o algoritmo PIS/SUS. Para esta tela administrativa deixamos
+    apenas a checagem de formato — CNS é opcional e o dado pode vir de
+    cadastros antigos sem garantia de checksum correto.
+    """
+    if v is None or not v.strip():
+        return None
+    digits = "".join(ch for ch in v if ch.isdigit())
+    if len(digits) != 15:
+        raise ValueError("CNS deve ter 15 dígitos.")
+    return digits
+
 if TYPE_CHECKING:
     from app.modules.users.models import User
 
@@ -27,6 +43,7 @@ class UserRead(CamelModel):
     name: str
     social_name: str = ""
     cpf: str | None = None
+    cns: str | None = None
     phone: str
     status: str
     level: UserLevelLiteral
@@ -56,6 +73,7 @@ class UserListItem(CamelModel):
     email: EmailStr | None = None
     name: str
     cpf: str | None = None
+    cns: str | None = None
     phone: str
     status: str
     level: UserLevelLiteral
@@ -74,6 +92,10 @@ class CnesBindingInput(CamelModel):
     cnes_professional_id: str
     cnes_snapshot_cpf: str | None = None
     cnes_snapshot_nome: str | None = None
+    # Perfil opcional específico desse binding. ``None`` herda o papel do
+    # ``FacilityAccess`` pai. Quando definido, sobrescreve o papel do
+    # acesso no momento em que esse binding é o ativo no work-context.
+    role_id: UUID | None = None
 
 
 class CnesBindingDetail(CamelModel):
@@ -85,6 +107,10 @@ class CnesBindingDetail(CamelModel):
     cnes_professional_id: str
     cnes_snapshot_cpf: str | None = None
     cnes_snapshot_nome: str | None = None
+    # ``None`` = herda do pai.
+    role_id: UUID | None = None
+    # Nome do papel (pra exibição). ``None`` quando ``role_id`` é None.
+    role: str | None = None
 
 
 class FacilityAccessInput(CamelModel):
@@ -129,6 +155,7 @@ class UserDetail(CamelModel):
     name: str
     social_name: str = ""
     cpf: str | None = None
+    cns: str | None = None
     phone: str
     status: str
     level: UserLevelLiteral
@@ -138,6 +165,11 @@ class UserDetail(CamelModel):
     birth_date: date | None = None
     current_photo_id: UUID | None = None
     face_opt_in: bool = True
+    # Status da verificação do e-mail (``None`` = não verificado).
+    email_verified_at: datetime | None = None
+    # Novo e-mail aguardando confirmação — quando presente, o admin pode
+    # reenviar o link com o endpoint ``/email/verify-request``.
+    pending_email: EmailStr | None = None
     created_at: datetime
     updated_at: datetime
     municipalities: list[MunicipalityAccessDetail]
@@ -150,6 +182,8 @@ class UserCreate(CamelModel):
     email: EmailStr | None = None
     name: str = Field(min_length=2, max_length=200)
     cpf: str | None = Field(default=None, max_length=14)
+    # CNS: 15 dígitos; opcional. Aceita com ou sem máscara.
+    cns: str | None = Field(default=None, max_length=18)
     phone: str = Field(default="", max_length=20)
     primary_role: str = Field(min_length=2, max_length=100)
     password: str = Field(max_length=200)
@@ -163,6 +197,11 @@ class UserCreate(CamelModel):
         if v is None or not v.strip():
             return None
         return validate_cpf(v)
+
+    @field_validator("cns")
+    @classmethod
+    def _cns(cls, v: str | None) -> str | None:
+        return _normalize_cns(v)
 
     @field_validator("password")
     @classmethod
@@ -179,11 +218,19 @@ class UserCreate(CamelModel):
 class UserUpdate(CamelModel):
     email: EmailStr | None = None
     name: str | None = Field(default=None, min_length=2, max_length=200)
+    # CNS opcional. ``""``/``None`` não são mandados pelo front; quando
+    # enviado, precisa ser válido (15 dígitos + checksum).
+    cns: str | None = Field(default=None, max_length=18)
     phone: str | None = Field(default=None, max_length=20)
     primary_role: str | None = Field(default=None, min_length=2, max_length=100)
     status: UserStatusLiteral | None = None
     level: UserLevelLiteral | None = None
     municipalities: list[MunicipalityAccessInput] | None = None
+
+    @field_validator("cns")
+    @classmethod
+    def _cns(cls, v: str | None) -> str | None:
+        return _normalize_cns(v)
 
 
 class UserUpdateMe(CamelModel):

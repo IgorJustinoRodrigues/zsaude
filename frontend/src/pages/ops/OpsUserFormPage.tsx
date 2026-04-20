@@ -33,6 +33,42 @@ function maskPhone(v: string) {
     .replace(/(\d{5})(\d)/, '$1-$2')
 }
 
+// CNS: 15 dígitos exibidos como "000 0000 0000 0000".
+function maskCns(v: string) {
+  return v.replace(/\D/g, '').slice(0, 15)
+    .replace(/(\d{3})(\d)/, '$1 $2')
+    .replace(/(\d{3} \d{4})(\d)/, '$1 $2')
+    .replace(/(\d{3} \d{4} \d{4})(\d)/, '$1 $2')
+}
+
+// Extrai "campo: mensagem" dos erros Pydantic do backend (FastAPI 422).
+// Ex.: [{ loc: "('body','email')", msg: "value is not a valid email" }, ...]
+function describeValidationErrors(errors: unknown): string {
+  if (!Array.isArray(errors) || errors.length === 0) {
+    return 'Campos inválidos. Revise os dados.'
+  }
+  const parts: string[] = []
+  for (const e of errors) {
+    if (!e || typeof e !== 'object') continue
+    const raw = (e as { loc?: unknown; msg?: unknown }).loc
+    const msg = (e as { msg?: unknown }).msg
+    // `loc` pode vir como string "('body', 'email')" ou array ['body','email'].
+    let path = ''
+    if (Array.isArray(raw)) {
+      path = raw.filter(s => s !== 'body').map(String).join('.')
+    } else if (typeof raw === 'string') {
+      path = raw.replace(/[()']/g, '').split(',').map(s => s.trim())
+        .filter(s => s && s !== 'body').join('.')
+    }
+    const label = path || 'campo'
+    parts.push(`${label}: ${msg ?? 'inválido'}`)
+    if (parts.length >= 3) break
+  }
+  return parts.length
+    ? `Campos inválidos — ${parts.join(' · ')}`
+    : 'Campos inválidos. Revise os dados.'
+}
+
 // ── Gerador de senha ──────────────────────────────────────────────────────────
 
 const CHARSET = {
@@ -68,6 +104,8 @@ interface CnesBindingDraft {
   cnesProfessionalId: string
   cnesSnapshotCpf: string | null
   cnesSnapshotNome: string | null
+  /** ``null`` = herda do acesso pai. */
+  roleId: string | null
 }
 
 interface FacilityAccess {
@@ -115,6 +153,7 @@ function detailToAccesses(
                 cnesProfessionalId: b.cnesProfessionalId,
                 cnesSnapshotCpf: b.cnesSnapshotCpf,
                 cnesSnapshotNome: b.cnesSnapshotNome,
+                roleId: b.roleId,
               })),
             }))
           : [emptyFacility()],
@@ -147,6 +186,7 @@ export function OpsUserFormPage() {
   // Campos
   const [name,     setName]     = useState('')
   const [cpf,      setCpf]      = useState('')
+  const [cns,      setCns]      = useState('')
   const [email,    setEmail]    = useState('')
   const [phone,    setPhone]    = useState('')
   const [role,     setRole]     = useState('')
@@ -194,6 +234,7 @@ export function OpsUserFormPage() {
           setExisting(detail)
           setName(detail.name ?? '')
           setCpf(detail.cpf ? maskCpf(detail.cpf) : '')
+          setCns(detail.cns ? maskCns(detail.cns) : '')
           setEmail(detail.email ?? '')
           setPhone(detail.phone)
           setRole(detail.primaryRole)
@@ -272,6 +313,22 @@ export function OpsUserFormPage() {
       : m
     ))
 
+  const setCnesBindingRole = (mi: number, fi: number, bi: number, roleId: string | null) =>
+    setAccesses(a => a.map((m, i) => i === mi
+      ? {
+          ...m,
+          facilities: m.facilities.map((f, j) => j === fi
+            ? {
+                ...f,
+                cnesBindings: f.cnesBindings.map((b, k) =>
+                  k === bi ? { ...b, roleId } : b,
+                ),
+              }
+            : f),
+        }
+      : m
+    ))
+
   // Roles disponíveis para um município: SYSTEM ∪ MUNICIPALITY do próprio.
   const rolesForMunicipality = (munId: string): RoleSummary[] => {
     return allRoles.filter(r =>
@@ -293,6 +350,11 @@ export function OpsUserFormPage() {
       if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
         e.email = 'E-mail inválido.'
       }
+    }
+    // CNS: 15 dígitos; só valida se informado.
+    if (cns.trim()) {
+      const cnsDigits = cns.replace(/\D/g, '')
+      if (cnsDigits.length !== 15) e.cns = 'CNS deve ter 15 dígitos.'
     }
     if (!role.trim())   e.role  = 'Selecione o perfil principal'
 
@@ -355,6 +417,7 @@ export function OpsUserFormPage() {
               cnesProfessionalId: b.cnesProfessionalId,
               cnesSnapshotCpf: b.cnesSnapshotCpf,
               cnesSnapshotNome: b.cnesSnapshotNome,
+              roleId: b.roleId,
             })),
           })),
       }))
@@ -376,9 +439,13 @@ export function OpsUserFormPage() {
         isActorMaster && level ? level : 'user'
 
       if (isEdit && id) {
+        const cnsDigits = cns.replace(/\D/g, '')
         await userApi.update(id, {
-          email,
+          // EmailStr rejeita ""; quando o campo está vazio, não enviar.
+          email: email.trim() || undefined,
           name,
+          // ``null`` explícito = limpar CNS; omitido quando não for USER/ADMIN.
+          cns: level === 'master' ? undefined : (cnsDigits || null),
           phone,
           primaryRole: role,
           status,
@@ -390,10 +457,13 @@ export function OpsUserFormPage() {
         navigate(`${base}/${id}`, { replace: true })
       } else {
         const cpfDigits = cpf.replace(/\D/g, '')
+        const cnsDigits = cns.replace(/\D/g, '')
         const created = await userApi.create({
           email: email.trim() || undefined,
           name,
           cpf: cpfDigits || undefined,
+          // CNS só faz sentido pra USER/ADMIN.
+          cns: safeLevel === 'master' ? undefined : (cnsDigits || undefined),
           phone,
           primaryRole: role,
           password,
@@ -408,7 +478,7 @@ export function OpsUserFormPage() {
       let msg = 'Erro ao salvar.'
       if (err instanceof HttpError) {
         if (err.code === 'conflict') msg = err.message
-        else if (err.status === 422) msg = 'Campos inválidos. Revise os dados.'
+        else if (err.status === 422) msg = describeValidationErrors(err.errors)
         else msg = err.message
       }
       setGlobalError(msg)
@@ -494,6 +564,18 @@ export function OpsUserFormPage() {
             <input value={phone} onChange={e => setPhone(maskPhone(e.target.value))}
               placeholder="(00) 00000-0000" className={inputCls(false)} />
           </Field>
+
+          {level !== 'master' && (
+            <Field
+              label="CNS"
+              error={errors.cns}
+              hint="Cartão Nacional de Saúde — opcional. 15 dígitos."
+            >
+              <input value={cns} onChange={e => setCns(maskCns(e.target.value))}
+                placeholder="000 0000 0000 0000"
+                className={inputCls(!!errors.cns)} />
+            </Field>
+          )}
 
           <Field
             label="Cargo / função principal *"
@@ -776,8 +858,12 @@ export function OpsUserFormPage() {
                               facilityId={fac.facilityId}
                               userCpfDigits={cpf.replace(/\D/g, '')}
                               bindings={fac.cnesBindings}
+                              availableRoles={rolesForMunicipality(mun.municipalityId)}
                               onAdd={b => addCnesBinding(mi, fi, b)}
                               onRemove={bi => removeCnesBinding(mi, fi, bi)}
+                              onChangeRole={(bi, roleId) =>
+                                setCnesBindingRole(mi, fi, bi, roleId)
+                              }
                             />
                           </div>
                         )}
@@ -875,15 +961,17 @@ function inputCls(hasError: boolean) {
 }
 
 function Field({
-  label, error, children, className,
+  label, error, hint, children, className,
 }: {
-  label: string; error?: string; children: React.ReactNode; className?: string
+  label: string; error?: string; hint?: string; children: React.ReactNode; className?: string
 }) {
   return (
     <div className={cn('space-y-1.5', className)}>
       <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</label>
       {children}
-      {error && <p className="text-[11px] text-red-500">{error}</p>}
+      {error
+        ? <p className="text-[11px] text-red-500">{error}</p>
+        : hint ? <p className="text-[11px] text-slate-400">{hint}</p> : null}
     </div>
   )
 }
@@ -891,14 +979,17 @@ function Field({
 // ── Vínculos CNES (CBO) — lista 0..N ────────────────────────────────────────
 
 function CnesBindingsList({
-  municipalityId, facilityId, userCpfDigits, bindings, onAdd, onRemove,
+  municipalityId, facilityId, userCpfDigits, bindings, availableRoles,
+  onAdd, onRemove, onChangeRole,
 }: {
   municipalityId: string
   facilityId: string
   userCpfDigits: string
   bindings: CnesBindingDraft[]
+  availableRoles: RoleSummary[]
   onAdd: (binding: CnesBindingDraft) => void
   onRemove: (index: number) => void
+  onChangeRole: (index: number, roleId: string | null) => void
 }) {
   const [imported, setImported] = useState<boolean | null>(null)
   const [checking, setChecking] = useState(false)
@@ -949,33 +1040,51 @@ function CnesBindingsList({
           && b.cnesSnapshotCpf.replace(/\D/g, '') !== userCpfDigits
         return (
           <div key={`${b.cnesProfessionalId}:${b.cboId}`}
-            className="flex items-start gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                {b.cnesSnapshotNome || 'Profissional'}
-              </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
-                  CBO {b.cboId}
-                </span>
-                {b.cboDescription || '—'}
-              </p>
-              {b.cnesSnapshotCpf && (
-                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                  CPF {maskCpfDisplay(b.cnesSnapshotCpf)}
+            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                  {b.cnesSnapshotNome || 'Profissional'}
                 </p>
-              )}
-              {mismatch && (
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
-                  <AlertTriangle size={10} />
-                  CPF do profissional difere do cadastro do usuário.
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
+                    CBO {b.cboId}
+                  </span>
+                  {b.cboDescription || '—'}
                 </p>
-              )}
+                {b.cnesSnapshotCpf && (
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    CPF {maskCpfDisplay(b.cnesSnapshotCpf)}
+                  </p>
+                )}
+                {mismatch && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                    <AlertTriangle size={10} />
+                    CPF do profissional difere do cadastro do usuário.
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => onRemove(idx)}
+                className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
+                <X size={13} />
+              </button>
             </div>
-            <button type="button" onClick={() => onRemove(idx)}
-              className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
-              <X size={13} />
-            </button>
+            <div>
+              <label className="block text-[10px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                Perfil para este vínculo
+              </label>
+              <ComboBox
+                value={b.roleId}
+                onChange={val => onChangeRole(idx, val)}
+                placeholder="Herda do perfil da unidade"
+                options={availableRoles.map<ComboBoxOption>(r => ({
+                  value: r.id, label: r.name,
+                }))}
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Vazio mantém o perfil da unidade. Definido sobrescreve quando este CBO está ativo.
+              </p>
+            </div>
           </div>
         )
       })}
@@ -1000,7 +1109,7 @@ function CnesBindingsList({
 }
 
 function CnesBindingSearch({
-  facilityId, userCpfDigits, excludeKeys, onPick, onCancel,
+  facilityId, excludeKeys, onPick, onCancel,
 }: {
   facilityId: string
   userCpfDigits: string
@@ -1008,110 +1117,87 @@ function CnesBindingSearch({
   onPick: (binding: CnesBindingDraft) => void
   onCancel: () => void
 }) {
-  // Inicializa com o CPF do usuário se ele tiver — vira "sugestão" automática.
-  // Admin sempre pode apagar e buscar por outro CPF/CNS/nome.
-  const [query, setQuery] = useState(userCpfDigits.length === 11 ? userCpfDigits : '')
-  const [isSuggesting, setIsSuggesting] = useState(userCpfDigits.length === 11)
+  // Carrega a lista completa de profissionais da unidade (limite do
+  // endpoint é 500). O ComboBox faz a busca client-side por nome, CPF,
+  // CNS, CBO e descrição.
   const [options, setOptions] = useState<CnesProfessionalOption[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
 
   useEffect(() => {
-    if (!facilityId || query.trim().length < 2) {
-      setOptions([])
-      return
-    }
+    if (!facilityId) return
     let cancelled = false
     setLoading(true)
-    const t = setTimeout(() => {
-      cnesAdminApi.searchProfessionals({ facilityId, q: query.trim(), limit: 20 })
-        .then(r => { if (!cancelled) setOptions(r) })
-        .catch(() => { if (!cancelled) setOptions([]) })
-        .finally(() => { if (!cancelled) setLoading(false) })
-    }, 250)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [query, facilityId])
+    setError('')
+    cnesAdminApi.searchProfessionals({ facilityId, limit: 500 })
+      .then(r => { if (!cancelled) setOptions(r) })
+      .catch(() => { if (!cancelled) setError('Falha ao carregar profissionais.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [facilityId])
+
+  // Cada profissional pode aparecer com múltiplos CBOs — a chave composta
+  // (profissional+cbo) mantém o dropdown correto.
+  const comboOptions: ComboBoxOption[] = options.map(opt => {
+    const key = `${opt.cnesProfessionalId}:${opt.cboId}`
+    const already = excludeKeys.has(key)
+    const label = already
+      ? `${opt.nome} — CBO ${opt.cboId} (já vinculado)`
+      : `${opt.nome} — CBO ${opt.cboId}`
+    return {
+      value: key,
+      label,
+      hint: opt.cboDescription || undefined,
+      // Pesquisa matchea por qualquer campo (ComboBox normaliza acentos).
+      searchText: `${opt.cpf} ${opt.nome} ${opt.cboId} ${opt.cboDescription ?? ''}`,
+    }
+  })
+
+  const handleChange = (val: string | null) => {
+    if (!val) return
+    const [profId, cboId] = val.split(':')
+    const opt = options.find(o =>
+      o.cnesProfessionalId === profId && o.cboId === cboId,
+    )
+    if (!opt) return
+    // Ignora duplicatas — a lista marca, mas se ainda clicar, não toma nota.
+    if (excludeKeys.has(val)) return
+    onPick({
+      cboId: opt.cboId,
+      cboDescription: opt.cboDescription || `CBO ${opt.cboId}`,
+      cnesProfessionalId: opt.cnesProfessionalId,
+      cnesSnapshotCpf: opt.cpf,
+      cnesSnapshotNome: opt.nome,
+      // Começa vazio — o operador pode escolher um role específico na
+      // linha do binding após adicionar.
+      roleId: null,
+    })
+  }
 
   return (
     <div className="space-y-1.5 pt-1">
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={e => { setQuery(e.target.value); setIsSuggesting(false) }}
-          placeholder={userCpfDigits ? 'Buscar por nome, CPF ou CNS...' : 'Buscar por nome ou CNS...'}
-          className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 text-slate-800 dark:text-slate-200"
-          autoFocus
-        />
-        {loading && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">
-            buscando…
-          </div>
-        )}
+      <ComboBox
+        value={null}
+        onChange={handleChange}
+        disabled={loading || !!error}
+        placeholder={
+          loading   ? 'Carregando profissionais…'
+          : error   ? error
+          : comboOptions.length === 0
+            ? 'Nenhum profissional nesta unidade.'
+            : 'Selecione um profissional…'
+        }
+        options={comboOptions}
+      />
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-slate-400">
+          Busca por nome, CPF, CNS, CBO ou descrição.
+        </p>
+        <button type="button" onClick={onCancel}
+          className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          Cancelar
+        </button>
       </div>
-      <p className="text-[10px] text-slate-400 leading-relaxed">
-        {isSuggesting
-          ? 'Sugestões abaixo com base no CPF do usuário. Confirme no clique — ou apague e busque por outro CPF/CNS/nome.'
-          : 'O vínculo só é efetivado ao clicar em uma opção abaixo.'}
-      </p>
-      {query.trim().length >= 2 && (
-        <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-h-56 overflow-y-auto bg-white dark:bg-slate-900">
-          {options.length === 0 && !loading ? (
-            <p className="p-3 text-[11px] text-slate-400 text-center">
-              {isSuggesting
-                ? 'Nenhum profissional com esse CPF nesta unidade. Apague e busque por nome/CNS.'
-                : 'Nenhum profissional encontrado nesta unidade.'}
-            </p>
-          ) : (
-            options.map(opt => {
-              const key = `${opt.cnesProfessionalId}:${opt.cboId}`
-              const already = excludeKeys.has(key)
-              const mismatch = userCpfDigits.length === 11
-                && opt.cpf.replace(/\D/g, '') !== userCpfDigits
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  disabled={already}
-                  onClick={() => onPick({
-                    cboId: opt.cboId,
-                    cboDescription: opt.cboDescription || `CBO ${opt.cboId}`,
-                    cnesProfessionalId: opt.cnesProfessionalId,
-                    cnesSnapshotCpf: opt.cpf,
-                    cnesSnapshotNome: opt.nome,
-                  })}
-                  className={cn(
-                    'w-full text-left px-3 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0',
-                    already
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
-                  )}
-                >
-                  <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                    {opt.nome} {already && <span className="text-[10px] text-slate-400">(já vinculado)</span>}
-                  </p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    <span className="font-mono">CPF {maskCpfDisplay(opt.cpf)}</span>
-                    <span className="mx-1.5">·</span>
-                    <span className="font-mono">CBO {opt.cboId}</span>
-                    <span className="mx-1.5">·</span>
-                    {opt.cboDescription || '—'}
-                  </p>
-                  {mismatch && !already && (
-                    <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
-                      <AlertTriangle size={10} />
-                      CPF difere do usuário.
-                    </p>
-                  )}
-                </button>
-              )
-            })
-          )}
-        </div>
-      )}
-      <button type="button" onClick={onCancel}
-        className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-        Cancelar
-      </button>
     </div>
   )
 }

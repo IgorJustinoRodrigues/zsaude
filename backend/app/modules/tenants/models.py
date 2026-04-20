@@ -217,3 +217,13 @@ class FacilityAccessCnesBinding(Base, TimestampedMixin):
     cnes_professional_id: Mapped[str] = mapped_column(String(16), nullable=False)
     cnes_snapshot_cpf: Mapped[str | None] = mapped_column(String(11), nullable=True)
     cnes_snapshot_nome: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Perfil aplicado quando esse binding é o ativo no work-context. ``None``
+    # mantém o papel do ``FacilityAccess`` pai (fallback). Permite perfis
+    # distintos por CBO — ex.: o mesmo profissional pode atuar como
+    # "Enfermeiro" em um CBO e "Coordenador" em outro.
+    role_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(),
+        ForeignKey("roles.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )

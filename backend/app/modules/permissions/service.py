@@ -37,7 +37,9 @@ from app.modules.users.models import User, UserLevel
 log = get_logger(__name__)
 
 _CACHE_TTL = 900  # 15 min
-_CACHE_KEY_FMT = "perms:{user_id}:{access_id}"
+# Inclui o role efetivo no cache porque o binding ativo pode sobrescrever
+# o role do acesso — sem isso, perms de um binding vazariam pra outro.
+_CACHE_KEY_FMT = "perms:{user_id}:{access_id}:{role_id}"
 
 
 # ─── Wrapper ────────────────────────────────────────────────────────────────
@@ -98,11 +100,17 @@ class PermissionService:
         self,
         user_id: uuid.UUID,
         access_id: uuid.UUID | None,
+        *,
+        role_id_override: uuid.UUID | None = None,
     ) -> ResolvedPermissions:
         """Resolve permissões efetivas para o par (usuário, acesso).
 
         - MASTER → is_root=True (passa tudo).
         - Sem acesso ou acesso sem role_id → conjunto vazio.
+        - ``role_id_override`` (opcional): quando presente, substitui o
+          ``role_id`` do ``FacilityAccess``. Usado pelo work-context pra
+          aplicar o papel do vínculo CBO ativo no lugar do papel base do
+          acesso, quando o binding define um papel próprio.
         """
         user = await self.db.get(User, user_id)
         if user is None or not user.is_active:
@@ -113,8 +121,18 @@ class PermissionService:
         if access_id is None:
             return ResolvedPermissions(codes=frozenset())
 
+        # ── Resolução do role efetivo ──────────────────────────────────
+        access = await self.db.get(FacilityAccess, access_id)
+        if access is None:
+            return ResolvedPermissions(codes=frozenset())
+        effective_role_id = role_id_override or access.role_id
+        if effective_role_id is None:
+            return ResolvedPermissions(codes=frozenset())
+
         # ── Cache ──────────────────────────────────────────────────────
-        cache_key = _CACHE_KEY_FMT.format(user_id=user_id, access_id=access_id)
+        cache_key = _CACHE_KEY_FMT.format(
+            user_id=user_id, access_id=access_id, role_id=effective_role_id,
+        )
         if self.valkey is not None:
             try:
                 cached = await self.valkey.get(cache_key)
@@ -127,12 +145,7 @@ class PermissionService:
                 except Exception:  # noqa: BLE001
                     pass
 
-        # ── Resolução fresca ───────────────────────────────────────────
-        access = await self.db.get(FacilityAccess, access_id)
-        if access is None or access.role_id is None:
-            return ResolvedPermissions(codes=frozenset())
-
-        chain = await self._role_chain(access.role_id)
+        chain = await self._role_chain(effective_role_id)
         effective: dict[str, bool] = {}
 
         if chain:
@@ -228,9 +241,17 @@ class PermissionService:
             log.warning("perm_cache_invalidate_failed", user_id=str(user_id), error=str(e))
 
     async def invalidate_access(self, user_id: uuid.UUID, access_id: uuid.UUID) -> None:
+        """Limpa todas as entradas do mesmo acesso (todos role_ids)."""
         if self.valkey is None:
             return
         try:
-            await self.valkey.delete(_CACHE_KEY_FMT.format(user_id=user_id, access_id=access_id))
+            pattern = f"perms:{user_id}:{access_id}:*"
+            cursor = 0
+            while True:
+                cursor, keys = await self.valkey.scan(cursor=cursor, match=pattern, count=200)
+                if keys:
+                    await self.valkey.delete(*keys)
+                if cursor == 0:
+                    break
         except Exception as e:  # noqa: BLE001
             log.warning("perm_cache_invalidate_failed", error=str(e))

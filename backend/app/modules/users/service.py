@@ -237,6 +237,7 @@ class UserService:
                 email=u.email,
                 name=u.name,
                 cpf=u.cpf,
+                cns=u.cns,
                 phone=u.phone,
                 status=u.status.value if hasattr(u.status, "value") else str(u.status),
                 level=u.level.value if hasattr(u.level, "value") else str(u.level),
@@ -260,8 +261,13 @@ class UserService:
         user = await self.get_or_404(user_id)
         fac_rows = await self.repo.list_facility_accesses(user_id)
 
-        # Cache local de roles por id (evita N queries repetidas).
-        role_ids = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
+        # Cache local de roles por id (evita N queries repetidas). Inclui
+        # tanto os roles do acesso quanto os roles específicos de binding.
+        role_ids: set[UUID] = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
+        for fa, _, _ in fac_rows:
+            for b in (fa.cnes_bindings or []):
+                if b.role_id:
+                    role_ids.add(b.role_id)
         roles_by_id: dict[UUID, Role] = {}
         if role_ids:
             r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids)))
@@ -299,6 +305,8 @@ class UserService:
                     cnes_professional_id=b.cnes_professional_id,
                     cnes_snapshot_cpf=b.cnes_snapshot_cpf,
                     cnes_snapshot_nome=b.cnes_snapshot_nome,
+                    role_id=b.role_id,
+                    role=(roles_by_id[b.role_id].name if b.role_id and b.role_id in roles_by_id else None),
                 )
                 for b in (fa.cnes_bindings or [])
             ]
@@ -339,6 +347,7 @@ class UserService:
             email=user.email,
             name=user.name,
             cpf=user.cpf,
+            cns=user.cns,
             phone=user.phone,
             status=user.status.value if hasattr(user.status, "value") else str(user.status),
             level=user.level.value if hasattr(user.level, "value") else str(user.level),
@@ -346,6 +355,8 @@ class UserService:
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             birth_date=user.birth_date,
+            email_verified_at=user.email_verified_at,
+            pending_email=user.pending_email,
             created_at=user.created_at,
             updated_at=user.updated_at,
             municipalities=municipalities,
@@ -367,6 +378,8 @@ class UserService:
             raise ConflictError("CPF já está em uso.")
         if payload.email and await self.repo.get_by_email(payload.email):
             raise ConflictError("E-mail já está em uso.")
+        if payload.cns and await self.repo.get_by_cns(payload.cns):
+            raise ConflictError("CNS já está em uso.")
 
         # ``login`` é interno: preferimos CPF, senão e-mail (slug antes do @).
         login = payload.cpf or (payload.email or "").lower()
@@ -380,6 +393,7 @@ class UserService:
             email=payload.email,
             name=payload.name,
             cpf=payload.cpf,
+            cns=payload.cns,
             phone=payload.phone,
             password_hash=hash_password(payload.password),
             status=status_enum,
@@ -413,10 +427,25 @@ class UserService:
                 raise ConflictError("E-mail já cadastrado para outro usuário.")
             _track("email", user.email, payload.email)
             user.email = payload.email
+            # Admin trocou o endereço → zera verificação e limpa pendente.
+            # O novo e-mail fica marcado como "não verificado" até o admin
+            # (ou o próprio usuário) disparar o link via verify-request.
+            user.email_verified_at = None
+            user.pending_email = None
 
         if payload.name is not None:
             _track("name", user.name, payload.name)
             user.name = payload.name
+        # ``cns`` é opcional. ``"cns" in payload.model_fields_set`` distingue
+        # "não enviou" de "enviou null" — admin pode limpar o campo enviando
+        # string vazia/null; front omite quando não quer alterar.
+        if "cns" in payload.model_fields_set and payload.cns != user.cns:
+            if payload.cns:
+                other = await self.repo.get_by_cns(payload.cns)
+                if other and other.id != user.id:
+                    raise ConflictError("CNS já está em uso.")
+            _track("cns", user.cns, payload.cns)
+            user.cns = payload.cns
         if payload.phone is not None:
             _track("phone", user.phone, payload.phone)
             user.phone = payload.phone
@@ -633,6 +662,9 @@ class UserService:
                         "cnes_professional_id": cnes_prof,
                         "cnes_snapshot_cpf": _norm(getattr(b, "cnes_snapshot_cpf", None)),
                         "cnes_snapshot_nome": _norm(getattr(b, "cnes_snapshot_nome", None)),
+                        # ``role_id`` opcional: quando presente, sobrescreve
+                        # o papel do acesso pai no resolve.
+                        "role_id": getattr(b, "role_id", None),
                     })
                 facilities.append((fac.facility_id, fac.role_id, bindings))
 
