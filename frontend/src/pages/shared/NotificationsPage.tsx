@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, BellOff, AlertCircle, AlertTriangle, CheckCircle, Info, Check } from 'lucide-react'
 import { useNotificationStore } from '../../store/notificationStore'
 import { cn } from '../../lib/utils'
-import type { NotificationType } from '../../types'
+import type { NotificationType } from '../../api/notifications'
 
 const TYPE_META: Record<NotificationType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
   error:   { icon: <AlertCircle size={15} />,   label: 'Erro',    color: '#ef4444', bg: '#fef2f2' },
@@ -34,9 +34,12 @@ function formatDateTime(iso: string): string {
 }
 
 export function NotificationsPage() {
-  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
+  const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotificationStore()
   const [tab, setTab]         = useState<'all' | 'unread' | 'read'>('all')
   const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all')
+
+  // Pega a lista fresh ao abrir a página.
+  useEffect(() => { void refresh() }, [refresh])
 
   const filtered = notifications.filter(n => {
     const matchTab  = tab === 'all' ? true : tab === 'unread' ? !n.read : n.read

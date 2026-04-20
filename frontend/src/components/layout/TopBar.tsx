@@ -29,7 +29,15 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
   const { user, context, contextOptions, logout } = useAuthStore()
   const can = useAuthStore(s => s.can)
   const canManageRoles = can('roles.role.view')
-  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
+  const { notifications, unreadCount, markRead, markAllRead, refresh, refreshCount } = useNotificationStore()
+
+  // Polling: lista completa no mount, e só o count em seguida pra ficar leve.
+  // Cadência 30s (inbox é menos "ao vivo" que presença).
+  useEffect(() => {
+    void refresh()
+    const id = setInterval(() => { void refreshCount() }, 30_000)
+    return () => clearInterval(id)
+  }, [refresh, refreshCount])
   const { openMobileSidebar } = useUIStore()
   const { theme, toggle: toggleDarkMode } = useTheme()
   const darkMode = theme === 'dark'
@@ -207,7 +215,10 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
         {/* Notifications */}
         <div className="relative z-50">
           <button
-            onClick={() => { setNotifOpen(v => !v); setUsersOpen(false) }}
+            onClick={() => {
+              setNotifOpen(v => { if (!v) void refresh(); return !v })
+              setUsersOpen(false)
+            }}
             className="relative flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <Bell size={16} />

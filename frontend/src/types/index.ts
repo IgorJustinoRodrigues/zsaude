@@ -285,18 +285,8 @@ export interface Vehicle {
   lastMaintenance?: string
 }
 
-// ─── Notifications ────────────────────────────────────────────────────────────
-
-export type NotificationType = 'info' | 'success' | 'warning' | 'error'
-
-export interface Notification {
-  id: string
-  type: NotificationType
-  title: string
-  message: string
-  read: boolean
-  createdAt: string
-}
+// Notificações vivem em ``api/notifications.ts`` (NotificationType,
+// NotificationItem) — conectadas ao backend real.
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
