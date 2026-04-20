@@ -241,12 +241,26 @@ async def current_context(
         raise HTTPException(status_code=403, detail="Acesso à unidade revogado.")
 
     # Módulos derivados das permissões (intersecção com módulos operacionais).
-    # MASTER sempre enxerga todos os operacionais, mesmo os que ainda não
-    # têm permissões registradas no catálogo.
+    # MASTER também respeita os ``enabled_modules`` do município — não faz
+    # sentido oferecer HSP numa cidade que desativou o módulo. Se a cidade
+    # nunca configurou (``None``), cai no conjunto completo.
+    from app.modules.tenants.models import Municipality
+    mun_row = await db.scalar(
+        select(Municipality.enabled_modules).where(
+            Municipality.id == UUID(payload["mun"]),
+        )
+    )
+    enabled_in_municipality: frozenset[str] = (
+        frozenset(mun_row) & _OPERATIONAL_MODULES if mun_row
+        else _OPERATIONAL_MODULES
+    )
+
     if permissions.is_root:
-        derived_modules = sorted(_OPERATIONAL_MODULES)
+        derived_modules = sorted(enabled_in_municipality)
     else:
-        derived_modules = sorted(permissions.modules() & _OPERATIONAL_MODULES)
+        derived_modules = sorted(
+            permissions.modules() & enabled_in_municipality
+        )
 
     ctx = WorkContext(
         user_id=user.id,
