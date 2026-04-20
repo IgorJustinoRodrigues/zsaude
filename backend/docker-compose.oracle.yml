@@ -11,14 +11,17 @@ services:
     image: gvenzl/oracle-free:23-slim
     environment:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-oracle_dev}
-      APP_USER: ${ORACLE_APP_USER:-zsaude}
-      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-zsaude_dev_password}
+      # Usuário = schema no Oracle. App hardcoda "APP" como default
+      # (ver app/db/session.py::_set_tenant_context_oracle). O DB tem que
+      # ter esse user pra o ALTER SESSION SET CURRENT_SCHEMA funcionar.
+      APP_USER: ${ORACLE_APP_USER:-APP}
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-app_dev_password}
     ports:
       - "1521:1521"
     volumes:
       - oracle_data:/opt/oracle/oradata
     healthcheck:
-      test: ["CMD-SHELL", "echo 'SELECT 1 FROM dual;' | sqlplus -s ${ORACLE_APP_USER:-zsaude}/${ORACLE_APP_PASSWORD:-zsaude_dev_password}@localhost:1521/FREEPDB1 | grep -q '1'"]
+      test: ["CMD-SHELL", "echo 'SELECT 1 FROM dual;' | sqlplus -s ${ORACLE_APP_USER:-APP}/${ORACLE_APP_PASSWORD:-app_dev_password}@localhost:1521/FREEPDB1 | grep -q '1'"]
       interval: 15s
       timeout: 10s
       retries: 20

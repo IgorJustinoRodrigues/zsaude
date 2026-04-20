@@ -65,7 +65,15 @@ def _register_oracle_null_fix() -> None:
             if not isinstance(col.type, SAString) or col.nullable:
                 continue
             val = getattr(target, col.key, None)
-            if val is None or val == "":
+            # Se há ``server_default``, deixa o banco aplicar quando val é
+            # None — sobrescrever com ' ' estraga colunas como ``level``
+            # (enum com default ``'user'``) e força o valor sentinel vazio.
+            # Só coage string vazia (empty) pra espaço; None segue pro DB.
+            if val == "":
+                object.__setattr__(target, col.key, " ")
+            elif val is None and col.server_default is None:
+                # Sem default no banco e sem valor Python: coage pra ' '
+                # pra evitar INSERT de NULL numa coluna NOT NULL.
                 object.__setattr__(target, col.key, " ")
 
     @event.listens_for(Base, "before_insert", propagate=True)
