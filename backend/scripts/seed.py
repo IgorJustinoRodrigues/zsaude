@@ -39,9 +39,18 @@ def fid(key: str) -> uuid.UUID:
 # ─── Dados ────────────────────────────────────────────────────────────────────
 
 MUNICIPALITIES = [
-    {"key": "mun1", "name": "Goiânia",              "state": "GO", "ibge": "5208707"},
-    {"key": "mun2", "name": "Aparecida de Goiânia", "state": "GO", "ibge": "5201405"},
-    {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108"},
+    # ``enabled_modules`` define quais módulos operacionais aparecem na
+    # seleção de sistema. None = "todos habilitados" (fallback). Aqui
+    # configuramos cenários distintos pra demonstrar a filtragem:
+    # - Goiânia: cidade grande, tudo ligado.
+    # - Aparecida: perfil clínico-hospitalar.
+    # - Anápolis: só clínica + chamadas + indicadores.
+    {"key": "mun1", "name": "Goiânia",              "state": "GO", "ibge": "5208707",
+     "enabled_modules": ["cln", "dgn", "hsp", "pln", "fsc", "ops", "ind", "cha", "esu"]},
+    {"key": "mun2", "name": "Aparecida de Goiânia", "state": "GO", "ibge": "5201405",
+     "enabled_modules": ["cln", "dgn", "hsp", "ind", "cha"]},
+    {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108",
+     "enabled_modules": ["cln", "cha", "ind"]},
 ]
 
 FACILITIES = [
@@ -117,9 +126,19 @@ FAC_ACCESS = [
 
 async def upsert_municipalities(session) -> None:
     for m in MUNICIPALITIES:
-        exists = await session.scalar(select(Municipality).where(Municipality.id == fid(m["key"])))
-        if exists is None:
-            session.add(Municipality(id=fid(m["key"]), name=m["name"], state=m["state"], ibge=m["ibge"]))
+        row = await session.scalar(select(Municipality).where(Municipality.id == fid(m["key"])))
+        if row is None:
+            session.add(Municipality(
+                id=fid(m["key"]),
+                name=m["name"],
+                state=m["state"],
+                ibge=m["ibge"],
+                enabled_modules=m.get("enabled_modules"),
+            ))
+        else:
+            # Re-sincroniza enabled_modules — se o seed foi ajustado e
+            # o município já existia, idempotência exige atualizar.
+            row.enabled_modules = m.get("enabled_modules")
 
 
 async def upsert_facilities(session) -> None:
