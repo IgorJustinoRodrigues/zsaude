@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, Building2, Search, Palette } from 'lucide-react'
 import { directoryApi, type FacilityDto, type MunicipalityDto } from '../../api/workContext'
 import { toast } from '../../store/toastStore'
@@ -8,11 +8,16 @@ import { normalize } from '../../lib/utils'
 
 export function SysFacilityListPage() {
   const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
   const [muns, setMuns] = useState<MunicipalityDto[]>([])
   const [facilities, setFacilities] = useState<FacilityDto[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [mFilter, setMFilter] = useState<string>('Todos')
+  // Pré-carrega o filtro do query param ?municipalityId=X quando presente
+  // (usado pelo form pra voltar à lista já filtrada).
+  const [mFilter, setMFilter] = useState<string>(
+    params.get('municipalityId') ?? 'Todos',
+  )
 
   useEffect(() => {
     Promise.all([directoryApi.listMunicipalities(), directoryApi.listFacilities()])
@@ -58,7 +63,15 @@ export function SysFacilityListPage() {
             placeholder="Buscar por nome, tipo ou município..."
             className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 text-slate-800 dark:text-slate-200" />
         </div>
-        <select value={mFilter} onChange={e => setMFilter(e.target.value)}
+        <select
+          value={mFilter}
+          onChange={e => {
+            const v = e.target.value
+            setMFilter(v)
+            // Mantém a URL em sincronia pra deep-linking e "voltar" na navegação.
+            if (v === 'Todos') setParams({}, { replace: true })
+            else setParams({ municipalityId: v }, { replace: true })
+          }}
           className="px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-violet-400 text-slate-800 dark:text-slate-200">
           <option value="Todos">Todos os municípios</option>
           {muns.map(m => <option key={m.id} value={m.id}>{m.name} – {m.state}</option>)}

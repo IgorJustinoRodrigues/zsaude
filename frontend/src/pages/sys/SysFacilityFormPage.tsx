@@ -105,25 +105,41 @@ export function SysFacilityFormPage() {
       // herdando, manda null pro backend limpar a personalização.
       const payloadMods = enabledModules === null ? null : enabledModules.slice().sort()
       if (isEdit && id) {
-        await sysApi.updateFacility(id, {
+        const updated = await sysApi.updateFacility(id, {
           name, shortName, type, cnes: cnes || null,
           enabledModules: payloadMods,
         })
+        // Ressincroniza o form com a resposta do backend (por exemplo
+        // enabledModules pode ter sido sanitizado).
+        setEnabledModules(
+          (updated.enabledModules as SystemId[] | null | undefined) ?? null,
+        )
         toast.success('Unidade atualizada', name)
+        setSaving(false)
+        // Permanece na tela de edição.
       } else {
-        await sysApi.createFacility({
+        const created = await sysApi.createFacility({
           municipalityId, name, shortName, type, cnes: cnes || null,
           enabledModules: payloadMods,
         })
         toast.success('Unidade criada', `${shortName} cadastrada.`)
+        // Vai pra edição do recém-criado (permite continuar ajustando
+        // e depois voltar ao list do município onde foi criada).
+        navigate(`/sys/unidades/${created.id}`, { replace: true })
       }
-      navigate('/sys/unidades', { replace: true })
     } catch (e) {
       const msg = e instanceof HttpError ? e.message : 'Erro ao salvar.'
       setError(msg)
       toast.error(isEdit ? 'Falha ao salvar alterações' : 'Falha ao criar unidade', msg)
       setSaving(false)
     }
+  }
+
+  /** Volta pra lista filtrando pelo município atual (útil pra ver as
+   *  "irmãs" da unidade editada sem perder o recorte). */
+  const backToList = () => {
+    const qs = municipalityId ? `?municipalityId=${municipalityId}` : ''
+    navigate(`/sys/unidades${qs}`)
   }
 
   if (loading) {
@@ -140,7 +156,7 @@ export function SysFacilityFormPage() {
   return (
     <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate('/sys/unidades')}
+        <button type="button" onClick={backToList}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           <ArrowLeft size={18} />
         </button>
@@ -262,7 +278,7 @@ export function SysFacilityFormPage() {
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        <button type="button" onClick={() => navigate('/sys/unidades')} disabled={saving}
+        <button type="button" onClick={backToList} disabled={saving}
           className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           Cancelar
         </button>
