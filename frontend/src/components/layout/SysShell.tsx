@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, MapPin, Building2, Users, Settings, ScrollText,
+  LayoutDashboard, MapPin, Building2, Users, Stethoscope, Settings, ScrollText,
   LogOut, Shield, ChevronRight, KeyRound, LayoutGrid, Download, Database,
   Sparkles, User, Cake, Mail, Megaphone,
 } from 'lucide-react'
@@ -59,6 +59,7 @@ export function SysShell() {
           <SysNavSection label="Cadastros" />
           <SysNavItem to="/sys/municipios" icon={<MapPin size={15} />}>Municípios</SysNavItem>
           <SysNavItem to="/sys/unidades"    icon={<Building2 size={15} />}>Unidades</SysNavItem>
+          <SysNavItem to="/sys/profissionais" icon={<Stethoscope size={15} />}>Profissionais</SysNavItem>
           <SysNavItem to="/sys/usuarios"    icon={<Users size={15} />}>Administradores</SysNavItem>
           <SysNavItem to="/sys/perfis"       icon={<KeyRound size={15} />}>Perfis & permissões</SysNavItem>
 

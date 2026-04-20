@@ -40,6 +40,15 @@ export interface MunicipalityAccess {
   facilities: FacilityAccess[]
 }
 
+export interface ActiveCboBinding {
+  id: string
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 /** The currently active municipality + facility + role + modules */
 export interface WorkContext {
   municipality: Municipality
@@ -48,6 +57,8 @@ export interface WorkContext {
   modules: SystemId[]
   /** Lista de permission codes resolvidos; `['*']` = MASTER (super-usuário). */
   permissions: string[]
+  /** Vínculo CNES ativo na sessão (null se o acesso não tem nenhum ou MASTER). */
+  cboBinding: ActiveCboBinding | null
 }
 
 export interface User {

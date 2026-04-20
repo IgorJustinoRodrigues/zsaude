@@ -1,47 +1,37 @@
-"""Provider OpenRouter — wrapper do OpenAIProvider com base_url fixa.
+"""Provider OpenRouter — wrapper do OpenAIProvider com base_url + headers.
 
-Como OpenRouter é API OpenAI-compatible, herda tudo do OpenAIProvider.
-Só força uma base_url default se o caller não passou (override ainda
-pode vir da chave do município).
+OpenRouter é API OpenAI-compatible, então herdamos tudo do OpenAIProvider.
+Porém a API deles exige dois headers em todas as chamadas:
+
+- ``HTTP-Referer``: URL do app (usada para ranking e identificação).
+- ``X-Title``: nome legível do app (aparece no dashboard deles).
+
+Sem esses headers o app fica invisível no ranking, tem rate-limits mais
+rígidos e pode sofrer priorização menor no roteamento da OpenRouter.
 """
 
 from __future__ import annotations
 
+from app.core.config import settings
+from app.modules.ai.providers.base import ProviderCredentials
 from app.modules.ai.providers.openai import OpenAIProvider
-from app.modules.ai.providers.base import (
-    ChatRequest,
-    ChatResponse,
-    EmbedRequest,
-    EmbedResponse,
-    ProviderCredentials,
-)
 
 _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+_APP_TITLE = "zSaude"
 
 
 class OpenRouterProvider(OpenAIProvider):
     slug = "openrouter"
 
-    async def chat(
-        self,
-        req: ChatRequest,
-        *,
-        model: str,
-        creds: ProviderCredentials,
-    ) -> ChatResponse:
-        return await super().chat(req, model=model, creds=self._ensure_base(creds))
+    def _make_client(self, creds: ProviderCredentials):
+        from openai import AsyncOpenAI
 
-    async def embed(
-        self,
-        req: EmbedRequest,
-        *,
-        model: str,
-        creds: ProviderCredentials,
-    ) -> EmbedResponse:
-        return await super().embed(req, model=model, creds=self._ensure_base(creds))
-
-    @staticmethod
-    def _ensure_base(creds: ProviderCredentials) -> ProviderCredentials:
-        if creds.base_url:
-            return creds
-        return ProviderCredentials(api_key=creds.api_key, base_url=_OPENROUTER_BASE)
+        base = creds.base_url or _OPENROUTER_BASE
+        return AsyncOpenAI(
+            api_key=creds.api_key,
+            base_url=base,
+            default_headers={
+                "HTTP-Referer": settings.app_public_url,
+                "X-Title": _APP_TITLE,
+            },
+        )

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Info } from 'lucide-react'
+import { ArrowLeft, Info, Archive, ArchiveRestore } from 'lucide-react'
 import { sysApi, type FacilityAdmin } from '../../api/sys'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
@@ -28,6 +28,8 @@ export function SysFacilityFormPage() {
   const [enabledModules, setEnabledModules] = useState<SystemId[] | null>(null)
   // enabled_modules do município escolhido (pra saber o que o user pode marcar)
   const [munEnabledModules, setMunEnabledModules] = useState<SystemId[] | null>(null)
+  const [archived, setArchived] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -48,6 +50,7 @@ export function SysFacilityFormPage() {
             setEnabledModules(
               (f.enabledModules as SystemId[] | null | undefined) ?? null,
             )
+            setArchived(!!f.archived)
           }
         }
       } finally { setLoading(false) }
@@ -142,6 +145,28 @@ export function SysFacilityFormPage() {
     navigate(`/sys/unidades${qs}`)
   }
 
+  const handleToggleArchive = async () => {
+    if (!id) return
+    setArchiving(true)
+    try {
+      if (archived) {
+        await sysApi.unarchiveFacility(id)
+        toast.success('Unidade ativada', shortName || name)
+      } else {
+        await sysApi.archiveFacility(id)
+        toast.success('Unidade arquivada', shortName || name)
+      }
+      setArchived(prev => !prev)
+    } catch (e) {
+      toast.error(
+        archived ? 'Falha ao ativar' : 'Falha ao arquivar',
+        e instanceof HttpError ? e.message : '',
+      )
+    } finally {
+      setArchiving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -160,14 +185,34 @@ export function SysFacilityFormPage() {
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <div>
-          <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             {isEdit ? 'Editar unidade' : 'Nova unidade'}
+            {isEdit && archived && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                ARQUIVADA
+              </span>
+            )}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {isEdit ? 'Município vinculado não pode ser alterado.' : 'Unidade é criada dentro de um município.'}
           </p>
         </div>
+        {isEdit && (
+          <button type="button"
+            onClick={handleToggleArchive}
+            disabled={archiving}
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors disabled:opacity-50',
+              archived
+                ? 'border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400',
+            )}
+          >
+            {archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+            {archiving ? '...' : archived ? 'Ativar unidade' : 'Arquivar unidade'}
+          </button>
+        )}
       </div>
 
       {error && (

@@ -62,16 +62,19 @@ function checkPassword(pwd: string) {
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
+interface CnesBindingDraft {
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 interface FacilityAccess {
   facilityId: string
   roleId: string
-  cboId: string | null
-  cboDescription: string | null
-  cnesProfessionalId: string | null
-  /** Snapshot de CPF/nome do profissional no CNES — usado pro aviso visual
-   *  e pro reconciliador detectar mudanças na próxima importação. */
-  cnesSnapshotCpf: string | null
-  cnesSnapshotNome: string | null
+  /** Lista de vínculos CNES atribuídos a esse acesso. */
+  cnesBindings: CnesBindingDraft[]
 }
 
 interface MunicipalityAccess {
@@ -82,8 +85,7 @@ interface MunicipalityAccess {
 
 const emptyFacility = (): FacilityAccess => ({
   facilityId: '', roleId: '',
-  cboId: null, cboDescription: null, cnesProfessionalId: null,
-  cnesSnapshotCpf: null, cnesSnapshotNome: null,
+  cnesBindings: [],
 })
 const emptyMunicipality = (): MunicipalityAccess => ({ municipalityId: '', expanded: true, facilities: [emptyFacility()] })
 
@@ -107,11 +109,13 @@ function detailToAccesses(
           ? m.facilities.map(f => ({
               facilityId: f.facilityId,
               roleId: f.roleId,
-              cboId: f.cboId,
-              cboDescription: f.cboDescription,
-              cnesProfessionalId: f.cnesProfessionalId,
-              cnesSnapshotCpf: f.cnesSnapshotCpf,
-              cnesSnapshotNome: f.cnesSnapshotNome,
+              cnesBindings: (f.cnesBindings ?? []).map(b => ({
+                cboId: b.cboId,
+                cboDescription: b.cboDescription,
+                cnesProfessionalId: b.cnesProfessionalId,
+                cnesSnapshotCpf: b.cnesSnapshotCpf,
+                cnesSnapshotNome: b.cnesSnapshotNome,
+              })),
             }))
           : [emptyFacility()],
       }))
@@ -225,49 +229,44 @@ export function OpsUserFormPage() {
   const addFacility        = (mi: number) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, facilities: [...m.facilities, emptyFacility()] } : m))
   const removeFacility     = (mi: number, fi: number) => setAccesses(a => a.map((m, i) => i === mi ? { ...m, facilities: m.facilities.filter((_, j) => j !== fi) } : m))
 
-  const setFacilityField = (mi: number, fi: number, field: keyof FacilityAccess, value: string) =>
+  const setFacilityField = (mi: number, fi: number, field: 'facilityId' | 'roleId', value: string) =>
     setAccesses(a => a.map((m, i) => i === mi
       ? {
           ...m,
           facilities: m.facilities.map((f, j) => {
             if (j !== fi) return f
             const next: FacilityAccess = { ...f, [field]: value }
-            // Trocar de unidade invalida o vínculo CNES anterior.
-            if (field === 'facilityId') {
-              next.cboId = null
-              next.cboDescription = null
-              next.cnesProfessionalId = null
-              next.cnesSnapshotCpf = null
-              next.cnesSnapshotNome = null
-            }
+            // Trocar de unidade invalida os vínculos CNES anteriores.
+            if (field === 'facilityId') next.cnesBindings = []
             return next
           }),
         }
       : m
     ))
 
-  const setFacilityCnesBinding = (
-    mi: number, fi: number,
-    binding: {
-      cboId: string
-      cboDescription: string
-      cnesProfessionalId: string
-      cnesSnapshotCpf: string
-      cnesSnapshotNome: string
-    } | null,
-  ) =>
+  const addCnesBinding = (mi: number, fi: number, binding: CnesBindingDraft) =>
+    setAccesses(a => a.map((m, i) => i === mi
+      ? {
+          ...m,
+          facilities: m.facilities.map((f, j) => {
+            if (j !== fi) return f
+            // Deduplica por (profissional, cbo) — impede dois bindings iguais.
+            const exists = f.cnesBindings.some(b =>
+              b.cnesProfessionalId === binding.cnesProfessionalId && b.cboId === binding.cboId,
+            )
+            if (exists) return f
+            return { ...f, cnesBindings: [...f.cnesBindings, binding] }
+          }),
+        }
+      : m
+    ))
+
+  const removeCnesBinding = (mi: number, fi: number, bi: number) =>
     setAccesses(a => a.map((m, i) => i === mi
       ? {
           ...m,
           facilities: m.facilities.map((f, j) => j === fi
-            ? {
-                ...f,
-                cboId: binding?.cboId ?? null,
-                cboDescription: binding?.cboDescription ?? null,
-                cnesProfessionalId: binding?.cnesProfessionalId ?? null,
-                cnesSnapshotCpf: binding?.cnesSnapshotCpf ?? null,
-                cnesSnapshotNome: binding?.cnesSnapshotNome ?? null,
-              }
+            ? { ...f, cnesBindings: f.cnesBindings.filter((_, k) => k !== bi) }
             : f),
         }
       : m
@@ -350,11 +349,13 @@ export function OpsUserFormPage() {
           .map(f => ({
             facilityId: f.facilityId,
             roleId: f.roleId,
-            cboId: f.cboId,
-            cboDescription: f.cboDescription,
-            cnesProfessionalId: f.cnesProfessionalId,
-            cnesSnapshotCpf: f.cnesSnapshotCpf,
-            cnesSnapshotNome: f.cnesSnapshotNome,
+            cnesBindings: f.cnesBindings.map(b => ({
+              cboId: b.cboId,
+              cboDescription: b.cboDescription,
+              cnesProfessionalId: b.cnesProfessionalId,
+              cnesSnapshotCpf: b.cnesSnapshotCpf,
+              cnesSnapshotNome: b.cnesSnapshotNome,
+            })),
           })),
       }))
   }
@@ -767,21 +768,16 @@ export function OpsUserFormPage() {
                           </div>
                         </div>
 
-                        {/* Vínculo CNES — live search por nome/CPF na unidade selecionada */}
+                        {/* Vínculos CNES (0..N) — lista + busca pra adicionar */}
                         {fac.facilityId && mun.municipalityId && (
                           <div className="mt-3">
-                            <CnesBindingField
+                            <CnesBindingsList
                               municipalityId={mun.municipalityId}
                               facilityId={fac.facilityId}
                               userCpfDigits={cpf.replace(/\D/g, '')}
-                              current={{
-                                cboId: fac.cboId,
-                                cboDescription: fac.cboDescription,
-                                cnesProfessionalId: fac.cnesProfessionalId,
-                                cnesSnapshotCpf: fac.cnesSnapshotCpf,
-                                cnesSnapshotNome: fac.cnesSnapshotNome,
-                              }}
-                              onChange={binding => setFacilityCnesBinding(mi, fi, binding)}
+                              bindings={fac.cnesBindings}
+                              onAdd={b => addCnesBinding(mi, fi, b)}
+                              onRemove={bi => removeCnesBinding(mi, fi, bi)}
                             />
                           </div>
                         )}
@@ -892,44 +888,22 @@ function Field({
   )
 }
 
-// ── Vínculo CNES (CBO) ───────────────────────────────────────────────────────
+// ── Vínculos CNES (CBO) — lista 0..N ────────────────────────────────────────
 
-function CnesBindingField({
-  municipalityId, facilityId, userCpfDigits, current, onChange,
+function CnesBindingsList({
+  municipalityId, facilityId, userCpfDigits, bindings, onAdd, onRemove,
 }: {
   municipalityId: string
   facilityId: string
-  userCpfDigits: string  // 11 dígitos ou vazio
-  current: {
-    cboId: string | null
-    cboDescription: string | null
-    cnesProfessionalId: string | null
-    cnesSnapshotCpf: string | null
-    cnesSnapshotNome: string | null
-  }
-  onChange: (
-    binding: {
-      cboId: string
-      cboDescription: string
-      cnesProfessionalId: string
-      cnesSnapshotCpf: string
-      cnesSnapshotNome: string
-    } | null,
-  ) => void
+  userCpfDigits: string
+  bindings: CnesBindingDraft[]
+  onAdd: (binding: CnesBindingDraft) => void
+  onRemove: (index: number) => void
 }) {
   const [imported, setImported] = useState<boolean | null>(null)
   const [checking, setChecking] = useState(false)
-  // Inicializa com o CPF do usuário se ele tiver — vira "sugestão" automática.
-  // Admin sempre pode apagar e buscar por outro CPF/CNS/nome.
-  const [query, setQuery] = useState(userCpfDigits.length === 11 ? userCpfDigits : '')
-  // Marca se a query atual veio da sugestão inicial (pra trocar o label
-  // de "Resultados" pra "Sugestões com base no CPF do usuário").
-  const [isSuggesting, setIsSuggesting] = useState(userCpfDigits.length === 11)
-  const [options, setOptions] = useState<CnesProfessionalOption[]>([])
-  const [loading, setLoading] = useState(false)
-  const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
 
-  // Checa se o município tem import CNES — define se o combo fica ativo.
   useEffect(() => {
     let cancelled = false
     setChecking(true)
@@ -941,33 +915,8 @@ function CnesBindingField({
     return () => { cancelled = true }
   }, [municipalityId])
 
-  // Busca live (debounce 250ms). Só dispara quando há query com 2+ chars
-  // e a unidade tem CNES importado.
-  useEffect(() => {
-    if (!imported || !facilityId || query.trim().length < 2) {
-      setOptions([])
-      return
-    }
-    let cancelled = false
-    setLoading(true)
-    const t = setTimeout(() => {
-      cnesAdminApi.searchProfessionals({ facilityId, q: query.trim(), limit: 20 })
-        .then(r => { if (!cancelled) setOptions(r) })
-        .catch(() => { if (!cancelled) setOptions([]) })
-        .finally(() => { if (!cancelled) setLoading(false) })
-    }, 250)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [query, facilityId, imported])
-
-  const cpfMismatch = useMemo(() => {
-    if (!current.cnesSnapshotCpf || !userCpfDigits || userCpfDigits.length !== 11) return false
-    return current.cnesSnapshotCpf.replace(/\D/g, '') !== userCpfDigits
-  }, [current.cnesSnapshotCpf, userCpfDigits])
-
   if (checking) {
-    return (
-      <div className="text-[11px] text-slate-400">Verificando CNES do município...</div>
-    )
+    return <div className="text-[11px] text-slate-400">Verificando CNES do município...</div>
   }
   if (imported === false) {
     return (
@@ -982,44 +931,108 @@ function CnesBindingField({
     )
   }
 
-  // Vínculo atual (já salvo ou recém-escolhido)
-  if (current.cboId && !open) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-slate-700 dark:text-slate-200 truncate">
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
-              CBO {current.cboId}
-            </span>
-            <span className="text-slate-500 dark:text-slate-400">
-              {current.cboDescription || '—'}
-            </span>
-          </p>
-          {cpfMismatch && (
-            <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
-              <AlertTriangle size={10} />
-              CPF do profissional no CNES difere do cadastro do usuário — confirme se é intencional.
-            </p>
-          )}
-        </div>
-        <button type="button" onClick={() => setOpen(true)}
-          className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline">
-          Trocar
-        </button>
-        <button type="button" onClick={() => onChange(null)}
-          className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
-          <X size={13} />
-        </button>
-      </div>
-    )
-  }
-
-  // Buscador ativo
   return (
-    <div className="space-y-1.5">
-      <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">
-        Vínculo CNES (opcional)
-      </label>
+    <div className="space-y-2">
+      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        Vínculos CNES (opcional)
+      </p>
+
+      {bindings.length === 0 && !adding && (
+        <p className="text-[11px] text-slate-400 italic">
+          Nenhum profissional vinculado a esse acesso.
+        </p>
+      )}
+
+      {bindings.map((b, idx) => {
+        const mismatch = userCpfDigits.length === 11
+          && b.cnesSnapshotCpf
+          && b.cnesSnapshotCpf.replace(/\D/g, '') !== userCpfDigits
+        return (
+          <div key={`${b.cnesProfessionalId}:${b.cboId}`}
+            className="flex items-start gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                {b.cnesSnapshotNome || 'Profissional'}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
+                  CBO {b.cboId}
+                </span>
+                {b.cboDescription || '—'}
+              </p>
+              {b.cnesSnapshotCpf && (
+                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  CPF {maskCpfDisplay(b.cnesSnapshotCpf)}
+                </p>
+              )}
+              {mismatch && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                  <AlertTriangle size={10} />
+                  CPF do profissional difere do cadastro do usuário.
+                </p>
+              )}
+            </div>
+            <button type="button" onClick={() => onRemove(idx)}
+              className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
+              <X size={13} />
+            </button>
+          </div>
+        )
+      })}
+
+      {adding ? (
+        <CnesBindingSearch
+          facilityId={facilityId}
+          userCpfDigits={userCpfDigits}
+          excludeKeys={new Set(bindings.map(b => `${b.cnesProfessionalId}:${b.cboId}`))}
+          onPick={b => { onAdd(b); setAdding(false) }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <button type="button" onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-1.5 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300">
+          <Plus size={12} />
+          Adicionar vínculo CNES
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CnesBindingSearch({
+  facilityId, userCpfDigits, excludeKeys, onPick, onCancel,
+}: {
+  facilityId: string
+  userCpfDigits: string
+  excludeKeys: Set<string>
+  onPick: (binding: CnesBindingDraft) => void
+  onCancel: () => void
+}) {
+  // Inicializa com o CPF do usuário se ele tiver — vira "sugestão" automática.
+  // Admin sempre pode apagar e buscar por outro CPF/CNS/nome.
+  const [query, setQuery] = useState(userCpfDigits.length === 11 ? userCpfDigits : '')
+  const [isSuggesting, setIsSuggesting] = useState(userCpfDigits.length === 11)
+  const [options, setOptions] = useState<CnesProfessionalOption[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!facilityId || query.trim().length < 2) {
+      setOptions([])
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    const t = setTimeout(() => {
+      cnesAdminApi.searchProfessionals({ facilityId, q: query.trim(), limit: 20 })
+        .then(r => { if (!cancelled) setOptions(r) })
+        .catch(() => { if (!cancelled) setOptions([]) })
+        .finally(() => { if (!cancelled) setLoading(false) })
+    }, 250)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [query, facilityId])
+
+  return (
+    <div className="space-y-1.5 pt-1">
       <div className="relative">
         <input
           type="text"
@@ -1027,7 +1040,7 @@ function CnesBindingField({
           onChange={e => { setQuery(e.target.value); setIsSuggesting(false) }}
           placeholder={userCpfDigits ? 'Buscar por nome, CPF ou CNS...' : 'Buscar por nome ou CNS...'}
           className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 text-slate-800 dark:text-slate-200"
-          autoFocus={open}
+          autoFocus
         />
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">
@@ -1050,27 +1063,31 @@ function CnesBindingField({
             </p>
           ) : (
             options.map(opt => {
+              const key = `${opt.cnesProfessionalId}:${opt.cboId}`
+              const already = excludeKeys.has(key)
               const mismatch = userCpfDigits.length === 11
                 && opt.cpf.replace(/\D/g, '') !== userCpfDigits
               return (
                 <button
-                  key={`${opt.cnesProfessionalId}:${opt.cboId}`}
+                  key={key}
                   type="button"
-                  onClick={() => {
-                    onChange({
-                      cboId: opt.cboId,
-                      cboDescription: opt.cboDescription || `CBO ${opt.cboId}`,
-                      cnesProfessionalId: opt.cnesProfessionalId,
-                      cnesSnapshotCpf: opt.cpf,
-                      cnesSnapshotNome: opt.nome,
-                    })
-                    setOpen(false)
-                    setQuery('')
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 last:border-b-0"
+                  disabled={already}
+                  onClick={() => onPick({
+                    cboId: opt.cboId,
+                    cboDescription: opt.cboDescription || `CBO ${opt.cboId}`,
+                    cnesProfessionalId: opt.cnesProfessionalId,
+                    cnesSnapshotCpf: opt.cpf,
+                    cnesSnapshotNome: opt.nome,
+                  })}
+                  className={cn(
+                    'w-full text-left px-3 py-2 border-b border-slate-100 dark:border-slate-800 last:border-b-0',
+                    already
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
+                  )}
                 >
                   <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                    {opt.nome}
+                    {opt.nome} {already && <span className="text-[10px] text-slate-400">(já vinculado)</span>}
                   </p>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                     <span className="font-mono">CPF {maskCpfDisplay(opt.cpf)}</span>
@@ -1079,7 +1096,7 @@ function CnesBindingField({
                     <span className="mx-1.5">·</span>
                     {opt.cboDescription || '—'}
                   </p>
-                  {mismatch && (
+                  {mismatch && !already && (
                     <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
                       <AlertTriangle size={10} />
                       CPF difere do usuário.
@@ -1091,12 +1108,10 @@ function CnesBindingField({
           )}
         </div>
       )}
-      {current.cboId && open && (
-        <button type="button" onClick={() => { setOpen(false); setQuery('') }}
-          className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-          Cancelar
-        </button>
-      )}
+      <button type="button" onClick={onCancel}
+        className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+        Cancelar
+      </button>
     </div>
   )
 }

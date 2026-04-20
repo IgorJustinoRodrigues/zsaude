@@ -18,12 +18,26 @@ class FacilityRead(CamelModel):
     municipality_id: UUID
     # ``None`` = herda do município; lista = personalização.
     enabled_modules: list[str] | None = None
+    archived: bool = False
+
+
+class CnesBindingRead(CamelModel):
+    id: UUID
+    cbo_id: str
+    cbo_description: str | None = None
+    cnes_professional_id: str
+    cnes_snapshot_cpf: str | None = None
+    cnes_snapshot_nome: str | None = None
 
 
 class FacilityWithAccess(CamelModel):
     facility: FacilityRead
     role: str
     modules: list[str]
+    # Vínculos CNES atribuídos a esse acesso (profissional × CBO). Vazio
+    # quando MASTER ou quando o acesso ainda não foi vinculado a nenhum
+    # profissional.
+    cnes_bindings: list[CnesBindingRead] = []
 
 
 class MunicipalityRead(CamelModel):
@@ -49,6 +63,10 @@ class WorkContextSelect(CamelModel):
     facility_id: UUID
     # Módulo opcional: se vazio, mantém todos os módulos disponíveis na unidade.
     module: str | None = Field(default=None, max_length=10)
+    # Vínculo CNES ativo na sessão (opcional). Quando o ``FacilityAccess``
+    # tem múltiplos CBOs vinculados, o frontend pede qual usar; os demais
+    # casos (0 ou 1 binding) passam ``None`` e o service resolve sozinho.
+    cbo_binding_id: UUID | None = None
 
 
 class WorkContextIssued(CamelModel):
@@ -59,6 +77,8 @@ class WorkContextIssued(CamelModel):
     modules: list[str]
     permissions: list[str]
     expires_in: int
+    # Vínculo CNES ativo na sessão (null quando não há binding ou MASTER).
+    cbo_binding: CnesBindingRead | None = None
 
 
 class WorkContextCurrent(CamelModel):
@@ -67,6 +87,7 @@ class WorkContextCurrent(CamelModel):
     role: str
     modules: list[str]
     permissions: list[str]
+    cbo_binding: CnesBindingRead | None = None
 
 
 # ─── Admin CRUD ──────────────────────────────────────────────────────────────
@@ -105,6 +126,10 @@ class MunicipalityCreate(CamelModel):
     # Módulos operacionais habilitados. Se omitido, usa o conjunto completo.
     enabled_modules: list[str] | None = None
     timezone: str = Field(default="America/Sao_Paulo", min_length=3, max_length=64)
+    # Credenciais CadSUS opcionais na criação (se omitidas, caem no fallback
+    # da env var global).
+    cadsus_user: str | None = Field(default=None, max_length=100)
+    cadsus_password: str | None = Field(default=None, max_length=200)
 
 
 class MunicipalityUpdate(CamelModel):

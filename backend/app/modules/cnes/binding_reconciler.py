@@ -32,7 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.modules.notifications.service import NotificationService
-from app.modules.tenants.models import Facility, FacilityAccess, Municipality, MunicipalityAccess
+from app.modules.tenants.models import (
+    Facility,
+    FacilityAccess,
+    FacilityAccessCnesBinding,
+    Municipality,
+    MunicipalityAccess,
+)
 from app.modules.users.models import User, UserLevel
 from app.tenant_models.cnes import CnesProfessional, CnesProfessionalUnit, CnesUnit
 
@@ -50,13 +56,15 @@ ChangeKind = Literal[
 
 @dataclass
 class BindingChange:
+    binding_id: UUID
     facility_access_id: UUID
     user_id: UUID
     user_name: str
     facility_id: UUID
     facility_name: str
     cnes_professional_id: str
-    cbo_id: str | None
+    cbo_id: str
+    snapshot_nome: str | None
     kinds: list[ChangeKind]
     # Quando kind inclui *_changed: valores antes/depois.
     before: dict[str, str | None]
@@ -80,15 +88,13 @@ class BindingReconciler:
         competencia: str,
     ) -> list[BindingChange]:
         """Executa a reconciliação. Retorna lista de mudanças detectadas."""
-        # 1. Carrega vínculos ativos no município.
+        # 1. Carrega todos os bindings CNES das unidades do município.
         rows = await self.session.execute(
-            select(FacilityAccess, Facility, User)
+            select(FacilityAccessCnesBinding, FacilityAccess, Facility, User)
+            .join(FacilityAccess, FacilityAccess.id == FacilityAccessCnesBinding.facility_access_id)
             .join(Facility, Facility.id == FacilityAccess.facility_id)
             .join(User, User.id == FacilityAccess.user_id)
-            .where(
-                Facility.municipality_id == municipality_id,
-                FacilityAccess.cnes_professional_id.is_not(None),
-            )
+            .where(Facility.municipality_id == municipality_id)
         )
         bindings = list(rows.all())
         if not bindings:
@@ -96,7 +102,7 @@ class BindingReconciler:
 
         # 2. Indexa cnes_unit por código CNES da unidade — facility.cnes →
         #    cnes_units.cnes → id_unidade.
-        cnes_codes = {fac.cnes for _, fac, _ in bindings if fac.cnes}
+        cnes_codes = {fac.cnes for _b, _fa, fac, _u in bindings if fac.cnes}
         if not cnes_codes:
             return []
         units_stmt = select(CnesUnit).where(CnesUnit.cnes.in_(cnes_codes))
@@ -106,7 +112,7 @@ class BindingReconciler:
 
         # 3. Pré-carrega vínculos (profissional × unidade × CBO) e
         #    profissionais referenciados — uma ida só ao DB.
-        prof_ids = {fa.cnes_professional_id for fa, _, _ in bindings}
+        prof_ids = {b.cnes_professional_id for b, _fa, _fac, _u in bindings}
         prof_unit_rows = list((await self.session.scalars(
             select(CnesProfessionalUnit).where(
                 CnesProfessionalUnit.id_profissional.in_(prof_ids),
@@ -129,7 +135,7 @@ class BindingReconciler:
 
         # 4. Compara cada binding.
         changes: list[BindingChange] = []
-        for fa, fac, user in bindings:
+        for binding, fa, fac, user in bindings:
             kinds: list[ChangeKind] = []
             before: dict[str, str | None] = {}
             after: dict[str, str | None] = {}
@@ -137,25 +143,22 @@ class BindingReconciler:
             # Sem código CNES na facility, não dá pra resolver a unidade CNES.
             cnes_unit = units_by_cnes.get(fac.cnes or "")
             if cnes_unit is None:
-                # Facility sem mapeamento — trata como profissional "missing"
-                # (importação não cobre a unidade).
                 kinds.append("professional_missing")
-                changes.append(_build_change(fa, fac, user, kinds, before, after))
+                changes.append(_build_change(binding, fa, fac, user, kinds, before, after))
                 continue
 
             vinculos = prof_unit_by.get(
-                (fa.cnes_professional_id or "", cnes_unit.id_unidade), []
+                (binding.cnes_professional_id, cnes_unit.id_unidade), []
             )
             if not vinculos:
                 kinds.append("professional_missing")
             else:
-                # Profissional tem vínculos na unidade — verificar CBO e status.
-                # Chave atual salva.
-                stored_cbo = fa.cbo_id or ""
+                # Profissional tem vínculos na unidade — verifica esse CBO
+                # específico e status.
+                stored_cbo = binding.cbo_id
                 matching = [v for v in vinculos if v[0] == stored_cbo]
                 if not matching:
                     kinds.append("cbo_missing")
-                    # Informa CBOs alternativos encontrados.
                     alt = sorted({v[0] for v in vinculos if v[0]})
                     if alt:
                         after["cbo_id_alternatives"] = ", ".join(alt)
@@ -167,16 +170,16 @@ class BindingReconciler:
                         after["status"] = status_now
 
             # Profissional ainda existe? Compare CPF/nome.
-            prof = profs_by_id.get(fa.cnes_professional_id or "")
+            prof = profs_by_id.get(binding.cnes_professional_id)
             if prof is not None:
-                snap_cpf = (fa.cnes_snapshot_cpf or "").strip()
+                snap_cpf = (binding.cnes_snapshot_cpf or "").strip()
                 cur_cpf = (prof.cpf or "").strip()
                 if snap_cpf and cur_cpf and snap_cpf != cur_cpf:
                     kinds.append("cpf_changed")
                     before["cpf"] = snap_cpf
                     after["cpf"] = cur_cpf
 
-                snap_nome = (fa.cnes_snapshot_nome or "").strip()
+                snap_nome = (binding.cnes_snapshot_nome or "").strip()
                 cur_nome = (prof.nome or "").strip()
                 if snap_nome and cur_nome and snap_nome != cur_nome:
                     kinds.append("nome_changed")
@@ -184,7 +187,7 @@ class BindingReconciler:
                     after["nome"] = cur_nome
 
             if kinds:
-                changes.append(_build_change(fa, fac, user, kinds, before, after))
+                changes.append(_build_change(binding, fa, fac, user, kinds, before, after))
 
         if not changes:
             log.info(
@@ -229,14 +232,17 @@ class BindingReconciler:
                 action_url="/minha-conta",
                 action_label="Ver perfil",
                 data={
-                    "facilityAccessId": str(ch.facility_access_id),
-                    "facilityId":       str(ch.facility_id),
-                    "kinds":             ch.kinds,
-                    "before":            ch.before,
-                    "after":             ch.after,
-                    "competencia":       competencia,
+                    "bindingId":         str(ch.binding_id),
+                    "facilityAccessId":  str(ch.facility_access_id),
+                    "facilityId":        str(ch.facility_id),
+                    "cnesProfessionalId": ch.cnes_professional_id,
+                    "cboId":              ch.cbo_id,
+                    "kinds":              ch.kinds,
+                    "before":             ch.before,
+                    "after":              ch.after,
+                    "competencia":        competencia,
                 },
-                dedup_key=f"cnes_binding_change:{ch.facility_access_id}:{competencia}",
+                dedup_key=f"cnes_binding_change:{ch.binding_id}:{competencia}",
             )
 
     async def _notify_admins(
@@ -288,17 +294,20 @@ class BindingReconciler:
 
 
 def _build_change(
+    binding: FacilityAccessCnesBinding,
     fa: FacilityAccess, fac: Facility, user: User,
     kinds: list[ChangeKind], before: dict, after: dict,
 ) -> BindingChange:
     return BindingChange(
+        binding_id=binding.id,
         facility_access_id=fa.id,
         user_id=user.id,
         user_name=user.name,
         facility_id=fac.id,
         facility_name=fac.short_name or fac.name,
-        cnes_professional_id=fa.cnes_professional_id or "",
-        cbo_id=fa.cbo_id,
+        cnes_professional_id=binding.cnes_professional_id,
+        cbo_id=binding.cbo_id,
+        snapshot_nome=binding.cnes_snapshot_nome,
         kinds=kinds,
         before=before,
         after=after,
@@ -331,6 +340,8 @@ def _message_for(ch: BindingChange) -> str:
 
 def _body_for(ch: BindingChange) -> str:
     parts = [f"Unidade: {ch.facility_name}"]
+    if ch.snapshot_nome:
+        parts.append(f"Profissional: {ch.snapshot_nome}")
     if ch.cbo_id:
         parts.append(f"CBO salvo: {ch.cbo_id}")
     parts.append("")

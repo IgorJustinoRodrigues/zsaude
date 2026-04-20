@@ -290,6 +290,18 @@ class UserService:
             else:
                 mods = sorted(resolved.modules() & OPERATIONAL_MODULES)
 
+            from app.modules.users.schemas import CnesBindingDetail
+            bindings = [
+                CnesBindingDetail(
+                    id=b.id,
+                    cbo_id=b.cbo_id,
+                    cbo_description=b.cbo_description,
+                    cnes_professional_id=b.cnes_professional_id,
+                    cnes_snapshot_cpf=b.cnes_snapshot_cpf,
+                    cnes_snapshot_nome=b.cnes_snapshot_nome,
+                )
+                for b in (fa.cnes_bindings or [])
+            ]
             by_mun[key]["facilities"].append(
                 FacilityAccessDetail(
                     facility_access_id=fa.id,
@@ -300,11 +312,7 @@ class UserService:
                     role_id=fa.role_id,
                     role=role_name,
                     modules=mods,
-                    cbo_id=fa.cbo_id,
-                    cbo_description=fa.cbo_description,
-                    cnes_professional_id=fa.cnes_professional_id,
-                    cnes_snapshot_cpf=fa.cnes_snapshot_cpf,
-                    cnes_snapshot_nome=fa.cnes_snapshot_nome,
+                    cnes_bindings=bindings,
                 )
             )
 
@@ -491,7 +499,10 @@ class UserService:
         # Estado antes.
         rows_before = await self.repo.list_facility_accesses(user_id)
         before: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_before}
-        before_cbo: dict[UUID, str | None] = {fa.facility_id: fa.cbo_id for fa, _, _ in rows_before}
+        before_bindings: dict[UUID, set[tuple[str, str]]] = {
+            fa.facility_id: {(b.cnes_professional_id, b.cbo_id) for b in (fa.cnes_bindings or [])}
+            for fa, _, _ in rows_before
+        }
         fac_name_map: dict[UUID, str] = {
             fac.id: (fac.short_name or fac.name)
             for _, fac, _ in rows_before
@@ -508,9 +519,9 @@ class UserService:
 
         rows_after = await self.repo.list_facility_accesses(user_id)
         after: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_after}
-        after_cbo: dict[UUID, str | None] = {fa.facility_id: fa.cbo_id for fa, _, _ in rows_after}
-        after_cbo_desc: dict[UUID, str | None] = {
-            fa.facility_id: fa.cbo_description for fa, _, _ in rows_after
+        after_bindings: dict[UUID, set[tuple[str, str]]] = {
+            fa.facility_id: {(b.cnes_professional_id, b.cbo_id) for b in (fa.cnes_bindings or [])}
+            for fa, _, _ in rows_after
         }
         for _, fac, mun in rows_after:
             fac_name_map.setdefault(fac.id, fac.short_name or fac.name)
@@ -551,23 +562,26 @@ class UserService:
             }
             for fid in after if fid in before and before[fid] != after[fid]
         ]
-        cbo_changed = [
-            {
+        bindings_changed = []
+        for fid in after:
+            if fid not in before:
+                continue
+            b_before = before_bindings.get(fid, set())
+            b_after = after_bindings.get(fid, set())
+            if b_before == b_after:
+                continue
+            bindings_changed.append({
                 **_fac_label(fid),
-                "from": before_cbo.get(fid),
-                "to":   after_cbo.get(fid),
-                "cboDescription": after_cbo_desc.get(fid),
-            }
-            for fid in after
-            if fid in before and before_cbo.get(fid) != after_cbo.get(fid)
-        ]
-        if not (added or removed or changed or cbo_changed):
+                "added":   [{"cnesProfessionalId": p, "cboId": c} for p, c in sorted(b_after - b_before)],
+                "removed": [{"cnesProfessionalId": p, "cboId": c} for p, c in sorted(b_before - b_after)],
+            })
+        if not (added or removed or changed or bindings_changed):
             return None
         result: dict = {}
-        if added:       result["added"]      = added
-        if removed:     result["removed"]    = removed
-        if changed:     result["changed"]    = changed
-        if cbo_changed: result["cboChanged"] = cbo_changed
+        if added:            result["added"]           = added
+        if removed:          result["removed"]         = removed
+        if changed:          result["changed"]         = changed
+        if bindings_changed: result["cnesBindings"]    = bindings_changed
         return result
 
     async def _apply_accesses(
@@ -585,11 +599,9 @@ class UserService:
           ADMIN não gerencia) ficam intactos.
         """
         municipality_ids: set[UUID] = set()
-        # Tupla: (facility_id, role_id, cbo_id, cbo_description,
-        #        cnes_professional_id, cnes_snapshot_cpf, cnes_snapshot_nome)
-        facilities: list[
-            tuple[UUID, UUID, str | None, str | None, str | None, str | None, str | None]
-        ] = []
+        # Tupla: (facility_id, role_id, bindings)
+        # bindings é list[dict] com os campos de CnesBindingInput.
+        facilities: list[tuple[UUID, UUID, list[dict]]] = []
 
         def _norm(v: str | None) -> str | None:
             if v is None:
@@ -600,26 +612,29 @@ class UserService:
         for mun in tree:
             municipality_ids.add(mun.municipality_id)
             for fac in mun.facilities:
-                cbo_id = _norm(getattr(fac, "cbo_id", None))
-                cbo_desc = _norm(getattr(fac, "cbo_description", None))
-                cnes_prof = _norm(getattr(fac, "cnes_professional_id", None))
-                snap_cpf = _norm(getattr(fac, "cnes_snapshot_cpf", None))
-                snap_nome = _norm(getattr(fac, "cnes_snapshot_nome", None))
-                # Vínculo CNES é trio atômico: se um vem, os três devem vir.
-                if any([cbo_id, cbo_desc, cnes_prof]) and not all([cbo_id, cbo_desc, cnes_prof]):
-                    raise ConflictError(
-                        "Vínculo CNES incompleto — informe CBO, descrição e "
-                        "id do profissional juntos ou nenhum.",
-                    )
-                # Sem vínculo CNES, os snapshots são ignorados (zerados).
-                if not cnes_prof:
-                    snap_cpf = None
-                    snap_nome = None
-                facilities.append((
-                    fac.facility_id, fac.role_id,
-                    cbo_id, cbo_desc, cnes_prof,
-                    snap_cpf, snap_nome,
-                ))
+                raw_bindings = getattr(fac, "cnes_bindings", None) or []
+                bindings: list[dict] = []
+                seen: set[tuple[str, str]] = set()
+                for b in raw_bindings:
+                    cbo_id = _norm(getattr(b, "cbo_id", None))
+                    cnes_prof = _norm(getattr(b, "cnes_professional_id", None))
+                    if not cbo_id or not cnes_prof:
+                        raise ConflictError(
+                            "Vínculo CNES incompleto — informe ao menos "
+                            "cboId e cnesProfessionalId.",
+                        )
+                    key = (cnes_prof, cbo_id)
+                    if key in seen:
+                        continue  # ignora duplicatas silenciosamente
+                    seen.add(key)
+                    bindings.append({
+                        "cbo_id": cbo_id,
+                        "cbo_description": _norm(getattr(b, "cbo_description", None)),
+                        "cnes_professional_id": cnes_prof,
+                        "cnes_snapshot_cpf": _norm(getattr(b, "cnes_snapshot_cpf", None)),
+                        "cnes_snapshot_nome": _norm(getattr(b, "cnes_snapshot_nome", None)),
+                    })
+                facilities.append((fac.facility_id, fac.role_id, bindings))
 
         # Preserva acessos fora do escopo quando ADMIN está editando
         if scope is not None:
@@ -631,14 +646,18 @@ class UserService:
             existing_facs = await self.repo.list_facility_accesses(user_id)
             for fa, fac, _mun in existing_facs:
                 if fac.municipality_id not in scope:
+                    preserved_bindings = [
+                        {
+                            "cbo_id": b.cbo_id,
+                            "cbo_description": b.cbo_description,
+                            "cnes_professional_id": b.cnes_professional_id,
+                            "cnes_snapshot_cpf": b.cnes_snapshot_cpf,
+                            "cnes_snapshot_nome": b.cnes_snapshot_nome,
+                        }
+                        for b in (fa.cnes_bindings or [])
+                    ]
                     facilities.append((
-                        fa.facility_id,
-                        fa.role_id,
-                        fa.cbo_id,
-                        fa.cbo_description,
-                        fa.cnes_professional_id,
-                        fa.cnes_snapshot_cpf,
-                        fa.cnes_snapshot_nome,
+                        fa.facility_id, fa.role_id, preserved_bindings,
                     ))
 
         # Valida existência dos municípios/unidades referenciados
@@ -658,7 +677,7 @@ class UserService:
             )
             fac_list = list(fac_rows.all())
             fac_map = {f.id: f for f in fac_list}
-            for fid, _role_id, *_ in facilities:
+            for fid, _role_id, _bindings in facilities:
                 if fid not in fac_map:
                     raise NotFoundError("Unidade informada não existe.")
                 # Unidade precisa pertencer a um município vinculado
@@ -669,13 +688,13 @@ class UserService:
         if facilities:
             from app.modules.permissions.models import Role, RoleScope
 
-            role_ids_needed = {rid for _, rid, *_ in facilities}
+            role_ids_needed = {rid for _, rid, _bindings in facilities}
             r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids_needed)))
             role_map = {r.id: r for r in r_rows.all()}
             missing = role_ids_needed - set(role_map.keys())
             if missing:
                 raise NotFoundError("Perfil informado não existe.")
-            for fid, rid, *_ in facilities:
+            for fid, rid, _bindings in facilities:
                 role = role_map[rid]
                 # MUNICIPALITY role precisa ser do mesmo município da unidade.
                 if (

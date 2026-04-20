@@ -81,6 +81,7 @@ import { SysMunicipalityFormPage } from '../pages/sys/SysMunicipalityFormPage'
 import { SysMunicipalityViewPage } from '../pages/sys/SysMunicipalityViewPage'
 import { SysFacilityListPage } from '../pages/sys/SysFacilityListPage'
 import { SysFacilityFormPage } from '../pages/sys/SysFacilityFormPage'
+import { SysProfessionalsPage } from '../pages/sys/SysProfessionalsPage'
 import { SysUserAdminPage } from '../pages/sys/SysUserAdminPage'
 import { SysSettingsPage } from '../pages/sys/SysSettingsPage'
 import { SysEmailTemplatesPage } from '../pages/sys/SysEmailTemplatesPage'
@@ -93,6 +94,7 @@ import { SysRoleDetailPage } from '../pages/sys/SysRoleDetailPage'
 import { SysRoleFormPage } from '../pages/sys/SysRoleFormPage'
 import { SysImportsPage } from '../pages/sys/SysImportsPage'
 import { SysImportSigtapPage } from '../pages/sys/SysImportSigtapPage'
+import { SysImportCnesPage } from '../pages/sys/SysImportCnesPage'
 import { SysReferencePage } from '../pages/sys/SysReferencePage'
 import { SysCadsusPage } from '../pages/sys/SysCadsusPage'
 import { SysAiPage } from '../pages/sys/SysAiPage'
@@ -151,6 +153,7 @@ export const router = createBrowserRouter([
               { path: '/sys/unidades/novo',               element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id',                element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id/personalizar',   element: <SysFacilityBrandingPage /> },
+              { path: '/sys/profissionais',               element: <SysProfessionalsPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
               { path: '/sys/usuarios/novo',         element: <OpsUserFormPage /> },
               { path: '/sys/usuarios/:id',          element: <OpsUserViewPage /> },
@@ -160,6 +163,7 @@ export const router = createBrowserRouter([
               { path: '/sys/perfis/:id',            element: <SysRoleDetailPage /> },
               { path: '/sys/importacoes',           element: <SysImportsPage /> },
               { path: '/sys/importacoes/sigtap',    element: <SysImportSigtapPage /> },
+              { path: '/sys/importacoes/cnes',      element: <SysImportCnesPage /> },
               { path: '/sys/dados-referencia',      element: <SysReferencePage /> },
               { path: '/sys/cadsus',                element: <SysCadsusPage /> },
               { path: '/sys/ia',                    element: <SysAiPage /> },

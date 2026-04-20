@@ -108,16 +108,22 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
     (
         "receptionist_base",
         "Recepcionista",
-        "Perfil base de recepção. Ganha permissões conforme novos módulos "
-        "forem implementados.",
-        [],
+        "Perfil base de recepção. Cadastro e consulta de pacientes.",
+        [
+            "hsp.patient.view", "hsp.patient.create", "hsp.patient.edit",
+            "hsp.patient_photo.view", "hsp.patient_photo.upload",
+        ],
     ),
     (
         "nurse_base",
         "Enfermagem",
-        "Perfil base de enfermagem. Ganha permissões conforme novos módulos "
-        "forem implementados.",
-        [],
+        "Perfil base de enfermagem. Pacientes, histórico e solicitação de exames.",
+        [
+            "hsp.patient.view", "hsp.patient.edit",
+            "hsp.patient_history.view",
+            "hsp.patient_photo.view", "hsp.patient_photo.upload",
+            "dgn.exam.view", "dgn.exam.request",
+        ],
     ),
     (
         "doctor_base",

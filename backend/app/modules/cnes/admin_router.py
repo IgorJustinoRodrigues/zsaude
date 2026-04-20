@@ -13,11 +13,11 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.deps import DB, AdminOrMasterDep
+from app.core.deps import DB, AdminOrMasterDep, MasterDep
 from app.core.schema_base import CamelModel
 from app.modules.tenants.models import Facility, Municipality
 from app.tenant_models.cnes import (
@@ -126,8 +126,8 @@ async def search_professionals(
     db: DB,
     _actor: AdminOrMasterDep,
     facility_id: Annotated[UUID, Query(alias="facilityId")],
-    q: Annotated[str, Query(min_length=2, max_length=100)] = "",
-    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    q: Annotated[str, Query(max_length=100)] = "",
+    limit: Annotated[int, Query(ge=1, le=500)] = 20,
 ) -> list[CnesProfessionalOption]:
     """Busca profissionais ativos do CNES vinculados à unidade.
 
@@ -204,6 +204,96 @@ async def search_professionals(
         ]
     finally:
         await session.close()
+
+
+# ─── Upload/import pelo MASTER (sem work-context) ─────────────────────────
+
+
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+@admin_router.post("/import", status_code=201)
+async def import_cnes_master(
+    file: Annotated[UploadFile, File(description="ZIP TXTPROC_<ibge>_<aaaamm>.zip")],
+    db: DB,
+    actor: MasterDep,
+    municipality_id: Annotated[UUID, Query(alias="municipalityId")],
+) -> dict:
+    """Importa CNES pro município escolhido — sem precisar de WorkContext.
+
+    Mesmo fluxo do endpoint ``/cnes/import`` (painel do município): extrai
+    ZIP, valida IBGE, aplica transação no schema ``mun_<ibge>`` e registra
+    histórico. A diferença aqui é só o scoping: MASTER escolhe o município
+    por query param em vez de herdar do contexto ativo.
+    """
+    from app.core.audit import get_audit_context
+    from app.core.exceptions import AppError
+    from app.modules.audit.writer import write_audit
+    from app.modules.cnes.service import CnesImportService
+    from app.modules.users.models import User
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Arquivo muito grande (máx. {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
+        )
+
+    session, ibge = await _tenant_session_for_municipality(db, municipality_id)
+    try:
+        user = await db.scalar(select(User).where(User.id == actor.id))
+        svc = CnesImportService(
+            session,
+            expected_ibge=ibge,
+            user_id=actor.id,
+            user_name=user.name if user else "",
+        )
+        try:
+            import_row = await svc.import_zip(raw, file.filename or "arquivo.zip")
+        except AppError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=f"Falha na importação: {exc}") from exc
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
+
+    # Audit global (schema ``app``) — registra quem importou e qual município.
+    actor_name = get_audit_context().user_name or (user.name if user else "MASTER")
+    await write_audit(
+        db,
+        module="ops", action="cnes_import", severity="info",
+        resource="cnes_import", resource_id=str(import_row.id),
+        description=(
+            f"{actor_name} importou CNES da competência {import_row.competencia} "
+            f"(município IBGE {ibge} · {import_row.total_rows_processed} linhas · "
+            f"status: {import_row.status.value})"
+        ),
+        details={
+            "ibge": ibge,
+            "municipalityId": str(municipality_id),
+            "competencia": import_row.competencia,
+            "status": import_row.status.value,
+            "totalRows": import_row.total_rows_processed,
+            "zipFilename": import_row.zip_filename,
+            "via": "master",
+        },
+    )
+
+    return {
+        "id": str(import_row.id),
+        "competencia": import_row.competencia,
+        "status": import_row.status.value,
+        "totalRowsProcessed": import_row.total_rows_processed,
+        "zipFilename": import_row.zip_filename,
+        "startedAt": import_row.started_at.isoformat(),
+        "finishedAt": import_row.finished_at.isoformat() if import_row.finished_at else None,
+    }
 
 
 async def _load_cbo_descriptions(db: DB, cbo_ids: set[str]) -> dict[str, str]:

@@ -354,11 +354,18 @@ class CnesImportService:
     async def _sync_facilities_from_units(
         self, units: list[dict[str, Any]], result: _FileResult
     ) -> None:
-        """Espelha as unidades importadas em `app.facilities`.
+        """Espelha as unidades importadas em ``app.facilities``.
 
-        Match por ``(municipality_id, cnes)``. Cadastro manual prévio com o
-        mesmo CNES tem nome/tipo atualizados a partir do dado oficial; nada
-        é arquivado ou removido — apenas upsert.
+        Match por ``(municipality_id, cnes)``. Regras:
+
+        - **Insert**: unidade CNES nova → cria ``Facility`` **arquivada**
+          (``archived=True``). MASTER/ADMIN revisa e desarquiva.
+        - **Update**: já existia (manual ou em import anterior) → atualiza
+          só ``name``/``short_name`` a partir do dado oficial. ``type`` e
+          ``archived`` ficam intactos — o admin pode ter reclassificado o
+          tipo ou explicitamente arquivado/ativado a unidade.
+        - **Ausente no ZIP novo**: nada é apagado ou arquivado — preservamos
+          cadastros manuais e histórico.
         """
         mun = await self.db.scalar(
             select(Municipality).where(Municipality.ibge == self.expected_ibge)
@@ -396,24 +403,25 @@ class CnesImportService:
 
             fac = by_cnes.get(cnes)
             if fac is None:
+                # Novas unidades entram ARQUIVADAS — admin revisa e libera.
                 self.db.add(Facility(
                     municipality_id=mun.id,
                     name=name,
                     short_name=short_name,
                     type=ftype,
                     cnes=cnes,
+                    archived=True,
                 ))
                 created += 1
             else:
+                # Só atualizamos nome/short_name. ``type`` e ``archived``
+                # ficam intactos — o admin pode ter reclassificado.
                 changed = False
                 if fac.name != name:
                     fac.name = name
                     changed = True
                 if fac.short_name != short_name:
                     fac.short_name = short_name
-                    changed = True
-                if fac.type != ftype:
-                    fac.type = ftype
                     changed = True
                 if changed:
                     updated += 1

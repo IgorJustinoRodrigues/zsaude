@@ -6,11 +6,12 @@ import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
 import {
   MapPin, Building2, ChevronRight, Sun, Moon, LogOut,
-  ChevronDown, Layers,
+  ChevronDown, Layers, Stethoscope, X,
 } from 'lucide-react'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import { BrandName } from '../../components/shared/BrandName'
+import type { ContextCnesBinding } from '../../api/workContext'
 
 const FACILITY_TYPE_COLOR: Record<string, string> = {
   SMS:         '#0ea5e9',
@@ -28,6 +29,13 @@ export function ContextSelectPage() {
   const navigate = useNavigate()
   const [expandedMun, setExpandedMun] = useState<string | null>(null)
   const [selecting, setSelecting] = useState<string | null>(null)
+  // Quando a unidade escolhida tem 2+ vínculos CNES, seguramos o select
+  // num modal pra o usuário decidir sob qual CBO vai operar.
+  const [cboPick, setCboPick] = useState<null | {
+    municipalityId: string
+    facilityId: string
+    bindings: ContextCnesBinding[]
+  }>(null)
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return }
@@ -43,10 +51,24 @@ export function ContextSelectPage() {
   const accessible = (contextOptions?.municipalities ?? []).filter(m => m.facilities.length > 0)
   const totalFacilities = accessible.reduce((s, m) => s + m.facilities.length, 0)
 
-  const handleSelect = async (municipalityId: string, facilityId: string) => {
+  const handleSelect = async (
+    municipalityId: string,
+    facilityId: string,
+    cboBindingId: string | null = null,
+  ) => {
+    // Procura a unidade escolhida pra decidir se precisa perguntar o CBO.
+    const mun = accessible.find(m => m.municipality.id === municipalityId)
+    const fac = mun?.facilities.find(f => f.facility.id === facilityId)
+    const bindings = fac?.cnesBindings ?? []
+    if (!cboBindingId && bindings.length > 1) {
+      // Abre modal — o user decide qual CBO usar e chamamos de novo com o id.
+      setCboPick({ municipalityId, facilityId, bindings })
+      return
+    }
+
     setSelecting(facilityId)
     try {
-      const modules = await selectContext(municipalityId, facilityId)
+      const modules = await selectContext(municipalityId, facilityId, { cboBindingId })
       const ctx = useAuthStore.getState().context
       if (ctx) {
         toast.success('Contexto selecionado', `${ctx.facility.shortName} · ${ctx.municipality.name}`)
@@ -214,6 +236,88 @@ export function ContextSelectPage() {
       <footer className="text-center py-6 shrink-0">
         <p className="text-xs text-slate-400 dark:text-slate-600">© {new Date().getFullYear()} Secretaria Municipal de Saúde</p>
       </footer>
+
+      {/* Modal de seleção de CBO (só aparece quando a unidade tem 2+ bindings) */}
+      {cboPick && (
+        <div
+          className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setCboPick(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-lg w-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1">
+                  <Stethoscope size={11} className="text-sky-500" />
+                  Vínculo CNES
+                </p>
+                <h2 className="text-base font-bold text-slate-900 dark:text-white mt-1">
+                  Operando como qual profissional?
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Este acesso tem {cboPick.bindings.length} vínculos CNES. Escolha sob qual CBO você vai atuar nesta sessão.
+                </p>
+              </div>
+              <button onClick={() => setCboPick(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="p-3 space-y-1 max-h-[60vh] overflow-y-auto">
+              {cboPick.bindings.map(b => (
+                <button
+                  key={b.id}
+                  type="button"
+                  disabled={selecting !== null}
+                  onClick={() => {
+                    const pick = cboPick
+                    setCboPick(null)
+                    void handleSelect(pick.municipalityId, pick.facilityId, b.id)
+                  }}
+                  className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-sky-400 hover:bg-sky-50/40 dark:hover:bg-sky-950/30 transition-colors disabled:opacity-60"
+                >
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
+                    {b.cnesSnapshotNome || 'Profissional'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 mr-1.5">
+                      CBO {b.cboId}
+                    </span>
+                    {b.cboDescription || '—'}
+                  </p>
+                  {b.cnesSnapshotCpf && (
+                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      CPF {b.cnesSnapshotCpf.slice(0,3)}.{b.cnesSnapshotCpf.slice(3,6)}.{b.cnesSnapshotCpf.slice(6,9)}-{b.cnesSnapshotCpf.slice(9,11)}
+                    </p>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+              <button
+                onClick={() => setCboPick(null)}
+                className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const pick = cboPick
+                  setCboPick(null)
+                  void handleSelect(pick.municipalityId, pick.facilityId, null)
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Entrar sem escolher agora
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

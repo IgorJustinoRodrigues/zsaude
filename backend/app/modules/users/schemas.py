@@ -66,19 +66,33 @@ class UserListItem(CamelModel):
     modules: list[str]
 
 
+class CnesBindingInput(CamelModel):
+    """Um vínculo CNES (profissional × CBO) a anexar num acesso-de-unidade."""
+
+    cbo_id: str
+    cbo_description: str | None = None
+    cnes_professional_id: str
+    cnes_snapshot_cpf: str | None = None
+    cnes_snapshot_nome: str | None = None
+
+
+class CnesBindingDetail(CamelModel):
+    """Vínculo CNES persistido (retornado em ``FacilityAccessDetail``)."""
+
+    id: UUID
+    cbo_id: str
+    cbo_description: str | None = None
+    cnes_professional_id: str
+    cnes_snapshot_cpf: str | None = None
+    cnes_snapshot_nome: str | None = None
+
+
 class FacilityAccessInput(CamelModel):
     facility_id: UUID
     role_id: UUID
-    # Vínculo CNES opcional. Se ``cbo_id`` vier preenchido, ``cbo_description``
-    # e ``cnes_professional_id`` também devem vir — o backend valida e aplica
-    # o trio atômico. Apagar o vínculo = enviar os três como null.
-    cbo_id: str | None = None
-    cbo_description: str | None = None
-    cnes_professional_id: str | None = None
-    # Snapshot de CPF/nome do profissional no CNES no momento do vínculo.
-    # Usado para detectar mudanças na próxima importação.
-    cnes_snapshot_cpf: str | None = None
-    cnes_snapshot_nome: str | None = None
+    # Lista de vínculos CNES (opcional). Pode ser vazia; pode conter
+    # múltiplos profissionais e/ou múltiplos CBOs do mesmo profissional.
+    cnes_bindings: list[CnesBindingInput] = Field(default_factory=list)
 
 
 class MunicipalityAccessInput(CamelModel):
@@ -95,12 +109,8 @@ class FacilityAccessDetail(CamelModel):
     role_id: UUID
     role: str           # nome do role (exibição)
     modules: list[str]  # derivado das permissões
-    # Vínculo CNES — null quando nunca foi feito.
-    cbo_id: str | None = None
-    cbo_description: str | None = None
-    cnes_professional_id: str | None = None
-    cnes_snapshot_cpf: str | None = None
-    cnes_snapshot_nome: str | None = None
+    # Lista de vínculos CNES — vazia quando ainda não foi feito nenhum.
+    cnes_bindings: list[CnesBindingDetail] = Field(default_factory=list)
 
 
 class MunicipalityAccessDetail(CamelModel):

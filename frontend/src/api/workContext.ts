@@ -12,6 +12,7 @@ export interface FacilityDto {
   municipalityId: string
   /** ``null`` = herda todos do município; array = personalização. */
   enabledModules?: string[] | null
+  archived?: boolean
 }
 
 export interface MunicipalityDto {
@@ -21,10 +22,20 @@ export interface MunicipalityDto {
   ibge: string
 }
 
+export interface ContextCnesBinding {
+  id: string
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 export interface FacilityWithAccess {
   facility: FacilityDto
   role: string
   modules: SystemId[]
+  cnesBindings: ContextCnesBinding[]
 }
 
 export interface MunicipalityWithFacilities {
@@ -44,6 +55,7 @@ export interface WorkContextIssued {
   modules: SystemId[]
   permissions: string[]
   expiresIn: number
+  cboBinding: ContextCnesBinding | null
 }
 
 export interface WorkContextCurrent {
@@ -52,16 +64,22 @@ export interface WorkContextCurrent {
   role: string
   modules: SystemId[]
   permissions: string[]
+  cboBinding: ContextCnesBinding | null
 }
 
 export const workContextApi = {
   options: () => api.get<WorkContextOptions>('/api/v1/work-context/options'),
 
-  select: (municipalityId: string, facilityId: string, module?: SystemId) =>
+  select: (
+    municipalityId: string,
+    facilityId: string,
+    opts?: { module?: SystemId; cboBindingId?: string | null },
+  ) =>
     api.post<WorkContextIssued>('/api/v1/work-context/select', {
       municipalityId,
       facilityId,
-      module,
+      module: opts?.module,
+      cboBindingId: opts?.cboBindingId ?? null,
     }),
 
   current: () => api.get<WorkContextCurrent>('/api/v1/work-context/current', { withContext: true }),

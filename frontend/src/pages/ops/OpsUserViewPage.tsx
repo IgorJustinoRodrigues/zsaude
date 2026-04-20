@@ -4,6 +4,7 @@ import {
   ArrowLeft, Pencil, User, Mail, Phone, MapPin, Building2, Shield,
   Eye as EyeIcon, EyeOff, KeyRound, RefreshCw, Check, X, Copy, Lock,
   UserCheck, UserX, ShieldOff, Activity as ActivityIcon, Clock, LogOut as LogOutIcon,
+  Stethoscope, AlertTriangle,
 } from 'lucide-react'
 import { initials, cn } from '../../lib/utils'
 import { userApi, type UserDetail } from '../../api/users'
@@ -445,6 +446,49 @@ export function OpsUserViewPage() {
                           )}
                         </div>
                       </div>
+                      {fac.cnesBindings && fac.cnesBindings.length > 0 && (
+                        <div className="mt-3 ml-5 space-y-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                            <Stethoscope size={10} />
+                            Vínculos CNES
+                          </p>
+                          <div className="space-y-1">
+                            {fac.cnesBindings.map(b => {
+                              const userCpfDigits = (user.cpf || '').replace(/\D/g, '')
+                              const mismatch = userCpfDigits.length === 11
+                                && b.cnesSnapshotCpf
+                                && b.cnesSnapshotCpf.replace(/\D/g, '') !== userCpfDigits
+                              return (
+                                <div key={b.id}
+                                  className="flex items-start gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+                                      {b.cnesSnapshotNome || 'Profissional'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
+                                        CBO {b.cboId}
+                                      </span>
+                                      {b.cboDescription || '—'}
+                                    </p>
+                                    {b.cnesSnapshotCpf && (
+                                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                        CPF {b.cnesSnapshotCpf.slice(0,3)}.{b.cnesSnapshotCpf.slice(3,6)}.{b.cnesSnapshotCpf.slice(6,9)}-{b.cnesSnapshotCpf.slice(9,11)}
+                                      </p>
+                                    )}
+                                    {mismatch && (
+                                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                                        <AlertTriangle size={10} />
+                                        CPF divergente do cadastro do usuário.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

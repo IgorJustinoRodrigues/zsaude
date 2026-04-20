@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound, Cake } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound, Cake, Stethoscope } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
@@ -383,6 +383,20 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
                       <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.municipality.name} · {context.municipality.state}</p>
                     </div>
                   </div>
+                  {context.cboBinding && (
+                    <div className="flex items-start gap-2.5 px-2 py-1.5 rounded-lg">
+                      <Stethoscope size={13} className="text-slate-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-slate-400">Vínculo CNES</p>
+                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">
+                          {context.cboBinding.cnesSnapshotNome || 'Profissional'}
+                        </p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          CBO {context.cboBinding.cboId} · {context.cboBinding.cboDescription || '—'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

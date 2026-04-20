@@ -510,16 +510,19 @@ async def sys_test_key(
     if not row or not provider:
         return AIKeyTestResponse(ok=False, detail="Chave não configurada.")
 
-    cheapest = await db.scalar(
+    # ``capabilities`` é coluna JSON (ArrayAsJSON) — filtro cross-dialect
+    # simples: carrega candidatos ativos do provider por preço e pega o
+    # primeiro que tem 'chat' na lista. Catálogo é pequeno (~dezenas),
+    # então custo é desprezível e evita dependência de JSON ops por dialeto.
+    candidates = list((await db.scalars(
         select(AIModel)
         .where(
             AIModel.provider_id == payload.provider_id,
-            AIModel.active== True,
-            AIModel.capabilities.any("chat"),  # type: ignore[attr-defined]
+            AIModel.active == True,
         )
         .order_by(AIModel.input_cost_per_mtok.asc())
-        .limit(1)
-    )
+    )).all())
+    cheapest = next((m for m in candidates if "chat" in (m.capabilities or [])), None)
     if not cheapest:
         return AIKeyTestResponse(ok=False, detail="Nenhum modelo 'chat' no catálogo.")
 

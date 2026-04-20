@@ -7,7 +7,13 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tenants.models import Facility, FacilityAccess, Municipality, MunicipalityAccess
+from app.modules.tenants.models import (
+    Facility,
+    FacilityAccess,
+    FacilityAccessCnesBinding,
+    Municipality,
+    MunicipalityAccess,
+)
 from app.modules.users.models import User, UserStatus
 
 
@@ -125,14 +131,14 @@ class UserRepository:
         self,
         user_id: UUID,
         municipality_ids: set[UUID],
-        facilities: list[tuple[UUID, UUID, str | None, str | None, str | None, str | None, str | None]],
+        facilities: list[tuple[UUID, UUID, list[dict]]],
     ) -> None:
         """Substitui todos os vínculos do usuário de forma atômica.
 
-        ``facilities`` é lista de tuplas
-        ``(facility_id, role_id, cbo_id, cbo_description, cnes_professional_id,
-           cnes_snapshot_cpf, cnes_snapshot_nome)``.
-        Os cinco últimos podem ser ``None`` — acesso sem vínculo CNES.
+        ``facilities`` é lista de tuplas ``(facility_id, role_id, bindings)``,
+        onde ``bindings`` é lista de dicts com
+        ``{cbo_id, cbo_description, cnes_professional_id, cnes_snapshot_cpf,
+           cnes_snapshot_nome}``. Vazia = acesso sem vínculo CNES.
         """
         from sqlalchemy import delete
 
@@ -141,19 +147,23 @@ class UserRepository:
 
         for mid in municipality_ids:
             self.session.add(MunicipalityAccess(user_id=user_id, municipality_id=mid))
-        for fid, role_id, cbo_id, cbo_desc, cnes_prof_id, snap_cpf, snap_nome in facilities:
-            self.session.add(
-                FacilityAccess(
-                    user_id=user_id,
-                    facility_id=fid,
-                    role_id=role_id,
-                    cbo_id=cbo_id,
-                    cbo_description=cbo_desc,
-                    cnes_professional_id=cnes_prof_id,
-                    cnes_snapshot_cpf=snap_cpf,
-                    cnes_snapshot_nome=snap_nome,
-                )
+        for fid, role_id, bindings in facilities:
+            fa = FacilityAccess(
+                user_id=user_id,
+                facility_id=fid,
+                role_id=role_id,
             )
+            self.session.add(fa)
+            await self.session.flush()  # precisa de fa.id pros filhos
+            for b in bindings:
+                self.session.add(FacilityAccessCnesBinding(
+                    facility_access_id=fa.id,
+                    cbo_id=b["cbo_id"],
+                    cbo_description=b.get("cbo_description"),
+                    cnes_professional_id=b["cnes_professional_id"],
+                    cnes_snapshot_cpf=b.get("cnes_snapshot_cpf"),
+                    cnes_snapshot_nome=b.get("cnes_snapshot_nome"),
+                ))
         await self.session.flush()
 
     async def bulk_modules_by_user(self, user_ids: list[UUID]) -> dict[UUID, set[str]]:

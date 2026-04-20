@@ -71,6 +71,16 @@ export interface CnesProfessionalOption {
   status: string
 }
 
+export interface CnesImportMasterResult {
+  id: string
+  competencia: string
+  status: CnesImportStatus
+  totalRowsProcessed: number
+  zipFilename: string
+  startedAt: string
+  finishedAt: string | null
+}
+
 export const cnesAdminApi = {
   /** Status do último import CNES do município (pra mostrar banner na UI). */
   importStatus: (municipalityId: string) =>
@@ -85,4 +95,18 @@ export const cnesAdminApi = {
     if (params.limit) qs.set('limit', String(params.limit))
     return api.get<CnesProfessionalOption[]>(`/api/v1/admin/cnes/professionals?${qs}`)
   },
+
+  /** Upload CNES pelo painel MASTER (escolhe o município explicitamente). */
+  uploadImport: async (municipalityId: string, file: File): Promise<CnesImportMasterResult> => {
+    const fd = new FormData()
+    fd.append('file', file, file.name)
+    return apiFetch<CnesImportMasterResult>(
+      `/api/v1/admin/cnes/import?municipalityId=${encodeURIComponent(municipalityId)}`,
+      { method: 'POST', body: fd },
+    )
+  },
+
+  /** Histórico de imports de um município específico. Reusa o endpoint
+   *  user-facing via work-context não é possível aqui, então o painel
+   *  MASTER lista só o resultado mais recente (via campo do município). */
 }

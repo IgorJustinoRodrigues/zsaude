@@ -6,7 +6,7 @@ import enum
 import uuid
 
 from sqlalchemy import Boolean, Enum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
 from app.db.types import JSONType, UUIDType, new_uuid7
@@ -174,15 +174,46 @@ class FacilityAccess(Base, TimestampedMixin):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
-    # Vínculo CNES (opcional). ``cbo_id`` é o código CBO de 6 dígitos do
-    # profissional na unidade; ``cbo_description`` é snapshot da descrição
-    # no momento do vínculo (pra não depender do schema de município pra
-    # exibir). ``cnes_professional_id`` aponta pro registro no
-    # ``cnes_professionals`` (schema mun_<ibge>) — fonte viva de verdade.
-    cbo_id: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    # Vínculos CNES (0..N) — profissional × CBO registrados pra esse acesso.
+    # Relação lazy por padrão — carregue explicitamente quando precisar
+    # (ex.: via ``selectinload`` ou ``list_facility_accesses`` no repo).
+    cnes_bindings: Mapped[list["FacilityAccessCnesBinding"]] = relationship(
+        "FacilityAccessCnesBinding",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+
+
+class FacilityAccessCnesBinding(Base, TimestampedMixin):
+    """Vínculo CNES atribuído a um ``FacilityAccess``.
+
+    Chave natural: ``(facility_access_id, cnes_professional_id, cbo_id)`` —
+    o mesmo profissional pode ter múltiplos CBOs, e o mesmo acesso pode
+    reunir vínculos a mais de um profissional.
+
+    ``cbo_description`` e ``cnes_snapshot_{cpf,nome}`` são snapshots no
+    momento do vínculo — o reconciliador pós-importação compara com o
+    estado vigente pra emitir notificações quando algo muda.
+    """
+
+    __tablename__ = "facility_access_cnes_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "facility_access_id", "cnes_professional_id", "cbo_id",
+            name="uq_fa_cnes_binding_access_prof_cbo",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
+    facility_access_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(),
+        ForeignKey("facility_accesses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cbo_id: Mapped[str] = mapped_column(String(6), nullable=False)
     cbo_description: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    cnes_professional_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    # Snapshot do CPF/nome do profissional no momento do vínculo — usado
-    # pelo reconciliador pós-importação pra detectar divergências.
+    cnes_professional_id: Mapped[str] = mapped_column(String(16), nullable=False)
     cnes_snapshot_cpf: Mapped[str | None] = mapped_column(String(11), nullable=True)
     cnes_snapshot_nome: Mapped[str | None] = mapped_column(String(200), nullable=True)

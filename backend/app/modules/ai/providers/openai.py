@@ -48,6 +48,17 @@ def _msg_to_openai(m: ChatMessage) -> dict:
 class OpenAIProvider(AIProvider):
     slug = "openai"
 
+    def _make_client(self, creds: ProviderCredentials):
+        """Constrói o ``AsyncOpenAI`` pra usar dentro dos métodos. Subclasses
+        (ex.: ``OpenRouterProvider``) podem sobrescrever pra injetar headers
+        ou outras opções de cliente."""
+        from openai import AsyncOpenAI
+
+        return AsyncOpenAI(
+            api_key=creds.api_key,
+            base_url=creds.base_url or None,
+        )
+
     async def chat(
         self,
         req: ChatRequest,
@@ -56,14 +67,10 @@ class OpenAIProvider(AIProvider):
         creds: ProviderCredentials,
     ) -> ChatResponse:
         # Import interno: manter o SDK fora do path de importação até precisar.
-        from openai import AsyncOpenAI
         from openai import APIError as OpenAIAPIError
         from openai import APIConnectionError, RateLimitError
 
-        client = AsyncOpenAI(
-            api_key=creds.api_key,
-            base_url=creds.base_url or None,
-        )
+        client = self._make_client(creds)
 
         kwargs: dict = {
             "model": model,
@@ -112,14 +119,10 @@ class OpenAIProvider(AIProvider):
         model: str,
         creds: ProviderCredentials,
     ) -> AsyncIterator[str]:
-        from openai import AsyncOpenAI
         from openai import APIError as OpenAIAPIError
         from openai import APIConnectionError, RateLimitError
 
-        client = AsyncOpenAI(
-            api_key=creds.api_key,
-            base_url=creds.base_url or None,
-        )
+        client = self._make_client(creds)
 
         kwargs: dict = {
             "model": model,
@@ -151,14 +154,10 @@ class OpenAIProvider(AIProvider):
         model: str,
         creds: ProviderCredentials,
     ) -> EmbedResponse:
-        from openai import AsyncOpenAI
         from openai import APIError as OpenAIAPIError
         from openai import APIConnectionError, RateLimitError
 
-        client = AsyncOpenAI(
-            api_key=creds.api_key,
-            base_url=creds.base_url or None,
-        )
+        client = self._make_client(creds)
 
         kwargs: dict = {"model": model, "input": req.inputs}
         if req.dimensions is not None:

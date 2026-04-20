@@ -22,6 +22,7 @@ from app.modules.tenants.models import (
 )
 from app.modules.tenants.repository import TenantRepository
 from app.modules.tenants.schemas import (
+    CnesBindingRead,
     FacilityCreate,
     FacilityRead,
     FacilityUpdate,
@@ -116,11 +117,23 @@ class TenantService:
                     resolved = await perm_svc.resolve(user_id, access.id)
                     effective = self.effective_facility_modules(mun, fac)
                     available = effective if resolved.is_root else resolved.modules() & effective
+                    bindings = [
+                        CnesBindingRead(
+                            id=b.id,
+                            cbo_id=b.cbo_id,
+                            cbo_description=b.cbo_description,
+                            cnes_professional_id=b.cnes_professional_id,
+                            cnes_snapshot_cpf=b.cnes_snapshot_cpf,
+                            cnes_snapshot_nome=b.cnes_snapshot_nome,
+                        )
+                        for b in (access.cnes_bindings or [])
+                    ]
                     facilities.append(
                         FacilityWithAccess(
                             facility=FacilityRead.model_validate(fac),
                             role=await role_name(access.role_id),
                             modules=sorted(available),
+                            cnes_bindings=bindings,
                         )
                     )
 
@@ -134,12 +147,15 @@ class TenantService:
 
     async def select(self, user_id: UUID, payload: WorkContextSelect) -> WorkContextIssued:
         from app.modules.permissions.service import PermissionService, ResolvedPermissions
+        from app.modules.tenants.models import FacilityAccessCnesBinding
 
         mun = await self.repo.get_municipality(payload.municipality_id)
         if mun is None:
             raise NotFoundError("Município não encontrado.")
 
         is_master = await self._is_master(user_id)
+
+        chosen_binding: FacilityAccessCnesBinding | None = None
 
         if is_master:
             facility = await self.session.scalar(
@@ -163,6 +179,20 @@ class TenantService:
             from app.modules.permissions.models import Role
             role = await self.session.get(Role, access.role_id)
             role_name = role.name if role else ""
+
+            # Resolve o vínculo CBO ativo:
+            #  - se o cliente mandou ``cbo_binding_id``, valida que pertence
+            #    a esse acesso;
+            #  - se não mandou e só existe 1 binding, usa esse automaticamente;
+            #  - se não mandou e existem 0 ou 2+, segue sem binding ativo.
+            bindings = list(access.cnes_bindings or [])
+            if payload.cbo_binding_id:
+                match = next((b for b in bindings if b.id == payload.cbo_binding_id), None)
+                if match is None:
+                    raise ForbiddenError("Vínculo CBO inválido para esse acesso.")
+                chosen_binding = match
+            elif len(bindings) == 1:
+                chosen_binding = bindings[0]
 
         # Cascata: município ∩ unidade ∩ role (se não-master).
         effective = self.effective_facility_modules(mun, facility)
@@ -228,6 +258,17 @@ class TenantService:
             },
         )
 
+        binding_read: CnesBindingRead | None = None
+        if chosen_binding is not None:
+            binding_read = CnesBindingRead(
+                id=chosen_binding.id,
+                cbo_id=chosen_binding.cbo_id,
+                cbo_description=chosen_binding.cbo_description,
+                cnes_professional_id=chosen_binding.cnes_professional_id,
+                cnes_snapshot_cpf=chosen_binding.cnes_snapshot_cpf,
+                cnes_snapshot_nome=chosen_binding.cnes_snapshot_nome,
+            )
+
         return WorkContextIssued(
             context_token=token,
             municipality=MunicipalityRead.model_validate(mun),
@@ -236,6 +277,7 @@ class TenantService:
             modules=modules,
             permissions=resolved.to_list(),
             expires_in=settings.work_context_ttl_minutes * 60,
+            cbo_binding=binding_read,
         )
 
     async def current(
@@ -318,6 +360,8 @@ class TenantService:
         )
 
     async def create_municipality(self, payload: MunicipalityCreate) -> MunicipalityDetail:
+        from app.core.crypto import encrypt_secret
+
         if await self.session.scalar(select(Municipality).where(Municipality.ibge == payload.ibge)):
             raise ConflictError("IBGE já cadastrado.")
         requested = payload.enabled_modules
@@ -336,6 +380,10 @@ class TenantService:
             territory=payload.territory,
             enabled_modules=enabled,
             timezone=payload.timezone,
+            cadsus_user=(payload.cadsus_user or "").strip(),
+            cadsus_password=(
+                encrypt_secret(payload.cadsus_password) if payload.cadsus_password else ""
+            ),
         )
         self.session.add(mun)
         await self.session.flush()

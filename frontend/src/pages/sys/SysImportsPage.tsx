@@ -1,7 +1,7 @@
 // Hub de importações globais (MASTER only).
 
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Upload, FileStack } from 'lucide-react'
+import { ArrowRight, Upload, FileStack, Stethoscope } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 
 interface Importer {
@@ -26,6 +26,17 @@ const IMPORTERS: Importer[] = [
     iconColor: 'text-violet-500',
     path: '/sys/importacoes/sigtap',
     tag: 'TERMINOLOGIAS',
+  },
+  {
+    id: 'cnes',
+    title: 'CNES — Cadastro de Estabelecimentos',
+    description:
+      'Sobe o pacote TXTPROC do DATASUS pra qualquer município cadastrado. Importa unidades, profissionais, vínculos, leitos, equipes e habilitações no schema do município escolhido.',
+    icon: <Stethoscope size={22} />,
+    iconBg: 'bg-sky-50 dark:bg-sky-950/50',
+    iconColor: 'text-sky-500',
+    path: '/sys/importacoes/cnes',
+    tag: 'MUNICÍPIO',
   },
 ]
 

@@ -24,6 +24,15 @@ export interface UserListItem {
   modules: SystemId[]
 }
 
+export interface CnesBinding {
+  id: string
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 export interface FacilityAccessDetail {
   facilityAccessId: string
   facilityId: string
@@ -33,12 +42,8 @@ export interface FacilityAccessDetail {
   roleId: string
   role: string
   modules: SystemId[]
-  /** Vínculo CNES — null quando nunca foi feito. */
-  cboId: string | null
-  cboDescription: string | null
-  cnesProfessionalId: string | null
-  cnesSnapshotCpf: string | null
-  cnesSnapshotNome: string | null
+  /** Lista de vínculos CNES — vazia quando nenhum foi feito. */
+  cnesBindings: CnesBinding[]
 }
 
 export interface MunicipalityAccessDetail {
@@ -75,16 +80,19 @@ export interface PageResponse<T> {
 
 // ─── Inputs ───────────────────────────────────────────────────────────────────
 
+export interface CnesBindingInput {
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 export interface FacilityAccessInput {
   facilityId: string
   roleId: string
-  /** Trio opcional de vínculo CNES. Se enviar um, envie os três. */
-  cboId?: string | null
-  cboDescription?: string | null
-  cnesProfessionalId?: string | null
-  /** Snapshot de CPF/nome no CNES — usado pelo reconciliador pós-importação. */
-  cnesSnapshotCpf?: string | null
-  cnesSnapshotNome?: string | null
+  /** Lista de vínculos CNES atribuídos a esse acesso — pode ser vazia. */
+  cnesBindings?: CnesBindingInput[]
 }
 
 export interface MunicipalityAccessInput {
