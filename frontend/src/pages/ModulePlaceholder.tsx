@@ -13,7 +13,7 @@ const MODULE_INFO: Record<SystemId, { label: string; abbrev: string; description
   fsc: { label: 'Fiscal',      abbrev: 'FSC', description: 'Vigilância sanitária, alvarás, inspeções e controle de estabelecimentos.',                                     icon: <ClipboardCheck size={32} />, color: '#f97316' },
   ops: { label: 'Operações',   abbrev: 'OPS', description: 'Frota, motoristas, transporte de pacientes e logística de saúde.',                                             icon: <Truck size={32} />,         color: '#6b7280' },
   ind: { label: 'Indicadores', abbrev: 'IND', description: 'Dashboards e análise de indicadores de saúde do município.',                                                  icon: <TrendingUp size={32} />,    color: '#ec4899' },
-  cha: { label: 'Chamadas',    abbrev: 'CHA', description: 'Painel de chamadas de pacientes para salas e atendimentos.',                                                  icon: <BellRing size={32} />,      color: '#14b8a6' },
+  rec: { label: 'Recepção',    abbrev: 'REC', description: 'Totem, balcão e painel de chamadas — funções habilitáveis por unidade.',                                    icon: <BellRing size={32} />,      color: '#14b8a6' },
   esu: { label: 'Integra Esus',abbrev: 'ESU', description: 'Integração com o e-SUS (envio e recebimento de dados).',                                                       icon: <Link2 size={32} />,         color: '#6366f1' },
 }
 

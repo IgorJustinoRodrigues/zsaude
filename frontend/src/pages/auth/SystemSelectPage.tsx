@@ -22,7 +22,7 @@ const ICONS: Record<SystemId, React.ReactNode> = {
   fsc: <ClipboardCheck size={22} />,
   ops: <Truck size={22} />,
   ind: <TrendingUp size={22} />,
-  cha: <BellRing size={22} />,
+  rec: <BellRing size={22} />,
   esu: <Link2 size={22} />,
 }
 
@@ -34,7 +34,7 @@ const ICON_SM: Record<SystemId, React.ReactNode> = {
   fsc: <ClipboardCheck size={12} />,
   ops: <Truck size={12} />,
   ind: <TrendingUp size={12} />,
-  cha: <BellRing size={12} />,
+  rec: <BellRing size={12} />,
   esu: <Link2 size={12} />,
 }
 

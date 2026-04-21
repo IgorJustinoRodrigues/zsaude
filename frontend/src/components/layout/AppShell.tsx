@@ -13,7 +13,7 @@ import { BirthdayModal } from '../ui/BirthdayModal'
 import { useBirthdayCheck } from '../../hooks/useBirthdayCheck'
 import { authApi } from '../../api/auth'
 
-const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
+const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'rec', 'esu']
 
 export function AppShell() {
   const { sidebarCollapsed, sidebarHovered } = useUIStore()

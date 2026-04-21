@@ -44,15 +44,15 @@ MUNICIPALITIES = [
     # configuramos cenários distintos pra demonstrar a filtragem:
     # - Goiânia: cidade grande, tudo ligado.
     # - Aparecida: perfil clínico-hospitalar.
-    # - Anápolis: só clínica + chamadas + indicadores.
+    # - Anápolis: só clínica + recepção + indicadores.
     {"key": "mun1", "name": "Goiânia",              "state": "GO", "ibge": "5208707",
-     "enabled_modules": ["cln", "dgn", "hsp", "pln", "fsc", "ops", "ind", "cha", "esu"]},
+     "enabled_modules": ["cln", "dgn", "hsp", "pln", "fsc", "ops", "ind", "rec", "esu"]},
     {"key": "mun2", "name": "Aparecida de Goiânia", "state": "GO", "ibge": "5201405",
-     "enabled_modules": ["cln", "dgn", "hsp", "ind", "cha"]},
+     "enabled_modules": ["cln", "dgn", "hsp", "ind", "rec"]},
     {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108",
-     "enabled_modules": ["cln", "cha", "ind"]},
+     "enabled_modules": ["cln", "rec", "ind"]},
     {"key": "mun4", "name": "Goianésia",            "state": "GO", "ibge": "520860",
-     "enabled_modules": ["cln", "dgn", "hsp", "ops", "ind", "cha"]},
+     "enabled_modules": ["cln", "dgn", "hsp", "ops", "ind", "rec"]},
 ]
 
 FACILITIES = [

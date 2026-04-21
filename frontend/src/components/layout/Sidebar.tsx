@@ -21,7 +21,7 @@ const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React
   fsc: { label: 'Fiscal',      abbrev: 'FSC', icon: <ClipboardCheck size={18} />, color: '#f97316' },
   ops: { label: 'Operações',   abbrev: 'OPS', icon: <Truck size={18} />,          color: '#6b7280' },
   ind: { label: 'Indicadores', abbrev: 'IND', icon: <TrendingUp size={18} />,     color: '#ec4899' },
-  cha: { label: 'Chamadas',    abbrev: 'CHA', icon: <BellRing size={18} />,       color: '#14b8a6' },
+  rec: { label: 'Recepção',    abbrev: 'REC', icon: <BellRing size={18} />,       color: '#14b8a6' },
   esu: { label: 'Integra Esus',abbrev: 'ESU', icon: <Link2 size={18} />,          color: '#6366f1' },
 }
 

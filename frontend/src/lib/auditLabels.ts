@@ -30,7 +30,7 @@ export const MODULE_LABELS: Record<string, string> = {
   fsc:         'Fiscal',
   ops:         'Operações',
   ind:         'Indicadores',
-  cha:         'Chamadas',
+  rec:         'Recepção',
   esu:         'Integração eSUS',
   sys:         'Sistema',
   auth:        'Autenticação',

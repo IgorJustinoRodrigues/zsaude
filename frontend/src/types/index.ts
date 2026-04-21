@@ -1,6 +1,6 @@
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-export type SystemId = 'cln' | 'dgn' | 'hsp' | 'pln' | 'fsc' | 'ops' | 'ind' | 'cha' | 'esu'
+export type SystemId = 'cln' | 'dgn' | 'hsp' | 'pln' | 'fsc' | 'ops' | 'ind' | 'rec' | 'esu'
 
 export interface SystemAccess {
   id: SystemId

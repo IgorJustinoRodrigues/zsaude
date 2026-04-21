@@ -61,6 +61,11 @@ P("hsp.patient_history.view", "Visualizar histórico de alterações do paciente
 P("hsp.patient.face_match", "Identificar paciente por reconhecimento facial")
 P("hsp.face.reindex", "Reindexar embeddings faciais do município (MASTER)")
 
+# ── REC (Recepção) — totem, balcão e painel de chamadas ────────────────────
+# Por ora só a permissão-base que gate o módulo. Sub-permissões por função
+# (totem/balcão/painel) entram conforme cada função for implementada.
+P("rec.module.access", "Acessar o módulo Recepção")
+
 # ── Gateway de IA ───────────────────────────────────────────────────────────
 P("ai.operations.use", "Usar operações de IA (consumidor)")
 # Configuração de IA é centralizada no SYS (MASTER) — não precisa de perm por

@@ -17,6 +17,7 @@ OPERATIONAL_MODULES: frozenset[str] = frozenset({
     "fsc",  # Fiscal Sanitário
     "ops",  # Operações
     "ind",  # Indicadores
-    "cha",  # Painel de Chamadas
+    "rec",  # Recepção (totem, balcão, painel de chamadas — funções
+            # habilitáveis por município/unidade).
     "esu",  # Integra Esus
 })
