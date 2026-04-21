@@ -55,13 +55,13 @@ export const devicesApi = {
   pollStatus: (deviceId: string) =>
     api.get<DeviceStatusOutput>(`/api/v1/public/devices/status/${deviceId}`),
 
-  // Autenticado
+  // Autenticado — precisa do X-Work-Context (endpoints usam CurrentContextDep)
   pair: (payload: DevicePairInput) =>
-    api.post<DeviceRead>('/api/v1/devices/pair', payload),
+    api.post<DeviceRead>('/api/v1/devices/pair', payload, { withContext: true }),
 
   list: () =>
-    api.get<DeviceListItem[]>('/api/v1/devices'),
+    api.get<DeviceListItem[]>('/api/v1/devices', { withContext: true }),
 
   revoke: (id: string) =>
-    api.delete<void>(`/api/v1/devices/${id}`),
+    api.delete<void>(`/api/v1/devices/${id}`, { withContext: true }),
 }

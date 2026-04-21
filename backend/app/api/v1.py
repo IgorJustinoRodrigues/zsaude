@@ -33,6 +33,10 @@ from app.modules.rec.router import (
     admin_router as rec_admin_router,
     router as rec_router,
 )
+from app.modules.sectors.router import (
+    admin_router as sectors_admin_router,
+    router as sectors_router,
+)
 from app.modules.permissions.admin_router import (
     access_router as roles_admin_access_router,
     router as roles_admin_router,
@@ -82,3 +86,5 @@ api_v1.include_router(rec_router)
 api_v1.include_router(rec_admin_router)
 api_v1.include_router(devices_public_router)
 api_v1.include_router(devices_router)
+api_v1.include_router(sectors_admin_router)
+api_v1.include_router(sectors_router)

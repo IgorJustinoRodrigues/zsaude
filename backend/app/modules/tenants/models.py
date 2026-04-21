@@ -144,6 +144,13 @@ class Facility(Base, TimestampedMixin):
     # desativou).
     rec_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
 
+    # Setores próprios? ``false`` = herda os setores do município;
+    # ``true`` = esta unidade tem sua lista própria de setores
+    # (criada clonando a do município ao marcar "personalizar").
+    custom_sectors: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("0"),
+    )
+
 
 class MunicipalityAccess(Base, TimestampedMixin):
     """Vínculo usuário → município."""

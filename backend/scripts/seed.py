@@ -28,6 +28,7 @@ from app.core.security import hash_password
 from app.db.session import dispose_engine, sessionmaker
 from app.db.tenant_schemas import ensure_municipality_schema
 from app.modules.permissions.models import Role
+from app.modules.sectors.service import SectorService
 from app.modules.tenants.models import (
     Facility,
     FacilityAccess,
@@ -404,6 +405,12 @@ async def main() -> None:
     async with sessionmaker()() as session:
         print("→ municípios")
         mun_ids = await upsert_municipalities(session)
+        print("→ setores default do sistema (por município)")
+        sec_svc = SectorService(session)
+        for key, mid in mun_ids.items():
+            n = await sec_svc.ensure_municipality_defaults(mid)
+            if n:
+                print(f"  · {key}: {n} setores default criados")
         print("→ unidades")
         fac_ids = await upsert_facilities(session, mun_ids)
         print("→ usuários")

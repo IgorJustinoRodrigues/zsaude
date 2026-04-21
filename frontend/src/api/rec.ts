@@ -12,5 +12,5 @@ export interface CallInput {
 export const recApi = {
   /** Publica uma chamada no painel da unidade atual (via work context). */
   publishCall: (payload: CallInput) =>
-    api.post<void>('/api/v1/rec/calls', payload),
+    api.post<void>('/api/v1/rec/calls', payload, { withContext: true }),
 }

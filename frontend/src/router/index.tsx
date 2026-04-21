@@ -121,6 +121,14 @@ import {
   SysMunicipalityRecSectionPage,
   SysFacilityRecSectionPage,
 } from '../pages/sys/SysRecConfigPage'
+import {
+  SysMunicipalitySectorsPage,
+  SysFacilitySectorsPage,
+} from '../pages/sys/SysSectorsPage'
+import {
+  SysMunicipalityResourcesPage,
+  SysFacilityResourcesPage,
+} from '../pages/sys/SysResourcesPages'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -179,6 +187,8 @@ export const router = createBrowserRouter([
               { path: '/sys/municipios/:id/modulos',                      element: <SysMunicipalityModulesPage /> },
               { path: '/sys/municipios/:id/modulos/:module',              element: <SysMunicipalityModuleSectionsPage /> },
               { path: '/sys/municipios/:id/modulos/rec/:section',         element: <SysMunicipalityRecSectionPage /> },
+              { path: '/sys/municipios/:id/recursos',                     element: <SysMunicipalityResourcesPage /> },
+              { path: '/sys/municipios/:id/recursos/setores',             element: <SysMunicipalitySectorsPage /> },
               { path: '/sys/unidades',                    element: <SysFacilityListPage /> },
               { path: '/sys/unidades/novo',               element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id',                element: <SysFacilityFormPage /> },
@@ -186,6 +196,8 @@ export const router = createBrowserRouter([
               { path: '/sys/unidades/:id/modulos',                        element: <SysFacilityModulesPage /> },
               { path: '/sys/unidades/:id/modulos/:module',                element: <SysFacilityModuleSectionsPage /> },
               { path: '/sys/unidades/:id/modulos/rec/:section',           element: <SysFacilityRecSectionPage /> },
+              { path: '/sys/unidades/:id/recursos',                       element: <SysFacilityResourcesPage /> },
+              { path: '/sys/unidades/:id/recursos/setores',               element: <SysFacilitySectorsPage /> },
               { path: '/sys/profissionais',               element: <SysProfessionalsPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
               { path: '/sys/usuarios/novo',         element: <OpsUserFormPage /> },
