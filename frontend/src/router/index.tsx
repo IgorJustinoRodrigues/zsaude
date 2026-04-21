@@ -75,6 +75,8 @@ import { OpsCompatibilidadeSearchPage } from '../pages/ops/OpsCompatibilidadeSea
 import { OpsFormaOrgSearchPage } from '../pages/ops/OpsFormaOrgSearchPage'
 
 // REC – Recepção
+import { RecHomePage } from '../pages/rec/RecHomePage'
+import { RecQueuePage } from '../pages/rec/RecQueuePage'
 import { RecTotemPage } from '../pages/rec/RecTotemPage'
 import { RecPainelPage } from '../pages/rec/RecPainelPage'
 
@@ -290,6 +292,8 @@ export const router = createBrowserRouter([
               {
                 element: <RequireModule moduleId="rec" />,
                 children: [
+                  { path: '/rec',        element: <RecHomePage /> },
+                  { path: '/rec/fila',   element: <RecQueuePage /> },
                   { path: '/rec/totem',  element: <RecTotemPage /> },
                   { path: '/rec/painel', element: <RecPainelPage /> },
                 ],

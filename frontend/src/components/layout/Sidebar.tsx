@@ -48,6 +48,8 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
   ],
   rec: [
     { kind: 'section', label: 'Atendimento' },
+    { kind: 'item', icon: <Users size={16} />, label: 'Fila', path: '/rec/fila' },
+    { kind: 'section', label: 'Exibição' },
     { kind: 'item', icon: <MonitorSmartphone size={16} />, label: 'Totem', path: '/rec/totem' },
     { kind: 'item', icon: <BellRing size={16} />, label: 'Painel', path: '/rec/painel' },
   ],
