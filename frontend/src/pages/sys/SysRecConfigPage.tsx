@@ -1,9 +1,9 @@
 // Tela 3: configuração de UMA seção do módulo Recepção (MASTER).
 //
-// A seção vem do parâmetro da rota (``:section`` = totem|painel|recepcao).
-// UX: ao abrir a tela, o form já está editável pré-preenchido com o valor
-// efetivo atual do escopo (herdado ou personalizado). Salvar cria ou
-// atualiza o override; "Voltar a herdar" apaga só esta seção.
+// Hoje o rec_config é bem magro: cada seção tem apenas um toggle
+// ``enabled`` (e ``afterAttendance`` no caso de Recepção). Detalhes
+// (captura do totem, modo do painel, áudio, setores) vivem nos
+// painéis/totens lógicos — ver `/sys/{mun|unidade}/recursos`.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -15,7 +15,6 @@ import {
   type AfterAttendance,
   type EffectiveRecConfig,
   type PainelConfig,
-  type PainelMode,
   type RecSection,
   type RecepcaoConfig,
   type TotemConfig,
@@ -27,6 +26,10 @@ import { cn } from '../../lib/utils'
 import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 
 type Scope = 'municipality' | 'facility'
+
+const DEFAULT_TOTEM: TotemConfig = { enabled: true }
+const DEFAULT_PAINEL: PainelConfig = { enabled: true }
+const DEFAULT_RECEPCAO: RecepcaoConfig = { enabled: true, afterAttendance: 'triagem' }
 
 export function SysMunicipalityRecSectionPage() {
   return <RecSectionPage scope="municipality" />
@@ -43,16 +46,8 @@ function RecSectionPage({ scope }: { scope: Scope }) {
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  // Estado desta seção como salvo em DB:
-  //   null = escopo herda (não há override).
-  //   objeto = escopo já tem valor salvo próprio.
   const [rawSection, setRawSection] = useState<unknown>(null)
-  // Config efetiva (pós-merge). É o que está valendo agora — usamos como
-  // valor inicial do form, mesmo quando herdando.
   const [effective, setEffective] = useState<EffectiveRecConfig | null>(null)
-  // Para escopo facility: effective do município pai — usado como
-  // "teto" restritivo na UI (não deixa habilitar o que o município
-  // desativou, evitando 409 no save).
   const [parentEffective, setParentEffective] = useState<EffectiveRecConfig | null>(null)
 
   const load = useCallback(async () => {
@@ -68,7 +63,6 @@ function RecSectionPage({ scope }: { scope: Scope }) {
         setEffective(eff)
         setParentEffective(null)
       } else {
-        // Facility: precisa do municipalityId da unidade pra buscar o teto.
         const all = await directoryApi.listFacilities(undefined, 'all')
         const fac = all.find(f => f.id === id)
         const municipalityId = fac?.municipalityId
@@ -138,7 +132,7 @@ function RecSectionPage({ scope }: { scope: Scope }) {
   const isPersonalized = rawSection !== null
   const inheritHint =
     scope === 'municipality'
-      ? 'Este valor vira o padrão das unidades do município. Elas podem restringir, nunca liberar além daqui.'
+      ? 'Este valor vira o padrão das unidades do município. Elas podem desabilitar, nunca reabilitar se o município desativou.'
       : 'Por padrão herda do município. Ao personalizar, só é possível restringir — o que a cidade desativa permanece desativado.'
 
   const meta = SECTION_META[section]
@@ -165,7 +159,6 @@ function RecSectionPage({ scope }: { scope: Scope }) {
         </div>
       ) : (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-          {/* Card header: título da seção + badge de status + reset */}
           <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300 flex items-center justify-center shrink-0">
               <SectionIcon size={16} />
@@ -189,7 +182,6 @@ function RecSectionPage({ scope }: { scope: Scope }) {
             )}
           </div>
 
-          {/* Form */}
           <div className="p-5">
             {section === 'totem' && (
               <TotemForm
@@ -222,11 +214,27 @@ function RecSectionPage({ scope }: { scope: Scope }) {
       <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
         {inheritHint}
       </p>
+
+      {/* Link pros recursos lógicos */}
+      {(section === 'totem' || section === 'painel') && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          Detalhes de cada {section} (formas de captura, modo, áudio, setores) vivem em
+          {' '}<a
+            href={scope === 'municipality'
+              ? `/sys/municipios/${id}/recursos/${section === 'painel' ? 'paineis' : 'totens'}`
+              : `/sys/unidades/${id}/recursos/${section === 'painel' ? 'paineis' : 'totens'}`
+            }
+            className="text-teal-600 dark:text-teal-400 hover:underline font-medium"
+          >
+            Recursos → {section === 'painel' ? 'Painéis de chamada' : 'Totens'}
+          </a>.
+        </p>
+      )}
     </div>
   )
 }
 
-// ─── Metadata das seções ─────────────────────────────────────────────────────
+// ─── Metadata ───────────────────────────────────────────────────────────────
 
 const SECTION_META: Record<RecSection, { label: string; subtitle: string; icon: typeof BellRing }> = {
   totem: {
@@ -262,12 +270,10 @@ function StatusBadge({ personalized, scope }: { personalized: boolean; scope: Sc
   )
 }
 
-// ─── Forms de cada seção ─────────────────────────────────────────────────────
+// ─── Forms ──────────────────────────────────────────────────────────────────
 
 interface FormProps<T> {
   initial: T
-  /** Effective do município pai (null quando scope=municipality). Usado como
-   *  teto: campos trancados em false não podem ser habilitados na unidade. */
   parent: T | null
   saving: boolean
   onSave: (v: T) => void
@@ -278,8 +284,6 @@ function TotemForm({ initial, parent, saving, onSave }: FormProps<TotemConfig>) 
   useEffect(() => { setDraft(initial) }, [initial])
 
   const parentDisabled = parent !== null && !parent.enabled
-  // Quando o município desativa, força também no draft (ao salvar vai
-  // gravar false — mesmo que o usuário não tenha "clicado").
   useEffect(() => {
     if (parentDisabled && draft.enabled) setDraft({ ...draft, enabled: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,58 +296,17 @@ function TotemForm({ initial, parent, saving, onSave }: FormProps<TotemConfig>) 
       )}
       <MasterToggle
         label="Totem ativo"
-        description="Desligar aqui desativa o totem inteiro. Use quando este escopo não tem autoatendimento."
+        description="Desligar aqui desativa o totem inteiro. Detalhes (captura de documento, prioridade etc.) ficam em Recursos → Totens."
         checked={draft.enabled}
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
       />
-      <fieldset className={cn('grid grid-cols-1 lg:grid-cols-2 gap-6', !draft.enabled && 'opacity-50 pointer-events-none')}>
-        <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
-            Formas de identificação
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Checkbox
-              label="CPF"
-              checked={draft.capture.cpf}
-              onChange={b => setDraft({ ...draft, capture: { ...draft.capture, cpf: b } })}
-              lockedReason={parent && !parent.capture.cpf ? 'Município desativou.' : null}
-            />
-            <Checkbox
-              label="CNS"
-              checked={draft.capture.cns}
-              onChange={b => setDraft({ ...draft, capture: { ...draft.capture, cns: b } })}
-              lockedReason={parent && !parent.capture.cns ? 'Município desativou.' : null}
-            />
-            <Checkbox
-              label="Reconhecimento facial"
-              checked={draft.capture.face}
-              onChange={b => setDraft({ ...draft, capture: { ...draft.capture, face: b } })}
-              lockedReason={parent && !parent.capture.face ? 'Município desativou.' : null}
-            />
-            <Checkbox
-              label="Nome manual"
-              checked={draft.capture.manualName}
-              onChange={b => setDraft({ ...draft, capture: { ...draft.capture, manualName: b } })}
-              lockedReason={parent && !parent.capture.manualName ? 'Município desativou.' : null}
-            />
-          </div>
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
-            Opções
-          </p>
-          <Checkbox
-            label="Perguntar prioridade (idoso, gestante, etc.)"
-            checked={draft.priorityPrompt}
-            onChange={b => setDraft({ ...draft, priorityPrompt: b })}
-          />
-        </div>
-      </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />
     </div>
   )
 }
+
+void DEFAULT_TOTEM; void DEFAULT_PAINEL; void DEFAULT_RECEPCAO  // reservados pra futuro
 
 function PainelForm({ initial, parent, saving, onSave }: FormProps<PainelConfig>) {
   const [draft, setDraft] = useState(initial)
@@ -362,37 +325,11 @@ function PainelForm({ initial, parent, saving, onSave }: FormProps<PainelConfig>
       )}
       <MasterToggle
         label="Painel ativo"
-        description="Desligar aqui desativa o painel de chamadas inteiro. Use quando este escopo não exibe TV na recepção."
+        description="Desligar aqui desativa o painel de chamadas inteiro. Configurações por painel (modo, áudio, setores) ficam em Recursos → Painéis."
         checked={draft.enabled}
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
       />
-      <fieldset className={cn('grid grid-cols-1 lg:grid-cols-2 gap-6', !draft.enabled && 'opacity-50 pointer-events-none')}>
-        <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
-            Chamar por
-          </p>
-          <SegmentedControl<PainelMode>
-            value={draft.mode}
-            options={[
-              { value: 'senha', label: 'Senha' },
-              { value: 'nome',  label: 'Nome' },
-              { value: 'ambos', label: 'Ambos' },
-            ]}
-            onChange={m => setDraft({ ...draft, mode: m })}
-          />
-        </div>
-        <div>
-          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
-            Opções
-          </p>
-          <Checkbox
-            label="Anunciar por áudio (voz sintetizada)"
-            checked={draft.announceAudio}
-            onChange={b => setDraft({ ...draft, announceAudio: b })}
-          />
-        </div>
-      </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />
     </div>
   )
@@ -408,6 +345,12 @@ function RecepcaoForm({ initial, parent, saving, onSave }: FormProps<RecepcaoCon
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parentDisabled])
 
+  const labels: Record<AfterAttendance, string> = {
+    triagem: 'Triagem',
+    consulta: 'Consulta',
+    nenhum: 'Nenhum',
+  }
+
   return (
     <div className="space-y-5">
       {parentDisabled && (
@@ -415,7 +358,7 @@ function RecepcaoForm({ initial, parent, saving, onSave }: FormProps<RecepcaoCon
       )}
       <MasterToggle
         label="Atendimento ativo"
-        description="Desligar aqui desativa o balcão de recepção inteiro. Use quando este escopo não tem recepcionista."
+        description="Desligar aqui desativa o balcão de recepção. Use quando este escopo não tem recepcionista."
         checked={draft.enabled}
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
@@ -425,15 +368,23 @@ function RecepcaoForm({ initial, parent, saving, onSave }: FormProps<RecepcaoCon
           <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">
             Após o atendimento, encaminhar para
           </p>
-          <SegmentedControl<AfterAttendance>
-            value={draft.afterAttendance}
-            options={[
-              { value: 'triagem',  label: 'Triagem' },
-              { value: 'consulta', label: 'Consulta' },
-              { value: 'nenhum',   label: 'Nenhum' },
-            ]}
-            onChange={k => setDraft({ ...draft, afterAttendance: k })}
-          />
+          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800">
+            {(Object.keys(labels) as AfterAttendance[]).map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setDraft({ ...draft, afterAttendance: k })}
+                className={cn(
+                  'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
+                  draft.afterAttendance === k
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                )}
+              >
+                {labels[k]}
+              </button>
+            ))}
+          </div>
         </div>
       </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />
@@ -459,8 +410,6 @@ function FormFooter({ saving, onSave }: { saving: boolean; onSave: () => void })
   )
 }
 
-/** Toggle mestre da seção — destaque visual pra deixar claro que desliga a
- *  funcionalidade inteira, não uma opção individual. */
 function MasterToggle({
   label, description, checked, onChange, disabled,
 }: {
@@ -517,45 +466,6 @@ function MasterToggle({
   )
 }
 
-function Checkbox({
-  label, checked, onChange, lockedReason,
-}: {
-  label: string
-  checked: boolean
-  onChange: (b: boolean) => void
-  /** Quando não-null, o campo fica trancado em false e mostra o motivo. */
-  lockedReason?: string | null
-}) {
-  const locked = Boolean(lockedReason)
-  const effective = locked ? false : checked
-  return (
-    <label
-      className={cn(
-        'flex items-center gap-2 text-sm',
-        locked
-          ? 'cursor-not-allowed text-slate-400 dark:text-slate-500'
-          : 'cursor-pointer text-slate-700 dark:text-slate-200',
-      )}
-      title={lockedReason ?? undefined}
-    >
-      <input
-        type="checkbox"
-        checked={effective}
-        disabled={locked}
-        onChange={e => onChange(e.target.checked)}
-        className={cn(
-          'rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500',
-          locked && 'cursor-not-allowed',
-        )}
-      />
-      <span className="flex-1">{label}</span>
-      {locked && (
-        <span className="text-[10px] uppercase tracking-wider text-slate-400">bloqueado</span>
-      )}
-    </label>
-  )
-}
-
 function ParentLockBanner({ reason }: { reason: string }) {
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900/50">
@@ -563,36 +473,6 @@ function ParentLockBanner({ reason }: { reason: string }) {
         <span className="text-amber-700 dark:text-amber-400 text-[10px] font-bold">!</span>
       </div>
       <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">{reason}</p>
-    </div>
-  )
-}
-
-interface SegmentedOption<V extends string> { value: V; label: string }
-
-function SegmentedControl<V extends string>({
-  value, options, onChange,
-}: {
-  value: V
-  options: SegmentedOption<V>[]
-  onChange: (v: V) => void
-}) {
-  return (
-    <div className="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800">
-      {options.map(opt => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            'px-3 py-1.5 rounded-md text-xs font-medium transition-all',
-            value === opt.value
-              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
     </div>
   )
 }

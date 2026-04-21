@@ -22,7 +22,6 @@ from app.modules.rec.schemas import (
     RecConfigRead,
     RecConfigUpdate,
     RecepcaoConfig,
-    TotemCapture,
     TotemConfig,
 )
 from app.modules.tenants.models import Facility, Municipality
@@ -33,16 +32,13 @@ from app.modules.tenants.models import Facility, Municipality
 def default_rec_config() -> RecConfig:
     """Config padrão quando nada foi configurado em nenhum nível.
 
-    Por padrão tudo habilitado, modo ``senha`` no painel, totem não usa
-    face (requer câmera + consentimento), ``after_attendance='triagem'``.
+    Por padrão todas as features habilitadas e ``after_attendance='triagem'``.
+    Detalhes de totem/painel (captura, modo, áudio, setores) moram em
+    painels/totens lógicos, não aqui.
     """
     return RecConfig(
-        totem=TotemConfig(
-            enabled=True,
-            capture=TotemCapture(cpf=True, cns=True, face=False, manual_name=True),
-            priority_prompt=True,
-        ),
-        painel=PainelConfig(enabled=True, mode="senha", announce_audio=True),
+        totem=TotemConfig(enabled=True),
+        painel=PainelConfig(enabled=True),
         recepcao=RecepcaoConfig(enabled=True, after_attendance="triagem"),
     )
 
@@ -185,34 +181,24 @@ class RecConfigService:
         )
 
     def _assert_within_parent(self, child: RecConfig, parent: EffectiveRecConfig) -> None:
-        """Garante que o child não habilite nada que o parent desabilitou."""
-        if child.totem is not None:
-            if child.totem.enabled and not parent.totem.enabled:
-                raise HTTPException(
-                    status_code=409,
-                    detail="O município não habilita o totem; a unidade não pode ativá-lo.",
-                )
-            # Capturas: unidade só pode desligar o que o município ligou.
-            pc = parent.totem.capture
-            cc = child.totem.capture
-            if (cc.cpf and not pc.cpf) or (cc.cns and not pc.cns) \
-               or (cc.face and not pc.face) or (cc.manual_name and not pc.manual_name):
-                raise HTTPException(
-                    status_code=409,
-                    detail="A unidade não pode habilitar uma captura que o município desativou.",
-                )
-        if child.painel is not None:
-            if child.painel.enabled and not parent.painel.enabled:
-                raise HTTPException(
-                    status_code=409,
-                    detail="O município não habilita o painel; a unidade não pode ativá-lo.",
-                )
-        if child.recepcao is not None:
-            if child.recepcao.enabled and not parent.recepcao.enabled:
-                raise HTTPException(
-                    status_code=409,
-                    detail="O município não habilita a recepção; a unidade não pode ativá-la.",
-                )
+        """Garante que a unidade não habilite feature que o município
+        desligou. Só valida os flags ``enabled`` — detalhes (captura,
+        modo, áudio) moram nos painéis/totens lógicos."""
+        if child.totem is not None and child.totem.enabled and not parent.totem.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail="O município não habilita o totem; a unidade não pode ativá-lo.",
+            )
+        if child.painel is not None and child.painel.enabled and not parent.painel.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail="O município não habilita o painel; a unidade não pode ativá-lo.",
+            )
+        if child.recepcao is not None and child.recepcao.enabled and not parent.recepcao.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail="O município não habilita a recepção; a unidade não pode ativá-la.",
+            )
 
     async def _get_municipality_or_404(self, municipality_id: UUID) -> Municipality:
         mun = await self.db.get(Municipality, municipality_id)
@@ -281,24 +267,11 @@ def _merge_recepcao(
 
 
 def _restrict_totem(child: TotemConfig, parent: TotemConfig) -> TotemConfig:
-    return TotemConfig(
-        enabled=child.enabled and parent.enabled,
-        capture=TotemCapture(
-            cpf=child.capture.cpf and parent.capture.cpf,
-            cns=child.capture.cns and parent.capture.cns,
-            face=child.capture.face and parent.capture.face,
-            manual_name=child.capture.manual_name and parent.capture.manual_name,
-        ),
-        priority_prompt=child.priority_prompt,
-    )
+    return TotemConfig(enabled=child.enabled and parent.enabled)
 
 
 def _restrict_painel(child: PainelConfig, parent: PainelConfig) -> PainelConfig:
-    return PainelConfig(
-        enabled=child.enabled and parent.enabled,
-        mode=child.mode,
-        announce_audio=child.announce_audio,
-    )
+    return PainelConfig(enabled=child.enabled and parent.enabled)
 
 
 def _restrict_recepcao(child: RecepcaoConfig, parent: RecepcaoConfig) -> RecepcaoConfig:

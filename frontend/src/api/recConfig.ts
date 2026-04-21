@@ -8,25 +8,12 @@ import { api } from './client'
 
 export type RecScope = 'municipality' | 'facility'
 
-export interface TotemCapture {
-  cpf: boolean
-  cns: boolean
-  face: boolean
-  manualName: boolean
-}
-
 export interface TotemConfig {
   enabled: boolean
-  capture: TotemCapture
-  priorityPrompt: boolean
 }
-
-export type PainelMode = 'senha' | 'nome' | 'ambos'
 
 export interface PainelConfig {
   enabled: boolean
-  mode: PainelMode
-  announceAudio: boolean
 }
 
 export type AfterAttendance = 'triagem' | 'consulta' | 'nenhum'

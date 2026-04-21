@@ -34,8 +34,9 @@ React 19 · Vite · TypeScript · Tailwind · Zustand
 
 ## Módulos
 
-- [**Módulo Recepção (`rec`)**](./rec-module.md) — totem, painel, balcão; config em cascata município→unidade; telas MASTER de personalização.
-- [**Dispositivos & tempo real**](./devices.md) — pareamento de totens/painéis, WebSocket, Valkey pub/sub.
+- [**Módulo Recepção (`rec`)**](./rec-module.md) — totem, painel, balcão; 3 camadas de config (rec_config + recursos + devices); fluxo end-to-end da chamada.
+- [**Dispositivos**](./devices.md) — pareamento de totens/painéis, QR code, vínculo com painel/totem lógico, "aguardando configuração".
+- [**Tempo real (WS + pub/sub)**](./realtime.md) — infra unificada: DeviceHub, UserHub, notificações, presença, TTLs de sessão.
 
 ## Operação
 

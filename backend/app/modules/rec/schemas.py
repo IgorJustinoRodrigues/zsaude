@@ -1,44 +1,52 @@
 """DTOs do módulo Recepção — configuração por município/unidade.
 
-A config é um dicionário estruturado em três funções (totem, painel,
-recepção/balcão). Cada função tem um flag ``enabled`` e campos
-específicos. ``None`` em qualquer nível significa "herdar" — do
-município (quando o escopo é unidade) ou dos defaults do sistema.
+A ``rec_config`` ficou reduzida aos **flags de feature** + destino pós-
+atendimento. Detalhes de cada instância (formas de captura do totem,
+modo do painel, áudio, lista de setores) migraram pras entidades
+nomeadas (``painels``, ``totens`` — ver módulos correspondentes).
+
+``None`` em qualquer nível significa "herdar" — do município (quando o
+escopo é unidade) ou dos defaults do sistema.
+
+``extra="ignore"`` nos submodels abaixo: dados antigos que ainda tenham
+``capture``/``mode``/``announce_audio`` salvos no JSONB são
+silenciosamente descartados na leitura (retrocompatível com escopos que
+não passaram por um novo PATCH).
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app.core.schema_base import CamelModel
 
 
+# Base tolerante — aceita e descarta chaves extras vindas do banco
+# (legado). Aplicado só nos sub-blocos do rec_config pra não afrouxar o
+# CamelModel global (que tem ``extra="forbid"``).
+class _TolerantCamelModel(CamelModel):
+    model_config = ConfigDict(
+        alias_generator=CamelModel.model_config["alias_generator"],
+        populate_by_name=True,
+        from_attributes=True,
+        str_strip_whitespace=True,
+        extra="ignore",
+    )
+
+
 # ─── Blocos aninhados ────────────────────────────────────────────────────────
 
-class TotemCapture(CamelModel):
-    """Formas de identificação aceitas no totem."""
-
-    cpf: bool = True
-    cns: bool = True
-    face: bool = False          # reconhecimento facial (exige câmera)
-    manual_name: bool = True    # permite entrar só com nome (sem doc)
-
-
-class TotemConfig(CamelModel):
+class TotemConfig(_TolerantCamelModel):
     enabled: bool = True
-    capture: TotemCapture = Field(default_factory=TotemCapture)
-    priority_prompt: bool = True   # pergunta "você tem prioridade?"
 
 
-class PainelConfig(CamelModel):
+class PainelConfig(_TolerantCamelModel):
     enabled: bool = True
-    mode: Literal["senha", "nome", "ambos"] = "senha"
-    announce_audio: bool = True   # TTS ao chamar
 
 
-class RecepcaoConfig(CamelModel):
+class RecepcaoConfig(_TolerantCamelModel):
     """Balcão/console da atendente."""
 
     enabled: bool = True
@@ -48,7 +56,7 @@ class RecepcaoConfig(CamelModel):
 
 # ─── Config completa ─────────────────────────────────────────────────────────
 
-class RecConfig(CamelModel):
+class RecConfig(_TolerantCamelModel):
     """Config completa do módulo Recepção. Todos os campos opcionais:
     ausência = herda."""
 
@@ -58,11 +66,7 @@ class RecConfig(CamelModel):
 
 
 class RecConfigRead(CamelModel):
-    """GET do recurso bruto (o que foi salvo neste escopo, sem merge).
-
-    Se o escopo nunca foi configurado, retorna ``config=None`` —
-    o frontend mostra os campos como "herdando".
-    """
+    """GET do recurso bruto (o que foi salvo neste escopo, sem merge)."""
 
     scope_type: Literal["municipality", "facility"]
     scope_id: str
@@ -74,8 +78,9 @@ class RecConfigUpdate(CamelModel):
 
     - Para **limpar** a config do escopo inteiro (voltar a herdar tudo),
       envie ``{"config": null}``.
-    - Para ajustar parcialmente, envie o dicionário parcial. Merge raso:
-      blocos enviados sobrescrevem por inteiro; blocos omitidos ficam.
+    - Para ajustar parcialmente, envie só a(s) seção(ões) que quer mexer.
+      Merge raso: blocos enviados sobrescrevem por inteiro; blocos
+      omitidos ficam.
     """
 
     config: RecConfig | None = None
