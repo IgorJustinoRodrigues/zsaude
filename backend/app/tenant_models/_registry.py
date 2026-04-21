@@ -27,4 +27,5 @@ from app.tenant_models.cnes import (  # noqa: F401
     CnesUnitService,
 )
 from app.tenant_models.face import PatientFaceEmbedding  # noqa: F401
+from app.tenant_models.attendances import Attendance  # noqa: F401
 from app.db.file_model import TenantFile  # noqa: F401

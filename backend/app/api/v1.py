@@ -8,6 +8,7 @@ from app.modules.ai.router import (
     operations_router as ai_operations_router,
     sys_router as ai_sys_router,
 )
+from app.modules.attendances.router import router as attendances_router
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
 from app.modules.branding.router import (
@@ -102,3 +103,4 @@ api_v1.include_router(painels_admin_router)
 api_v1.include_router(painels_router)
 api_v1.include_router(totens_admin_router)
 api_v1.include_router(totens_router)
+api_v1.include_router(attendances_router)

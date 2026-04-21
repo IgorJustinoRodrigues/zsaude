@@ -18,6 +18,25 @@ from app.modules.totens.schemas import (
 )
 
 
+def _to_read(t: Totem) -> TotemRead:
+    return TotemRead.model_validate({
+        "id": t.id,
+        "scopeType": t.scope_type,
+        "scopeId": t.scope_id,
+        "name": t.name,
+        "capture": t.capture,
+        "priorityPrompt": t.priority_prompt,
+        "archived": t.archived,
+        "numbering": {
+            "ticketPrefixNormal": t.ticket_prefix_normal,
+            "ticketPrefixPriority": t.ticket_prefix_priority,
+            "resetStrategy": t.reset_strategy,
+            "numberPadding": t.number_padding,
+        },
+        "defaultSectorName": t.default_sector_name,
+    })
+
+
 class TotemService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -31,7 +50,7 @@ class TotemService:
         if not include_archived:
             stmt = stmt.where(Totem.archived == False)  # noqa: E712
         rows = (await self.db.scalars(stmt)).all()
-        return [TotemRead.model_validate(r) for r in rows]
+        return [_to_read(r) for r in rows]
 
     async def available_for_facility(self, facility_id: UUID) -> list[AvailableTotem]:
         fac = await self._get_facility_or_404(facility_id)
@@ -62,16 +81,22 @@ class TotemService:
                 status_code=409,
                 detail=f"Já existe um totem com o nome {payload.name!r} neste escopo.",
             )
+        n = payload.numbering
         row = Totem(
             scope_type=scope_type,
             scope_id=scope_id,
             name=payload.name,
             capture=payload.capture.model_dump(),
             priority_prompt=payload.priority_prompt,
+            ticket_prefix_normal=n.ticket_prefix_normal,
+            ticket_prefix_priority=n.ticket_prefix_priority,
+            reset_strategy=n.reset_strategy,
+            number_padding=n.number_padding,
+            default_sector_name=payload.default_sector_name,
         )
         self.db.add(row)
         await self.db.flush()
-        return TotemRead.model_validate(row)
+        return _to_read(row)
 
     async def update(self, totem_id: UUID, payload: TotemUpdate) -> TotemRead:
         row = await self._get_or_404(totem_id)
@@ -99,8 +124,18 @@ class TotemService:
             row.priority_prompt = payload.priority_prompt
         if payload.archived is not None:
             row.archived = payload.archived
+        if payload.numbering is not None:
+            n = payload.numbering
+            row.ticket_prefix_normal = n.ticket_prefix_normal
+            row.ticket_prefix_priority = n.ticket_prefix_priority
+            row.reset_strategy = n.reset_strategy
+            row.number_padding = n.number_padding
+        # ``default_sector_name`` aceita None (=desativar): usa ``model_fields_set``
+        # pra distinguir "não enviado" de "enviado como null".
+        if "default_sector_name" in payload.model_fields_set:
+            row.default_sector_name = payload.default_sector_name
         await self.db.flush()
-        return TotemRead.model_validate(row)
+        return _to_read(row)
 
     async def delete(self, totem_id: UUID) -> None:
         row = await self._get_or_404(totem_id)

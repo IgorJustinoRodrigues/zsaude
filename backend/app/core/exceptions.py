@@ -84,6 +84,18 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    # ``detail`` pode ser string ou dict estruturado. Quando é dict,
+    # propagamos as chaves ``code``/``message`` e espelhamos o resto em
+    # ``details`` pra o frontend poder agir (ex.: 409 com ``existingTicket``).
+    if isinstance(exc.detail, dict):
+        d: dict = exc.detail  # type: ignore[assignment]
+        code = str(d.get("code") or "http_error")
+        message = str(d.get("message") or d.get("detail") or "")
+        details = {k: v for k, v in d.items() if k not in ("code", "message", "detail")}
+        content: dict = {"code": code, "message": message}
+        if details:
+            content["details"] = details
+        return JSONResponse(status_code=exc.status_code, content=content)
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": "http_error", "message": str(exc.detail)},

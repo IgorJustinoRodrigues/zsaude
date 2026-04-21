@@ -11,6 +11,15 @@ export interface TotemCapture {
   manualName: boolean
 }
 
+export type ResetStrategy = 'daily' | 'weekly' | 'monthly' | 'never'
+
+export interface TotemNumbering {
+  ticketPrefixNormal: string
+  ticketPrefixPriority: string
+  resetStrategy: ResetStrategy
+  numberPadding: number
+}
+
 export interface Totem {
   id: string
   scopeType: TotemScope
@@ -19,6 +28,9 @@ export interface Totem {
   capture: TotemCapture
   priorityPrompt: boolean
   archived: boolean
+  numbering: TotemNumbering
+  /** NULL = senha vai pra Recepção (default). Preenchido = vai direto pro setor. */
+  defaultSectorName: string | null
 }
 
 export interface AvailableTotem extends Totem {
@@ -29,6 +41,8 @@ export interface TotemCreate {
   name: string
   capture?: TotemCapture
   priorityPrompt?: boolean
+  numbering?: TotemNumbering
+  defaultSectorName?: string | null
 }
 
 export interface TotemUpdate {
@@ -36,6 +50,8 @@ export interface TotemUpdate {
   capture?: TotemCapture
   priorityPrompt?: boolean
   archived?: boolean
+  numbering?: TotemNumbering
+  defaultSectorName?: string | null
 }
 
 export const totensAdminApi = {

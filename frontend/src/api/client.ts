@@ -11,17 +11,22 @@ export interface ApiError {
   message: string
   status: number
   errors?: unknown
+  /** Payload estruturado extra que o backend anexa em certos erros
+   *  (ex.: 409 com ``existingTicket``). */
+  details?: Record<string, unknown>
 }
 
 export class HttpError extends Error {
   code: string
   status: number
   errors?: unknown
+  details?: Record<string, unknown>
   constructor(e: ApiError) {
     super(e.message)
     this.code = e.code
     this.status = e.status
     this.errors = e.errors
+    this.details = e.details
   }
 }
 
@@ -60,17 +65,21 @@ async function parseError(res: Response): Promise<HttpError> {
   let code = 'http_error'
   let message = res.statusText || 'Erro na requisição.'
   let errors: unknown
+  let details: Record<string, unknown> | undefined
   try {
     const data = await res.json()
     if (data && typeof data === 'object') {
       if (typeof data.code === 'string') code = data.code
       if (typeof data.message === 'string') message = data.message
       errors = data.errors
+      if (data.details && typeof data.details === 'object') {
+        details = data.details as Record<string, unknown>
+      }
     }
   } catch {
     /* resposta não era JSON */
   }
-  return new HttpError({ code, message, status: res.status, errors })
+  return new HttpError({ code, message, status: res.status, errors, details })
 }
 
 export async function apiFetch<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {

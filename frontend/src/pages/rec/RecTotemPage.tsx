@@ -17,9 +17,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Camera, Check, ChevronRight, Clock, Delete, Maximize,
+  AlertCircle, ArrowLeft, Check, ChevronRight, Clock, Delete, Loader2, Maximize,
   ScanFace, User, UserCheck, X,
 } from 'lucide-react'
+import { HttpError } from '../../api/client'
+import {
+  recApi, type EmitTicketOutput, type FaceCandidate,
+} from '../../api/rec'
+import { useDeviceStore } from '../../store/deviceStore'
 import { cn } from '../../lib/utils'
 
 // ─── Máquina de estados ──────────────────────────────────────────────────────
@@ -29,40 +34,67 @@ type TotemStep =
   | 'capture'
   | 'match_confirm'
   | 'document_input'
-  | 'document_result'
   | 'name_input'
   | 'priority'
   | 'success'
   | 'already_in_queue'
 
-interface MockPatient {
+/** Dados mínimos do paciente pra UI do totem. Pode vir de:
+ *  (a) match facial (patientId + máscaras vindas do backend);
+ *  (b) digitação manual (só nome, sem patientId). */
+interface TotemPatient {
+  patientId?: string
   name: string
   socialName?: string
-  cpf?: string
-  cns?: string
+  cpfMasked?: string | null
+  cnsMasked?: string | null
+  /** Quando o face-match detecta que o paciente já tem atendimento
+   *  ativo, o totem pula a prioridade e mostra "já está na fila". */
+  activeTicket?: {
+    ticketNumber: string
+    sameFacility: boolean
+    facilityShortName: string
+  }
 }
-
-const MOCK_PATIENTS: MockPatient[] = [
-  { name: 'Igor Rodrigues',          cpf: '04099448150', cns: '706508120941352' },
-  { name: 'Maria da Silva Oliveira', cpf: '12345678900', cns: '898000000000002' },
-]
 
 const IDLE_RESET_MS = 30_000
 const ADMIN_UNLOCK_TAPS = 5
 const ADMIN_UNLOCK_WINDOW_MS = 2_000
+/** Confiança mínima pra o totem perguntar "você é X?" automaticamente.
+ *  Abaixo disso (ou >1 candidato) cai no fluxo CPF/CNS pra não induzir
+ *  o paciente a confirmar o nome errado. */
+const FACE_MATCH_MIN_SIMILARITY = 0.60
 
 // ─── Página ──────────────────────────────────────────────────────────────────
 
 export function RecTotemPage() {
   const navigate = useNavigate()
+  const deviceToken = useDeviceStore(s => s.deviceToken)
   const [step, setStep] = useState<TotemStep>('greeting')
-  const [patient, setPatient] = useState<MockPatient | null>(null)
+  const [patient, setPatient] = useState<TotemPatient | null>(null)
   const [docValue, setDocValue] = useState('')
   const [docType, setDocType] = useState<'cpf' | 'cns'>('cpf')
   const [nameInput, setNameInput] = useState('')
   const [priority, setPriority] = useState<'normal' | 'priority' | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [adminUnlocked, setAdminUnlocked] = useState(false)
+  // Foto capturada pela câmera — guardamos pra:
+  //   1) mandar pro face-match,
+  //   2) se o paciente vier confirmado (face OU doc), mandar pro enroll
+  //      (learning: enriquece a base de fotos do paciente).
+  const [capturedPhoto, setCapturedPhoto] = useState<Blob | null>(null)
+  // Retorno do backend quando a senha é emitida com sucesso.
+  const [emitted, setEmitted] = useState<EmitTicketOutput | null>(null)
+  // Quando `already_in_queue`: senha existente vinda do 409.
+  const [existingTicket, setExistingTicket] = useState<string | null>(null)
+  // Mensagem de erro genérica pra exibir no step success (ou fallback).
+  const [emitError, setEmitError] = useState<string | null>(null)
+  // Enquanto o POST está em voo.
+  const [emitting, setEmitting] = useState(false)
+  // Garante que o learning facial roda no máximo 1x por visita — mesmo
+  // que o fluxo passe por confirmação facial E depois emissão (ambos
+  // têm patientId conhecido).
+  const enrollAttempted = useRef(false)
 
   const reset = useCallback(() => {
     setStep('greeting')
@@ -71,7 +103,83 @@ export function RecTotemPage() {
     setDocType('cpf')
     setNameInput('')
     setPriority(null)
+    setCapturedPhoto(null)
+    setEmitted(null)
+    setExistingTicket(null)
+    setEmitError(null)
+    setEmitting(false)
+    enrollAttempted.current = false
   }, [])
+
+  /** Fire-and-forget: vincula a foto capturada ao paciente (learning). */
+  const enrollPhoto = useCallback((patientId: string) => {
+    if (enrollAttempted.current) return
+    if (!capturedPhoto || !deviceToken) return
+    enrollAttempted.current = true
+    void recApi.faceEnroll(deviceToken, patientId, capturedPhoto)
+      .catch(() => { /* best-effort */ })
+  }, [capturedPhoto, deviceToken])
+
+  /**
+   * Chama ``POST /rec/tickets`` com os dados coletados e decide o step
+   * final: ``success`` (senha emitida), ``already_in_queue`` (409 —
+   * mostra a senha existente), ou volta com erro.
+   *
+   * Depois de emitir com sucesso, se temos uma foto capturada E o
+   * backend resolveu um ``patientId``, dispara o ``faceEnroll`` em
+   * background (best-effort — falha não afeta o totem).
+   */
+  const emitTicket = useCallback(async (chosenPriority: boolean) => {
+    if (!deviceToken) {
+      setEmitError('Totem não está pareado. Chame o suporte.')
+      setStep('success')
+      return
+    }
+    setEmitting(true)
+    setEmitError(null)
+    try {
+      // Decide identidade:
+      //   - Se paciente confirmado por face match → patientId
+      //     (backend resolve CPF/CNS do cadastro, evita expor em tela).
+      //   - Senão, CPF/CNS digitado;
+      //   - Caso contrário, cadastro manual só com nome.
+      let docTypeOut: 'cpf' | 'cns' | 'manual' = 'manual'
+      let docValueOut: string | null = null
+      const patientIdOut = patient?.patientId ?? null
+      if (!patientIdOut && docValue) {
+        docTypeOut = docType
+        docValueOut = docValue.replace(/\D/g, '')
+      }
+      const out = await recApi.emitTicket(deviceToken, {
+        docType: docTypeOut,
+        docValue: docValueOut,
+        patientName: (patient?.name || nameInput || 'Anônimo').trim(),
+        priority: chosenPriority,
+        patientId: patientIdOut,
+      })
+      setEmitted(out)
+      setStep('success')
+
+      // Learning facial — fire-and-forget, no-op se já enrollou no
+      // match_confirm (mesma visita).
+      if (out.patientId) enrollPhoto(out.patientId)
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 409) {
+        // Já existe atendimento ativo aqui — details tem a senha existente
+        const d = e.details
+        setExistingTicket(
+          (d && typeof d.existingTicket === 'string') ? d.existingTicket : null,
+        )
+        setStep('already_in_queue')
+      } else {
+        const msg = e instanceof HttpError ? e.message : 'Falha ao emitir senha.'
+        setEmitError(msg)
+        setStep('success')  // exibe o erro dentro do mesmo card
+      }
+    } finally {
+      setEmitting(false)
+    }
+  }, [deviceToken, patient, docType, docValue, nameInput, capturedPhoto])
 
   // ── Fullscreen ────────────────────────────────────────────────────────
   const enterFullscreen = useCallback(async () => {
@@ -152,9 +260,26 @@ export function RecTotemPage() {
         )}
         {step === 'capture' && (
           <Capture
-            onCaptured={match => {
-              if (match) { setPatient(match); setStep('match_confirm') }
-              else setStep('document_input')
+            deviceToken={deviceToken}
+            onMatched={(cand, photo) => {
+              setCapturedPhoto(photo)
+              setPatient({
+                patientId: cand.patientId,
+                name: cand.name,
+                socialName: cand.socialName ?? undefined,
+                cpfMasked: cand.cpfMasked,
+                cnsMasked: cand.cnsMasked,
+                activeTicket: cand.activeTicket ? {
+                  ticketNumber: cand.activeTicket.ticketNumber,
+                  sameFacility: cand.activeTicket.sameFacility,
+                  facilityShortName: cand.activeTicket.facilityShortName,
+                } : undefined,
+              })
+              setStep('match_confirm')
+            }}
+            onNoMatch={(photo) => {
+              setCapturedPhoto(photo)
+              setStep('document_input')
             }}
             onBack={() => setStep('greeting')}
           />
@@ -162,7 +287,22 @@ export function RecTotemPage() {
         {step === 'match_confirm' && patient && (
           <MatchConfirm
             patient={patient}
-            onYes={() => setStep('priority')}
+            onYes={() => {
+              // Identidade confirmada via face match → dispara enroll
+              // agora, independente do que vem depois. Assim a base de
+              // fotos cresce mesmo quando o paciente já está na fila.
+              if (patient.patientId) enrollPhoto(patient.patientId)
+
+              // Se o face-match já trouxe que o paciente tem atendimento
+              // ativo nesta unidade, pula prioridade e mostra direto que
+              // ele já está na fila — sem emitir senha duplicada.
+              if (patient.activeTicket?.sameFacility) {
+                setExistingTicket(patient.activeTicket.ticketNumber)
+                setStep('already_in_queue')
+                return
+              }
+              setStep('priority')
+            }}
             onNo={() => { setPatient(null); setStep('document_input') }}
             onBack={() => { setPatient(null); setStep('greeting') }}
           />
@@ -173,24 +313,8 @@ export function RecTotemPage() {
             type={docType}
             onChangeValue={setDocValue}
             onChangeType={setDocType}
-            onConfirm={() => {
-              const digits = docValue.replace(/\D/g, '')
-              const found = MOCK_PATIENTS.find(p =>
-                (docType === 'cpf' && p.cpf === digits)
-                || (docType === 'cns' && p.cns === digits),
-              )
-              if (found) { setPatient(found); setStep('document_result') }
-              else setStep('name_input')
-            }}
+            onConfirm={() => setStep('name_input')}
             onBack={() => setStep('greeting')}
-          />
-        )}
-        {step === 'document_result' && patient && (
-          <MatchConfirm
-            patient={patient}
-            onYes={() => setStep('priority')}
-            onNo={() => { setPatient(null); setStep('name_input') }}
-            onBack={() => { setPatient(null); setStep('document_input') }}
           />
         )}
         {step === 'name_input' && (
@@ -208,17 +332,27 @@ export function RecTotemPage() {
           <PrioritySelect
             onSelect={p => {
               setPriority(p)
-              const alreadyInQueue = patient && Math.random() < 0.25
-              setStep(alreadyInQueue ? 'already_in_queue' : 'success')
+              void emitTicket(p === 'priority')
             }}
             onBack={() => setStep(patient ? 'greeting' : 'greeting')}
           />
         )}
         {step === 'success' && (
-          <SuccessScreen patient={patient} priority={priority} onDismiss={reset} />
+          <SuccessScreen
+            patient={patient}
+            priority={priority}
+            emitted={emitted}
+            emitting={emitting}
+            error={emitError}
+            onDismiss={reset}
+          />
         )}
         {step === 'already_in_queue' && (
-          <AlreadyInQueue patient={patient} onDismiss={reset} />
+          <AlreadyInQueue
+            patient={patient}
+            existingTicket={existingTicket}
+            onDismiss={reset}
+          />
         )}
       </div>
 
@@ -315,50 +449,382 @@ function FullscreenSetupPill({ onClick }: { onClick: () => void }) {
   )
 }
 
-// ─── Câmera (mock) ───────────────────────────────────────────────────────────
+// ─── Câmera (auto-captura via MediaPipe) ─────────────────────────────────────
+//
+// Mesmo detector usado no FaceRecognitionModal do HSP: MediaPipe
+// FaceDetector roda no vídeo ao vivo, e quando detecta um rosto único e
+// bem enquadrado por STABLE_HOLD_MS (1s), dispara a captura sozinho.
+// Sem botão "Tirar foto" — totem é pra ser hands-off pro paciente.
+
+interface MpFaceDetection {
+  boundingBox?: { originX: number; originY: number; width: number; height: number }
+  categories?: Array<{ score: number }>
+}
+interface MpFaceDetectorInstance {
+  detectForVideo: (video: HTMLVideoElement, ts: number) => { detections: MpFaceDetection[] }
+  close: () => void
+}
+
+const FACE_MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'
+const FACE_WASM_URL =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+
+const STABLE_HOLD_MS = 1000
+const MIN_FACE_RATIO = 0.18
+const MAX_FACE_RATIO = 0.85
+const MIN_DETECTION_SCORE = 0.7
+
+let _detectorPromise: Promise<MpFaceDetectorInstance> | null = null
+
+async function loadFaceDetector(): Promise<MpFaceDetectorInstance> {
+  if (_detectorPromise) return _detectorPromise
+  _detectorPromise = (async () => {
+    const { FilesetResolver, FaceDetector } = await import('@mediapipe/tasks-vision')
+    const vision = await FilesetResolver.forVisionTasks(FACE_WASM_URL)
+    return await FaceDetector.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: FACE_MODEL_URL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      minDetectionConfidence: MIN_DETECTION_SCORE,
+    }) as unknown as MpFaceDetectorInstance
+  })().catch(err => {
+    _detectorPromise = null
+    throw err
+  })
+  return _detectorPromise
+}
 
 function Capture({
-  onCaptured, onBack,
+  deviceToken, onMatched, onNoMatch, onBack,
 }: {
-  onCaptured: (match: MockPatient | null) => void
+  deviceToken: string | null
+  onMatched: (candidate: FaceCandidate, photo: Blob) => void
+  onNoMatch: (photo: Blob | null) => void
   onBack: () => void
 }) {
-  const [scanning, setScanning] = useState(false)
-  const simulate = () => {
-    setScanning(true)
-    window.setTimeout(() => {
-      const hit = Math.random() < 0.7 ? MOCK_PATIENTS[0] : null
-      onCaptured(hit)
-    }, 2000)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const overlayRef = useRef<HTMLCanvasElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const detectorRef = useRef<MpFaceDetectorInstance | null>(null)
+  const stableRef = useRef(0)
+  const capturedRef = useRef(false)  // evita disparar captura 2x no loop
+
+  const [phase, setPhase] = useState<
+    'loading-libs' | 'loading-camera' | 'scanning' | 'matching' | 'no-match' | 'denied'
+  >('loading-libs')
+  const [hint, setHint] = useState('Posicione o rosto no centro')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // Guarda a foto capturada pra passar pro onNoMatch depois do delay
+  // da tela "não identificamos".
+  const noMatchBlobRef = useRef<Blob | null>(null)
+
+  // ── Setup: carrega detector + abre câmera ─────────────────────────
+  useEffect(() => {
+    let alive = true
+    let localStream: MediaStream | null = null
+
+    ;(async () => {
+      try {
+        const detector = await loadFaceDetector()
+        if (!alive) return
+        detectorRef.current = detector
+
+        if (alive) setPhase('loading-camera')
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        })
+        if (!alive) { localStream.getTracks().forEach(t => t.stop()); return }
+        streamRef.current = localStream
+        const v = videoRef.current
+        if (v) {
+          v.srcObject = localStream
+          await new Promise<void>(resolve => {
+            if (v.readyState >= 1) return resolve()
+            v.onloadedmetadata = () => resolve()
+          })
+          await v.play().catch(() => { /* autoplay pode falhar */ })
+        }
+        if (alive) setPhase('scanning')
+      } catch (e) {
+        if (!alive) return
+        localStream?.getTracks().forEach(t => t.stop())
+        const err = e instanceof Error ? e : new Error(String(e))
+        const isInsecure = !window.isSecureContext
+        const msg =
+          isInsecure
+            ? 'Câmera só funciona em HTTPS ou localhost.'
+            : err.name === 'NotAllowedError'
+              ? 'Permissão da câmera negada.'
+              : err.name === 'NotFoundError'
+                ? 'Nenhuma câmera encontrada.'
+                : err.message || 'Erro ao iniciar câmera.'
+        setErrorMsg(msg)
+        setPhase('denied')
+      }
+    })()
+
+    return () => {
+      alive = false
+      localStream?.getTracks().forEach(t => t.stop())
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }, [])
+
+  // ── Captura (auto) ─────────────────────────────────────────────────
+  const doAutoCapture = useCallback(async () => {
+    if (capturedRef.current) return
+    capturedRef.current = true
+    const v = videoRef.current
+    if (!v || v.videoWidth === 0) return
+
+    const canvas = document.createElement('canvas')
+    canvas.width = v.videoWidth
+    canvas.height = v.videoHeight
+    canvas.getContext('2d')!.drawImage(v, 0, 0)
+    const blob = await new Promise<Blob | null>(resolve =>
+      canvas.toBlob(b => resolve(b), 'image/jpeg', 0.9))
+
+    // Pausa a câmera assim que pegou o frame — libera hardware.
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+
+    if (!blob) {
+      noMatchBlobRef.current = null
+      setPhase('no-match')
+      return
+    }
+    if (!deviceToken) {
+      noMatchBlobRef.current = blob
+      setPhase('no-match')
+      return
+    }
+    setPhase('matching')
+    try {
+      const resp = await recApi.faceMatch(deviceToken, blob)
+      const best = resp.candidates[0]
+      const uniqueMatch =
+        resp.faceDetected
+        && resp.candidates.length === 1
+        && best
+        && best.similarity >= FACE_MATCH_MIN_SIMILARITY
+      if (uniqueMatch) {
+        onMatched(best, blob)
+      } else {
+        noMatchBlobRef.current = blob
+        setPhase('no-match')
+      }
+    } catch {
+      noMatchBlobRef.current = blob
+      setPhase('no-match')
+    }
+  }, [deviceToken, onMatched])
+
+  // ── Tela "não te conheço" — auto-advance em 3.5s (ou via botão) ──
+  useEffect(() => {
+    if (phase !== 'no-match') return
+    const t = window.setTimeout(() => {
+      onNoMatch(noMatchBlobRef.current)
+    }, 3500)
+    return () => window.clearTimeout(t)
+  }, [phase, onNoMatch])
+
+  // ── Loop de detecção ───────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'scanning') return
+    const video = videoRef.current
+    const overlay = overlayRef.current
+    const detector = detectorRef.current
+    if (!video || !overlay || !detector) return
+
+    const tick = () => {
+      if (capturedRef.current) return
+      if (!videoRef.current || video.videoWidth === 0) {
+        rafRef.current = requestAnimationFrame(tick)
+        return
+      }
+      const { videoWidth: w, videoHeight: h } = video
+      if (overlay.width !== w) overlay.width = w
+      if (overlay.height !== h) overlay.height = h
+      const ctx = overlay.getContext('2d')!
+      ctx.clearRect(0, 0, w, h)
+
+      let advance = false
+      const now = performance.now()
+      try {
+        const { detections } = detector.detectForVideo(video, now)
+        if (detections.length === 0) {
+          setHint('Posicione o rosto no centro')
+          drawGuideCircle(ctx, w, h)
+        } else if (detections.length > 1) {
+          setHint('Mais de uma pessoa — aproxime apenas um rosto')
+          for (const d of detections) drawBox(ctx, d, 'warn')
+        } else {
+          const d = detections[0]
+          const box = d.boundingBox
+          const score = d.categories?.[0]?.score ?? 0
+          if (!box) {
+            drawGuideCircle(ctx, w, h)
+          } else {
+            const ratio = box.width / w
+            if (ratio < MIN_FACE_RATIO) {
+              setHint('Aproxime-se mais da câmera')
+              drawBox(ctx, d, 'warn')
+            } else if (ratio > MAX_FACE_RATIO) {
+              setHint('Afaste-se um pouco')
+              drawBox(ctx, d, 'warn')
+            } else if (score < MIN_DETECTION_SCORE) {
+              setHint('Ilumine melhor o rosto')
+              drawBox(ctx, d, 'warn')
+            } else {
+              if (stableRef.current === 0) stableRef.current = now
+              const elapsed = now - stableRef.current
+              const progress = Math.min(elapsed / STABLE_HOLD_MS, 1)
+              setHint(progress < 0.6 ? 'Segure firme…' : 'Quase lá…')
+              drawBox(ctx, d, 'good', progress)
+              advance = true
+            }
+          }
+        }
+      } catch { /* detector transiente — segue */ }
+
+      if (advance && now - stableRef.current >= STABLE_HOLD_MS) {
+        void doAutoCapture()
+        return
+      }
+      if (!advance) stableRef.current = 0
+
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }, [phase, doAutoCapture])
+
+  // ── Fallback sem câmera ────────────────────────────────────────────
+  if (phase === 'denied') {
+    return (
+      <StepShell title="Identificação por foto">
+        <div className="flex flex-col items-center gap-6 w-full max-w-xl text-center">
+          <div className="w-24 h-24 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+            <AlertCircle size={48} className="text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <p className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+              Câmera indisponível
+            </p>
+            {errorMsg && (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{errorMsg}</p>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Vamos seguir pelo seu CPF ou CNS.
+            </p>
+          </div>
+          <button
+            onClick={() => onNoMatch(null)}
+            className="w-full px-6 py-5 rounded-2xl text-lg font-semibold bg-sky-500 hover:bg-sky-600 text-white transition-colors inline-flex items-center justify-center gap-2"
+          >
+            Continuar <ChevronRight size={22} />
+          </button>
+          <button
+            onClick={onBack}
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-sm font-medium inline-flex items-center gap-1 transition-colors"
+          >
+            <ArrowLeft size={14} /> Voltar
+          </button>
+        </div>
+      </StepShell>
+    )
   }
+
+  // ── Tela "não te conheço ainda" ────────────────────────────────────
+  // UX warm — não é erro, é convite. Animação sutil e CTA pra prosseguir.
+  if (phase === 'no-match') {
+    return (
+      <StepShell title="Quase lá">
+        <div className="flex flex-col items-center gap-6 sm:gap-8 w-full max-w-xl text-center">
+          <div className="relative w-32 h-32 sm:w-40 sm:h-40">
+            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-sky-100 to-indigo-100 dark:from-sky-950 dark:to-indigo-950 animate-[ping_2s_ease-in-out_infinite] opacity-70" />
+            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-sky-500/30">
+              <ScanFace size={64} className="text-white" strokeWidth={1.5} />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              Ainda não te conheço
+            </h2>
+            <p className="text-lg sm:text-xl text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
+              Tudo bem! Vamos te identificar pelo
+              {' '}<span className="font-semibold text-slate-900 dark:text-white">CPF</span> ou
+              {' '}<span className="font-semibold text-slate-900 dark:text-white">CNS</span>.
+            </p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 max-w-md mx-auto">
+              Na próxima visita o totem já te reconhece na hora. ✨
+            </p>
+          </div>
+          <button
+            onClick={() => onNoMatch(noMatchBlobRef.current)}
+            className="w-full px-6 py-5 rounded-2xl text-lg font-semibold bg-sky-500 hover:bg-sky-600 text-white transition-colors inline-flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20"
+          >
+            Continuar <ChevronRight size={22} />
+          </button>
+        </div>
+      </StepShell>
+    )
+  }
+
   return (
     <StepShell title="Identificação por foto">
-      <div className="flex flex-col items-center gap-8 w-full max-w-xl">
+      <div className="flex flex-col items-center gap-6 w-full max-w-xl">
         <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex items-center justify-center border-4 border-sky-400/40">
-          {scanning ? (
-            <>
-              <div className="absolute inset-0 bg-gradient-to-b from-sky-500/0 via-sky-500/20 to-sky-500/0 animate-pulse" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-32 h-32 rounded-full border-4 border-sky-500 animate-ping" />
+          <video
+            ref={videoRef}
+            playsInline muted autoPlay
+            className="w-full h-full object-cover"
+            style={{ transform: 'scaleX(-1)' }}
+          />
+          <canvas
+            ref={overlayRef}
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+            style={{ transform: 'scaleX(-1)' }}
+          />
+          {(phase === 'loading-libs' || phase === 'loading-camera') && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60">
+              <Loader2 size={64} className="text-white animate-spin" />
+            </div>
+          )}
+          {phase === 'matching' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3 text-white">
+                <Loader2 size={56} className="animate-spin" />
+                <p className="text-sm font-medium">Identificando…</p>
               </div>
-              <ScanFace size={100} className="text-sky-600 dark:text-sky-400 relative z-10" />
-            </>
-          ) : (
-            <Camera size={80} className="text-slate-400" />
+            </div>
           )}
         </div>
-        <p className="text-lg text-slate-600 dark:text-slate-300 text-center">
-          {scanning
-            ? 'Olhe para a câmera, estamos identificando você…'
-            : 'Posicione seu rosto e toque em "Tirar foto"'}
+        <p className="text-lg text-slate-600 dark:text-slate-300 text-center min-h-[3rem]">
+          {phase === 'loading-libs' && 'Carregando reconhecedor…'}
+          {phase === 'loading-camera' && 'Abrindo câmera…'}
+          {phase === 'scanning' && hint}
+          {phase === 'matching' && 'Comparando com os cadastros…'}
         </p>
-        {!scanning && (
+        {phase !== 'matching' && (
           <>
             <button
-              onClick={simulate}
-              className="w-full px-6 py-5 rounded-2xl text-lg font-semibold bg-sky-500 hover:bg-sky-600 text-white transition-colors inline-flex items-center justify-center gap-2"
+              onClick={() => onNoMatch(null)}
+              className="text-sm font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
             >
-              <Camera size={24} /> Tirar foto
+              Pular e usar CPF/CNS
             </button>
             <button
               onClick={onBack}
@@ -373,23 +839,109 @@ function Capture({
   )
 }
 
+// ── Overlay helpers (bbox + ring de progresso) ─────────────────────────
+
+function drawBox(
+  ctx: CanvasRenderingContext2D,
+  d: MpFaceDetection,
+  status: 'good' | 'warn',
+  progress = 0,
+) {
+  const box = d.boundingBox
+  if (!box) return
+  const { originX, originY, width, height } = box
+  const colors = status === 'good'
+    ? { stroke: 'rgb(34, 197, 94)', fill: 'rgba(34, 197, 94, 0.12)' }
+    : { stroke: 'rgb(250, 204, 21)', fill: 'rgba(250, 204, 21, 0.08)' }
+
+  roundRect(ctx, originX, originY, width, height, 16)
+  ctx.fillStyle = colors.fill; ctx.fill()
+  ctx.lineWidth = 4; ctx.strokeStyle = colors.stroke; ctx.stroke()
+
+  const arm = Math.min(width, height) * 0.12
+  ctx.lineWidth = 6; ctx.strokeStyle = colors.stroke
+  drawCorners(ctx, originX, originY, width, height, arm)
+
+  if (status === 'good' && progress > 0) {
+    const cx = originX + width / 2
+    const cy = originY + height / 2
+    const r = Math.min(width, height) / 2 + 12
+    ctx.beginPath()
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2)
+    ctx.strokeStyle = 'rgb(22, 163, 74)'; ctx.lineWidth = 4; ctx.stroke()
+  }
+}
+
+function drawGuideCircle(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const cx = w / 2, cy = h / 2
+  const r = Math.min(w, h) * 0.28
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)'
+  ctx.lineWidth = 3
+  ctx.setLineDash([14, 10])
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke()
+  ctx.setLineDash([])
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+function drawCorners(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, arm: number) {
+  ctx.beginPath(); ctx.moveTo(x, y + arm); ctx.lineTo(x, y); ctx.lineTo(x + arm, y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(x + w - arm, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + arm); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(x + w, y + h - arm); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - arm, y + h); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(x + arm, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - arm); ctx.stroke()
+}
+
 // ─── Confirmar identidade ────────────────────────────────────────────────────
 
 function MatchConfirm({
   patient, onYes, onNo, onBack,
 }: {
-  patient: MockPatient
+  patient: TotemPatient
   onYes: () => void
   onNo: () => void
   onBack: () => void
 }) {
+  const deviceToken = useDeviceStore(s => s.deviceToken)
   const display = patient.socialName || patient.name
   const firstName = display.split(' ')[0]
+
+  // Busca foto do cadastro pra exibir na confirmação. Fallback: ícone.
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!patient.patientId || !deviceToken) return
+    let revoked = false
+    let url: string | null = null
+    ;(async () => {
+      try {
+        const blob = await recApi.patientPhoto(deviceToken, patient.patientId!)
+        if (revoked) return
+        url = URL.createObjectURL(blob)
+        setPhotoUrl(url)
+      } catch { /* sem foto — usa ícone */ }
+    })()
+    return () => {
+      revoked = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [patient.patientId, deviceToken])
+
   return (
     <StepShell title="Confirmação">
       <div className="text-center space-y-8 w-full max-w-xl">
-        <div className="w-32 h-32 mx-auto rounded-full bg-sky-100 dark:bg-sky-950 flex items-center justify-center">
-          <UserCheck size={64} className="text-sky-600 dark:text-sky-400" />
+        <div className="w-40 h-40 mx-auto rounded-full overflow-hidden bg-sky-100 dark:bg-sky-950 flex items-center justify-center ring-4 ring-sky-400/40 shadow-xl shadow-sky-500/20">
+          {photoUrl ? (
+            <img src={photoUrl} alt={display} className="w-full h-full object-cover" />
+          ) : (
+            <UserCheck size={72} className="text-sky-600 dark:text-sky-400" />
+          )}
         </div>
         <div>
           <p className="text-xl text-slate-500 dark:text-slate-400">Você é</p>
@@ -397,6 +949,12 @@ function MatchConfirm({
             {firstName}?
           </p>
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">{display}</p>
+          {(patient.cpfMasked || patient.cnsMasked) && (
+            <div className="mt-4 inline-flex flex-col items-center gap-1 text-sm text-slate-500 dark:text-slate-400 font-mono">
+              {patient.cpfMasked && <span>CPF {patient.cpfMasked}</span>}
+              {patient.cnsMasked && <span>CNS {patient.cnsMasked}</span>}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -520,10 +1078,10 @@ function NameInput({
   const backspace = () => onChange(value.slice(0, -1))
 
   return (
-    <StepShell title="Cadastro rápido">
+    <StepShell title="Confirmação">
       <div className="space-y-5 max-w-3xl w-full text-center">
         <p className="text-xl text-slate-500 dark:text-slate-400">
-          Não encontramos seu cadastro. Como você se chama?
+          Como você se chama?
         </p>
         <div className="w-full text-center text-2xl sm:text-3xl font-semibold py-6 rounded-2xl bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 min-h-[84px] flex items-center justify-center px-4">
           {value || <span className="text-slate-300 dark:text-slate-700">Seu nome completo</span>}
@@ -584,20 +1142,66 @@ function PrioritySelect({
 // ─── Sucesso ─────────────────────────────────────────────────────────────────
 
 function SuccessScreen({
-  patient, priority, onDismiss,
-}: { patient: MockPatient | null; priority: 'normal' | 'priority' | null; onDismiss: () => void }) {
-  const [sec, setSec] = useState(5)
+  patient, priority, emitted, emitting, error, onDismiss,
+}: {
+  patient: TotemPatient | null
+  priority: 'normal' | 'priority' | null
+  emitted: EmitTicketOutput | null
+  emitting: boolean
+  error: string | null
+  onDismiss: () => void
+}) {
+  const [sec, setSec] = useState(10)
   useEffect(() => {
     if (sec <= 0) return
+    if (emitting) return
     const id = window.setTimeout(() => setSec(s => s - 1), 1000)
     return () => window.clearTimeout(id)
-  }, [sec])
+  }, [sec, emitting])
 
-  const displayName = patient?.socialName || patient?.name
+  const displayName = emitted?.patientName || patient?.socialName || patient?.name
   const firstName = displayName ? displayName.split(' ')[0] : ''
-  const ticket = priority === 'priority' ? 'P-012' : 'R-047'
-  const position = priority === 'priority' ? 2 : 7
-  const eta = priority === 'priority' ? '~5 min' : '~20 min'
+  const ticket = emitted?.ticketNumber
+  const ticketColor =
+    (emitted?.priority || priority === 'priority') ? '#dc2626' : '#0d9488'
+
+  // Estado: emitindo, erro genérico, ou emitido
+  if (emitting) {
+    return (
+      <div className="text-center space-y-5 max-w-xl w-full">
+        <div className="w-24 h-24 mx-auto rounded-full bg-sky-100 dark:bg-sky-950 flex items-center justify-center">
+          <Loader2 size={48} className="text-sky-600 dark:text-sky-400 animate-spin" />
+        </div>
+        <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+          Emitindo sua senha…
+        </h2>
+      </div>
+    )
+  }
+
+  if (error || !emitted) {
+    return (
+      <div className="text-center space-y-6 max-w-xl w-full">
+        <div className="w-24 h-24 mx-auto rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
+          <X size={56} className="text-red-600 dark:text-red-400" />
+        </div>
+        <div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">
+            Não foi possível emitir sua senha
+          </h2>
+          <p className="text-lg text-slate-500 dark:text-slate-400 mt-3">
+            {error || 'Tente novamente ou procure a recepção.'}
+          </p>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="w-full py-5 rounded-2xl text-lg font-semibold bg-sky-500 hover:bg-sky-600 text-white transition-colors"
+        >
+          OK
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="text-center space-y-6 max-w-xl w-full">
@@ -609,34 +1213,18 @@ function SuccessScreen({
           {firstName ? `Tudo certo, ${firstName}!` : 'Tudo certo!'}
         </h2>
         <p className="text-lg text-slate-500 dark:text-slate-400 mt-3">
-          Aguarde ser chamado em uma das recepções.
+          {emitted.handover
+            ? `Você já tinha atendimento aberto em ${emitted.handover.facilityShortName}. Procure a recepção pra confirmar sua presença aqui.`
+            : 'Aguarde ser chamado.'}
         </p>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-slate-200 dark:border-slate-700 p-6 space-y-4">
-        <div>
-          <p className="text-sm text-slate-400">Sua senha</p>
-          <p className="text-5xl sm:text-6xl font-extrabold tracking-widest font-mono"
-             style={{ color: priority === 'priority' ? '#ef4444' : '#0ea5e9' }}>
-            {ticket}
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-          <div>
-            <p className="text-xs text-slate-400">Posição</p>
-            <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {position}ª
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 flex items-center justify-end gap-1">
-              <Clock size={11} /> Tempo estimado
-            </p>
-            <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {eta}
-            </p>
-          </div>
-        </div>
+        <p className="text-sm text-slate-400">Sua senha</p>
+        <p className="text-5xl sm:text-6xl font-extrabold tracking-widest font-mono"
+           style={{ color: ticketColor }}>
+          {ticket}
+        </p>
       </div>
 
       <button
@@ -650,9 +1238,13 @@ function SuccessScreen({
 }
 
 function AlreadyInQueue({
-  patient, onDismiss,
-}: { patient: MockPatient | null; onDismiss: () => void }) {
-  const [sec, setSec] = useState(5)
+  patient, existingTicket, onDismiss,
+}: {
+  patient: TotemPatient | null
+  existingTicket: string | null
+  onDismiss: () => void
+}) {
+  const [sec, setSec] = useState(8)
   useEffect(() => {
     if (sec <= 0) return
     const id = window.setTimeout(() => setSec(s => s - 1), 1000)
@@ -672,12 +1264,14 @@ function AlreadyInQueue({
           Sua senha foi emitida anteriormente. Aguarde ser chamado.
         </p>
       </div>
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-slate-200 dark:border-slate-700 p-6">
-        <p className="text-sm text-slate-400">Sua senha</p>
-        <p className="text-5xl sm:text-6xl font-extrabold tracking-widest font-mono text-sky-500">
-          R-032
-        </p>
-      </div>
+      {existingTicket && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-slate-200 dark:border-slate-700 p-6">
+          <p className="text-sm text-slate-400">Sua senha</p>
+          <p className="text-5xl sm:text-6xl font-extrabold tracking-widest font-mono text-sky-500">
+            {existingTicket}
+          </p>
+        </div>
+      )}
       <button
         onClick={onDismiss}
         className="w-full py-5 rounded-2xl text-lg font-semibold bg-sky-500 hover:bg-sky-600 text-white transition-colors"
