@@ -112,6 +112,9 @@ class CnesBindingDetail(CamelModel):
     role_id: UUID | None = None
     # Nome do papel (pra exibição). ``None`` quando ``role_id`` é None.
     role: str | None = None
+    # Módulos efetivos quando este binding for o ativo. ``None`` =
+    # herda os do ``FacilityAccessDetail`` pai.
+    modules: list[str] | None = None
 
 
 class FacilityAccessInput(CamelModel):

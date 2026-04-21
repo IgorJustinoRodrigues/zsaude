@@ -268,13 +268,35 @@ async def current_context(
 
     facility_id = UUID(payload["fac"])
 
+    # Resolve o binding ativo a partir do claim ``bnd`` (quando presente).
+    # Binding → role_id_override + cbo_id → reflete o papel e abilities
+    # daquele vínculo CBO nas permissões efetivas do request.
+    bnd_raw = payload.get("bnd")
+    role_override: UUID | None = None
+    active_cbo: str | None = None
+    if bnd_raw:
+        from app.modules.tenants.models import FacilityAccessCnesBinding
+        binding = await db.scalar(
+            select(FacilityAccessCnesBinding).where(
+                FacilityAccessCnesBinding.id == UUID(str(bnd_raw)),
+            )
+        )
+        if binding is not None:
+            active_cbo = binding.cbo_id
+            if binding.role_id is not None:
+                role_override = binding.role_id
+
     # Resolve acesso + permissões fresco a cada request. A fonte de verdade
     # é o banco, não o token — assim mudanças em role/override propagam sem
     # precisar renovar o X-Work-Context.
     from app.modules.permissions.service import PermissionService
 
     perm_svc = PermissionService(db, valkey)
-    access, permissions = await perm_svc.resolve_for_facility(user.id, facility_id)
+    access, permissions = await perm_svc.resolve_for_facility(
+        user.id, facility_id,
+        role_id_override=role_override,
+        cbo_id=active_cbo,
+    )
     # MASTER (is_root) não precisa de FacilityAccess — token emitido pelo
     # `select` já é legítimo. Para usuários comuns, ausência de access = acesso
     # revogado após a emissão do token.

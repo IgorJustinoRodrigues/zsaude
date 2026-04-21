@@ -298,8 +298,22 @@ class UserService:
                 mods = sorted(resolved.modules() & OPERATIONAL_MODULES)
 
             from app.modules.users.schemas import CnesBindingDetail
-            bindings = [
-                CnesBindingDetail(
+            # Precisa de effective_facility_modules pro cálculo per-binding.
+            from app.modules.tenants.service import TenantService
+
+            effective_mods = TenantService.effective_facility_modules(mun, fac)
+            bindings: list[CnesBindingDetail] = []
+            for b in (fa.cnes_bindings or []):
+                b_modules: list[str] | None = None
+                if b.role_id and b.role_id != fa.role_id:
+                    b_resolved = await perm_svc.resolve(
+                        user.id, fa.id, role_id_override=b.role_id,
+                    )
+                    if b_resolved.is_root:
+                        b_modules = sorted(effective_mods & OPERATIONAL_MODULES)
+                    else:
+                        b_modules = sorted(b_resolved.modules() & effective_mods & OPERATIONAL_MODULES)
+                bindings.append(CnesBindingDetail(
                     id=b.id,
                     cbo_id=b.cbo_id,
                     cbo_description=b.cbo_description,
@@ -308,9 +322,8 @@ class UserService:
                     cnes_snapshot_nome=b.cnes_snapshot_nome,
                     role_id=b.role_id,
                     role=(roles_by_id[b.role_id].name if b.role_id and b.role_id in roles_by_id else None),
-                )
-                for b in (fa.cnes_bindings or [])
-            ]
+                    modules=b_modules,
+                ))
             by_mun[key]["facilities"].append(
                 FacilityAccessDetail(
                     facility_access_id=fa.id,

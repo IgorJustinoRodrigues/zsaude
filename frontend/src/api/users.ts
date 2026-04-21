@@ -37,6 +37,8 @@ export interface CnesBinding {
   roleId: string | null
   /** Nome do role específico (apenas quando roleId != null). */
   role: string | null
+  /** Módulos efetivos quando este binding é o ativo. ``null`` = herda do acesso. */
+  modules: SystemId[] | null
 }
 
 export interface FacilityAccessDetail {

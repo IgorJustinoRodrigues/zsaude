@@ -16,7 +16,11 @@ import { authApi } from '../../api/auth'
 const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'cha', 'esu']
 
 export function AppShell() {
-  const { sidebarCollapsed } = useUIStore()
+  const { sidebarCollapsed, sidebarHovered } = useUIStore()
+  // "Collapsed efetivo" = preferência persistida + mouse não está em cima.
+  // Quando o user passa o mouse sobre a sidebar colapsada, o conteúdo
+  // principal também se move (ml-60) — a sidebar se comporta como aberta.
+  const effectiveCollapsed = sidebarCollapsed && !sidebarHovered
   const { currentSystem, selectSystem, user } = useAuthStore()
   const { pathname } = useLocation()
   const passwordExpired = user?.passwordExpired ?? false
@@ -60,7 +64,7 @@ export function AppShell() {
           'flex flex-col flex-1 min-w-0 transition-all duration-200',
           'ml-0',
           'md:ml-16',
-          sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60',
+          effectiveCollapsed ? 'lg:ml-16' : 'lg:ml-60',
         )}
       >
         <TopBar

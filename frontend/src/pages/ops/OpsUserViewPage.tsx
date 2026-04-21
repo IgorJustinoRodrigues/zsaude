@@ -508,10 +508,23 @@ export function OpsUserViewPage() {
                                       {b.cboDescription || '—'}
                                     </p>
                                     {b.role && (
-                                      <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-0.5 flex items-center gap-1">
-                                        <Shield size={10} />
-                                        Perfil próprio: {b.role}
-                                      </p>
+                                      <div className="mt-0.5">
+                                        <p className="text-[10px] text-sky-600 dark:text-sky-400 flex items-center gap-1">
+                                          <Shield size={10} />
+                                          Perfil próprio: {b.role}
+                                        </p>
+                                        {b.modules && b.modules.length > 0 && (
+                                          <div className="flex flex-wrap gap-1 mt-1 ml-3.5">
+                                            {b.modules.map(mod => (
+                                              <span key={mod}
+                                                className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                                                style={{ backgroundColor: MODULE_COLOR[mod] + '1a', color: MODULE_COLOR[mod] }}>
+                                                {MODULE_LABEL[mod]}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                     {b.cnesSnapshotCpf && (
                                       <p className="text-[10px] text-slate-400 font-mono mt-0.5">
