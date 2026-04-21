@@ -6,7 +6,8 @@ import {
   UserCheck, UserX, ShieldOff, Activity as ActivityIcon, Clock, LogOut as LogOutIcon,
   Stethoscope, AlertTriangle,
 } from 'lucide-react'
-import { initials, cn } from '../../lib/utils'
+import { cn } from '../../lib/utils'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 import { userApi, type UserDetail } from '../../api/users'
 import { sessionsApi, type SessionRead } from '../../api/sessions'
 import { HttpError } from '../../api/client'
@@ -385,9 +386,13 @@ export function OpsUserViewPage() {
       <ViewSection title="Dados pessoais" icon={<User size={15} />}>
         <div className="flex flex-col sm:flex-row gap-6">
           <div className="shrink-0 flex flex-col items-center gap-2">
-            <div className="w-20 h-20 rounded-full bg-sky-500 flex items-center justify-center text-xl font-bold text-white ring-2 ring-slate-200 dark:ring-slate-700">
-              {initials(user.name)}
-            </div>
+            <UserAvatar
+              userId={user.id}
+              userName={user.name}
+              photoId={user.currentPhotoId}
+              className="w-20 h-20 ring-2 ring-slate-200 dark:ring-slate-700"
+              initialsClassName="text-xl"
+            />
           </div>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
             <ReadField label="Nome completo" value={user.name} className="sm:col-span-2" />

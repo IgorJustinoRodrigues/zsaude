@@ -9,10 +9,11 @@ import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { useAuthStore } from '../../store/authStore'
-import { initials, cn } from '../../lib/utils'
+import { cn } from '../../lib/utils'
 import { BirthdaysPanel } from '../../components/shared/BirthdaysPanel'
 import { ExportMenuButton } from '../../components/ui/ExportMenuButton'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 import type { ExportBranding, ExportOptions } from '../../lib/export'
 import { useBranding } from '../../hooks/useBranding'
 
@@ -157,9 +158,13 @@ function UsersTab({
               else navigate(`/sys/usuarios/${u.id}`)
             }}
               className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left">
-              <div className="w-9 h-9 rounded-full bg-violet-500 flex items-center justify-center text-[12px] font-bold text-white shrink-0">
-                {initials(u.name)}
-              </div>
+              <UserAvatar
+                userId={u.id}
+                userName={u.name}
+                photoId={u.currentPhotoId}
+                className="w-9 h-9 bg-violet-500"
+                initialsClassName="text-[12px]"
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{u.name}</p>
                 <p className="text-[11px] text-slate-400 truncate">{u.email} · {u.primaryRole}</p>
@@ -264,9 +269,13 @@ function MunicipalUsersTab({
             <button key={u.id}
               onClick={() => navigate(`/sys/usuarios/${u.id}`)}
               className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left">
-              <div className="w-9 h-9 rounded-full bg-sky-500 flex items-center justify-center text-[12px] font-bold text-white shrink-0">
-                {initials(u.name)}
-              </div>
+              <UserAvatar
+                userId={u.id}
+                userName={u.name}
+                photoId={u.currentPhotoId}
+                className="w-9 h-9"
+                initialsClassName="text-[12px]"
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{u.name}</p>
                 <p className="text-[11px] text-slate-400 truncate">

@@ -117,17 +117,33 @@ class TenantService:
                     resolved = await perm_svc.resolve(user_id, access.id)
                     effective = self.effective_facility_modules(mun, fac)
                     available = effective if resolved.is_root else resolved.modules() & effective
-                    bindings = [
-                        CnesBindingRead(
+                    # Cada binding pode ter role_id próprio → role/módulos
+                    # efetivos diferentes quando ele for o ativo. Se não
+                    # tiver, herda os do FacilityAccess pai.
+                    bindings: list[CnesBindingRead] = []
+                    for b in (access.cnes_bindings or []):
+                        if b.role_id and b.role_id != access.role_id:
+                            b_resolved = await perm_svc.resolve(
+                                user_id, access.id, role_id_override=b.role_id,
+                            )
+                            b_available = (
+                                effective if b_resolved.is_root
+                                else b_resolved.modules() & effective
+                            )
+                            b_role_name = await role_name(b.role_id)
+                        else:
+                            b_available = available
+                            b_role_name = await role_name(access.role_id)
+                        bindings.append(CnesBindingRead(
                             id=b.id,
                             cbo_id=b.cbo_id,
                             cbo_description=b.cbo_description,
                             cnes_professional_id=b.cnes_professional_id,
                             cnes_snapshot_cpf=b.cnes_snapshot_cpf,
                             cnes_snapshot_nome=b.cnes_snapshot_nome,
-                        )
-                        for b in (access.cnes_bindings or [])
-                    ]
+                            role=b_role_name,
+                            modules=sorted(b_available),
+                        ))
                     facilities.append(
                         FacilityWithAccess(
                             facility=FacilityRead.model_validate(fac),
@@ -199,8 +215,14 @@ class TenantService:
                 if chosen_binding is not None and chosen_binding.role_id is not None
                 else access.role_id
             )
+            # CBO do binding ativo → abilities clínicas (prescrever, etc.).
+            effective_cbo_id = (
+                chosen_binding.cbo_id if chosen_binding is not None else None
+            )
             resolved = await PermissionService(self.session).resolve(
-                user_id, access.id, role_id_override=effective_role_id,
+                user_id, access.id,
+                role_id_override=effective_role_id,
+                cbo_id=effective_cbo_id,
             )
             from app.modules.permissions.models import Role
             role = await self.session.get(Role, effective_role_id) if effective_role_id else None
@@ -227,6 +249,7 @@ class TenantService:
             facility_id=str(facility.id),
             role=role_name,
             modules=modules,
+            binding_id=str(chosen_binding.id) if chosen_binding else None,
         )
 
         # Audit com nomes (não só IDs) — assim os logs ficam legíveis sem

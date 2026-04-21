@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn, normalize } from '../../lib/utils'
 
@@ -21,6 +22,12 @@ interface Props {
   /** Quando true, oculta o botão "limpar". */
   required?: boolean
   className?: string
+  /**
+   * Renderiza o dropdown via React Portal no ``document.body`` em vez de
+   * aninhado no DOM. Use quando algum ancestral tem ``overflow-hidden``
+   * que corta o dropdown (ex: cards arredondados com accordion).
+   */
+  portal?: boolean
 }
 
 /**
@@ -29,12 +36,20 @@ interface Props {
  */
 export function ComboBox({
   value, options, onChange, placeholder = 'Selecione...',
-  disabled, invalid, required, className,
+  disabled, invalid, required, className, portal = false,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(0)
+  const [anchor, setAnchor] = useState<{
+    top: number
+    left: number
+    width: number
+    maxHeight: number
+  } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const selected = useMemo(
@@ -51,11 +66,15 @@ export function ComboBox({
     })
   }, [options, query])
 
-  // Fecha ao clicar fora
+  // Fecha ao clicar fora. Considera tanto o botão (rootRef) quanto o
+  // dropdown via portal (popRef) — no modo portal o dropdown NÃO é
+  // descendente do rootRef, então precisa checagem dupla.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+      const inRoot = rootRef.current?.contains(e.target as Node)
+      const inPop = popRef.current?.contains(e.target as Node)
+      if (!inRoot && !inPop) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -67,6 +86,32 @@ export function ComboBox({
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 0)
   }, [open])
+
+  // No modo portal, calcula posição do botão pra ancorar o dropdown fixo
+  // no viewport. Sempre abaixo; limita ``max-height`` pro dropdown caber
+  // no espaço visível — mesmo em fim de tela ele encolhe e rola.
+  useLayoutEffect(() => {
+    if (!open || !portal) return
+    const MARGIN = 8
+    const GAP = 4
+    const PREFERRED = 288
+
+    const update = () => {
+      const btn = buttonRef.current
+      if (!btn) return
+      const r = btn.getBoundingClientRect()
+      const available = window.innerHeight - r.bottom - GAP - MARGIN
+      const maxHeight = Math.max(160, Math.min(PREFERRED, available))
+      setAnchor({ top: r.bottom + GAP, left: r.left, width: r.width, maxHeight })
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, portal])
 
   const toggle = () => {
     if (disabled) return
@@ -108,6 +153,7 @@ export function ComboBox({
   return (
     <div ref={rootRef} className={cn('relative', className)}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
         onClick={toggle}
@@ -139,45 +185,63 @@ export function ComboBox({
         </div>
       </button>
 
-      {open && (
-        <div className="absolute z-[1100] mt-1 w-full bg-white dark:bg-slate-900 border border-border rounded-lg shadow-lg overflow-hidden max-h-72 flex flex-col">
-          <div className="relative border-b border-border">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={e => { setQuery(e.target.value); setHighlight(0) }}
-              onKeyDown={onKey}
-              placeholder="Buscar..."
-              className="w-full pl-7 pr-2 py-1.5 text-xs bg-transparent focus:outline-none"
-            />
+      {open && (() => {
+        const panel = (
+          <div
+            ref={popRef}
+            style={portal && anchor
+              ? {
+                  position: 'fixed',
+                  top: anchor.top,
+                  left: anchor.left,
+                  width: anchor.width,
+                  maxHeight: anchor.maxHeight,
+                }
+              : undefined}
+            className={cn(
+              'z-[1100] bg-white dark:bg-slate-900 border border-border rounded-lg shadow-lg overflow-hidden flex flex-col',
+              !portal && 'absolute mt-1 w-full max-h-72',
+            )}
+          >
+            <div className="relative border-b border-border">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={e => { setQuery(e.target.value); setHighlight(0) }}
+                onKeyDown={onKey}
+                placeholder="Buscar..."
+                className="w-full pl-7 pr-2 py-1.5 text-xs bg-transparent focus:outline-none"
+              />
+            </div>
+            <ul className="overflow-y-auto flex-1">
+              {filtered.length === 0 ? (
+                <li className="px-3 py-3 text-xs text-muted-foreground text-center">Nada encontrado.</li>
+              ) : filtered.map((opt, i) => {
+                const isSelected = opt.value === value
+                const isHighlighted = i === highlight
+                return (
+                  <li
+                    key={opt.value}
+                    onMouseEnter={() => setHighlight(i)}
+                    onClick={() => choose(opt.value)}
+                    className={cn(
+                      'px-3 py-1.5 text-sm cursor-pointer flex items-center gap-2',
+                      isHighlighted && 'bg-primary/10',
+                      isSelected && 'font-medium',
+                    )}
+                  >
+                    <Check size={12} className={cn('shrink-0', !isSelected && 'invisible')} />
+                    <span className="flex-1 truncate">{opt.label}</span>
+                    {opt.hint && <span className="text-xs text-muted-foreground">{opt.hint}</span>}
+                  </li>
+                )
+              })}
+            </ul>
           </div>
-          <ul className="overflow-y-auto flex-1">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-3 text-xs text-muted-foreground text-center">Nada encontrado.</li>
-            ) : filtered.map((opt, i) => {
-              const isSelected = opt.value === value
-              const isHighlighted = i === highlight
-              return (
-                <li
-                  key={opt.value}
-                  onMouseEnter={() => setHighlight(i)}
-                  onClick={() => choose(opt.value)}
-                  className={cn(
-                    'px-3 py-1.5 text-sm cursor-pointer flex items-center gap-2',
-                    isHighlighted && 'bg-primary/10',
-                    isSelected && 'font-medium',
-                  )}
-                >
-                  <Check size={12} className={cn('shrink-0', !isSelected && 'invisible')} />
-                  <span className="flex-1 truncate">{opt.label}</span>
-                  {opt.hint && <span className="text-xs text-muted-foreground">{opt.hint}</span>}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
+        )
+        return portal ? createPortal(panel, document.body) : panel
+      })()}
     </div>
   )
 }

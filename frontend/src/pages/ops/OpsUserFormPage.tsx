@@ -440,10 +440,17 @@ export function OpsUserFormPage() {
 
       if (isEdit && id) {
         const cnsDigits = cns.replace(/\D/g, '')
+        const cpfDigits = cpf.replace(/\D/g, '')
+        // Só MASTER pode alterar CPF; ADMIN manda ``undefined`` (não enviado).
+        // Quando o valor atual bate com o do usuário, também omite pra não
+        // poluir o diff / não gerar audit desnecessário.
+        const existingCpf = existing?.cpf ?? ''
+        const cpfChanged = cpfDigits !== existingCpf
         await userApi.update(id, {
           // EmailStr rejeita ""; quando o campo está vazio, não enviar.
           email: email.trim() || undefined,
           name,
+          cpf: isActorMaster && cpfChanged ? (cpfDigits || null) : undefined,
           // ``null`` explícito = limpar CNS; omitido quando não for USER/ADMIN.
           cns: level === 'master' ? undefined : (cnsDigits || null),
           phone,
@@ -543,11 +550,19 @@ export function OpsUserFormPage() {
           <Field
             label="CPF"
             error={errors.cpf || errors.identifier}
-            hint="Usado para entrar no sistema. CPF ou e-mail é obrigatório — pelo menos um."
+            hint={
+              isEdit && !isActorMaster
+                ? 'CPF só pode ser alterado por MASTER.'
+                : 'Usado para entrar no sistema. CPF ou e-mail é obrigatório — pelo menos um.'
+            }
           >
-            <input value={cpf} onChange={e => setCpf(maskCpf(e.target.value))} disabled={isEdit}
+            <input value={cpf} onChange={e => setCpf(maskCpf(e.target.value))}
+              disabled={isEdit && !isActorMaster}
               placeholder="000.000.000-00"
-              className={cn(inputCls(!!(errors.cpf || errors.identifier)), isEdit && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed')} />
+              className={cn(
+                inputCls(!!(errors.cpf || errors.identifier)),
+                isEdit && !isActorMaster && 'bg-slate-50 dark:bg-slate-800 cursor-not-allowed',
+              )} />
           </Field>
 
           <Field
@@ -795,6 +810,7 @@ export function OpsUserFormPage() {
                       onChange={val => setMunicipality(mi, val ?? '')}
                       invalid={!!errors[`mun-${mi}`]}
                       placeholder="Selecione o município..."
+                      portal
                       options={municipalities
                         .filter(m =>
                           !accesses.some((a, ai) => ai !== mi && a.municipalityId === m.id)
@@ -824,6 +840,7 @@ export function OpsUserFormPage() {
                               disabled={!mun.municipalityId}
                               invalid={!!errors[`fac-${mi}-${fi}`]}
                               placeholder="Selecione..."
+                              portal
                               options={availableFacilities
                                 .filter(f => !selectedFacIds.includes(f.id) || f.id === fac.facilityId)
                                 .map<ComboBoxOption>(f => ({ value: f.id, label: f.shortName }))}
@@ -836,6 +853,7 @@ export function OpsUserFormPage() {
                               disabled={!mun.municipalityId}
                               invalid={!!errors[`role-${mi}-${fi}`]}
                               placeholder="Selecione..."
+                              portal
                               options={rolesForMunicipality(mun.municipalityId)
                                 .map<ComboBoxOption>(r => ({ value: r.id, label: r.name }))}
                             />
@@ -1077,6 +1095,7 @@ function CnesBindingsList({
                 value={b.roleId}
                 onChange={val => onChangeRole(idx, val)}
                 placeholder="Herda do perfil da unidade"
+                portal
                 options={availableRoles.map<ComboBoxOption>(r => ({
                   value: r.id, label: r.name,
                 }))}
@@ -1188,6 +1207,7 @@ function CnesBindingSearch({
             : 'Selecione um profissional…'
         }
         options={comboOptions}
+        portal
       />
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-slate-400">

@@ -25,6 +25,7 @@ from app.core.exceptions import (
     unhandled_exception_handler,
     validation_error_handler,
 )
+from app.core.cbo_abilities.seed import seed_cbo_abilities
 from app.core.logging import configure_logging, get_logger
 from app.core.permissions.seed import ensure_system_base_roles, sync_permissions
 from app.db.engine_registry import get_registry
@@ -70,11 +71,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             n_roles = await ensure_system_base_roles(session)
             n_settings = await SettingsService(session).warm_up()
             await session.commit()
+        # Seed das abilities CBO (idempotente). Roda após os roles pra
+        # garantir que o catálogo está consistente a cada boot.
+        try:
+            async with sessionmaker()() as session:
+                n_abilities = await seed_cbo_abilities(session)
+                await session.commit()
+        except Exception as e:  # noqa: BLE001
+            log.warning("cbo_abilities_seed_failed", error=str(e))
+            n_abilities = 0
         log.info(
             "rbac_sync_ok",
             permissions=n_perms,
             system_roles=n_roles,
             settings_loaded=n_settings,
+            cbo_ability_pairs=n_abilities,
         )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))

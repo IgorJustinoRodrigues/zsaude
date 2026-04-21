@@ -29,6 +29,11 @@ export interface ContextCnesBinding {
   cnesProfessionalId: string
   cnesSnapshotCpf: string | null
   cnesSnapshotNome: string | null
+  /** Role efetivo quando este binding estiver ativo. Herda do acesso pai
+   *  se o binding não tem role_id próprio. */
+  role: string
+  /** Módulos efetivos correspondentes — reflete o role acima. */
+  modules: SystemId[]
 }
 
 export interface FacilityWithAccess {
@@ -94,10 +99,20 @@ export const directoryApi = {
     api.get<MunicipalityDto[]>(
       `/api/v1/municipalities${scope ? `?scope=${scope}` : ''}`,
     ),
-  listFacilities: (municipalityId?: string, scope?: Scope) => {
+  /**
+   * Lista unidades para selects. Retorna só **ativas** por padrão — passe
+   * ``includeArchived: true`` só em telas administrativas que mostram
+   * também as arquivadas.
+   */
+  listFacilities: (
+    municipalityId?: string,
+    scope?: Scope,
+    opts?: { includeArchived?: boolean },
+  ) => {
     const params = new URLSearchParams()
     if (municipalityId) params.set('municipalityId', municipalityId)
     if (scope) params.set('scope', scope)
+    if (opts?.includeArchived) params.set('includeArchived', 'true')
     const qs = params.toString()
     return api.get<FacilityDto[]>(`/api/v1/facilities${qs ? `?${qs}` : ''}`)
   },

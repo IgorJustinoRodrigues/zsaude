@@ -78,6 +78,7 @@ class UserListItem(CamelModel):
     status: str
     level: UserLevelLiteral
     primary_role: str
+    current_photo_id: UUID | None = None
     created_at: datetime
     municipality_count: int
     facility_count: int
@@ -218,6 +219,10 @@ class UserCreate(CamelModel):
 class UserUpdate(CamelModel):
     email: EmailStr | None = None
     name: str | None = Field(default=None, min_length=2, max_length=200)
+    # CPF só pode vir de ator MASTER — o router bloqueia para ADMIN.
+    # ``""``/``None`` não são enviados pelo front; quando presente, é
+    # validado via ``validate_cpf`` (dígitos verificadores).
+    cpf: str | None = Field(default=None, max_length=14)
     # CNS opcional. ``""``/``None`` não são mandados pelo front; quando
     # enviado, precisa ser válido (15 dígitos + checksum).
     cns: str | None = Field(default=None, max_length=18)
@@ -226,6 +231,13 @@ class UserUpdate(CamelModel):
     status: UserStatusLiteral | None = None
     level: UserLevelLiteral | None = None
     municipalities: list[MunicipalityAccessInput] | None = None
+
+    @field_validator("cpf")
+    @classmethod
+    def _cpf(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        return validate_cpf(v)
 
     @field_validator("cns")
     @classmethod

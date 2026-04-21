@@ -9,7 +9,7 @@ import {
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
 import { useTheme } from '../../hooks/useTheme'
-import { initials } from '../../lib/utils'
+import { UserAvatar } from '../shared/UserAvatar'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { BrandName } from '../shared/BrandName'
@@ -70,6 +70,14 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
 }
 
 interface Props { module: SystemId | null }
+
+// "Igor Rodrigues da Silva" → "Igor Silva"; "Igor" → "Igor".
+// Evita o bug antigo de repetir ("Igor Igor") quando o nome tem uma palavra só.
+function formatShortName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length <= 1) return parts[0] ?? name
+  return `${parts[0]} ${parts[parts.length - 1]}`
+}
 
 export function Sidebar({ module }: Props) {
   const { sidebarCollapsed, sidebarMobileOpen, toggleSidebar, closeMobileSidebar } = useUIStore()
@@ -300,12 +308,16 @@ export function Sidebar({ module }: Props) {
               'md:hidden',
               !desktopCollapsed && 'lg:flex',
             )}>
-              <div className="w-7 h-7 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center text-xs font-bold text-sky-600 dark:text-sky-400 shrink-0">
-                {initials(user.name)}
-              </div>
+              <UserAvatar
+                userId={user.id}
+                userName={user.name}
+                photoId={user.currentPhotoId}
+                className="w-7 h-7"
+                initialsClassName="text-xs"
+              />
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                  {user.name.split(' ')[0]} {user.name.split(' ').slice(-1)[0]}
+                  {formatShortName(user.name)}
                 </p>
                 <p className="text-[10px] text-slate-400 truncate">{context?.role ?? user.email}</p>
               </div>

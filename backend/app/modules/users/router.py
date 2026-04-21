@@ -269,6 +269,10 @@ async def update_user(user_id: UUID, payload: UserUpdate, db: DB, actor: AdminDe
     if payload.level is not None:
         if actor.level != UserLevel.MASTER:
             raise ForbiddenError("Apenas MASTER pode alterar o nível de um usuário.")
+    # CPF também só MASTER — é credencial de login, muda raramente e só
+    # via equipe da plataforma (ex.: correção de digitação).
+    if "cpf" in payload.model_fields_set and actor.level != UserLevel.MASTER:
+        raise ForbiddenError("Apenas MASTER pode alterar o CPF.")
     svc = UserService(db)
     await svc.ensure_target_in_scope(actor, user_id)
     scope = await svc.actor_scope(actor)

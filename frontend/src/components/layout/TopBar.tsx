@@ -11,6 +11,7 @@ import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
 import { AccessibilityMenu } from '../ui/AccessibilityMenu'
 import { NotificationDetailModal } from '../ui/NotificationDetailModal'
+import { UserAvatar } from '../shared/UserAvatar'
 import type { SystemId } from '../../types'
 
 const MODULE_COLORS: Record<SystemId, string> = {
@@ -81,9 +82,15 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
   const canSwitchModule = available.length > 1
-  const totalFacilities =
-    contextOptions?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
-  const canSwitchUnit = totalFacilities > 1
+  // "Trocar contexto" vale pra qualquer mudança de (município, unidade,
+  // vínculo CBO). Aparece quando há mais de uma linha selecionável —
+  // cada binding conta como uma linha distinta na tela de seleção.
+  const totalContextRows = (contextOptions?.municipalities ?? []).reduce(
+    (s, m) => s + m.facilities.reduce(
+      (ss, f) => ss + Math.max(1, f.cnesBindings.length), 0,
+    ), 0,
+  )
+  const canSwitchContext = totalContextRows > 1
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -334,9 +341,15 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
                 : 'hover:bg-slate-100 dark:hover:bg-slate-800'
             )}
           >
-            <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
-              {user ? initials(user.name) : 'U'}
-            </div>
+            {user
+              ? <UserAvatar
+                  userId={user.id}
+                  userName={user.name}
+                  photoId={user.currentPhotoId}
+                  className="w-7 h-7"
+                  initialsClassName="text-xs"
+                />
+              : <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">U</div>}
             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
               {user?.name?.split(' ')[0]}
             </span>
@@ -348,9 +361,15 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
               {/* User header */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                    {user ? initials(user.name) : 'U'}
-                  </div>
+                  {user
+                    ? <UserAvatar
+                        userId={user.id}
+                        userName={user.name}
+                        photoId={user.currentPhotoId}
+                        className="w-11 h-11"
+                        initialsClassName="text-sm"
+                      />
+                    : <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">U</div>}
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{user?.email}</p>
@@ -442,13 +461,13 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
                     Trocar módulo
                   </button>
                 )}
-                {canSwitchUnit && (
+                {canSwitchContext && (
                   <button
                     onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <MapPin size={14} />
-                    Trocar unidade
+                    Trocar contexto
                   </button>
                 )}
                 {canManageRoles && (

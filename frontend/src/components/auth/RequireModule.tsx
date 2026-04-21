@@ -29,7 +29,11 @@ export function RequireModule({ moduleId }: Props) {
     return <Navigate to="/selecionar-contexto" replace />
   }
   if (!context.modules.includes(target)) {
-    return <Navigate to="/403" replace state={{ attempted: target }} />
+    // Módulo pode ter sumido por contexto stale (role/permissões mudaram
+    // depois que o token foi emitido). Força re-seleção pra emitir um
+    // token novo — se ainda assim não tiver o módulo, o SystemSelect
+    // mostra só o que existe e o 403 real cai num caminho manual.
+    return <Navigate to="/selecionar-contexto" replace state={{ attempted: target }} />
   }
   return <Outlet />
 }

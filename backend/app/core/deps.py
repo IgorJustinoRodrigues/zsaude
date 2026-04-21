@@ -114,18 +114,30 @@ Valkey = Annotated[redis.Redis, Depends(get_valkey)]
 class CurrentUser:
     """Usuário extraído do access token."""
 
-    __slots__ = ("id", "login", "name", "token_version")
+    __slots__ = ("id", "login", "name", "token_version", "session_id")
 
-    def __init__(self, *, id: UUID, login: str, name: str, token_version: int) -> None:
+    def __init__(
+        self,
+        *,
+        id: UUID,
+        login: str,
+        name: str,
+        token_version: int,
+        session_id: UUID | None = None,
+    ) -> None:
         self.id = id
         self.login = login
         self.name = name
         self.token_version = token_version
+        # ``session_id`` == ``family_id`` do refresh; vem do claim ``sid``
+        # do access token. Usado para atualizar presença da sessão.
+        self.session_id = session_id
 
 
 async def current_user(
     db: DB,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    x_work_context: Annotated[str | None, Header(alias="X-Work-Context")] = None,
 ) -> CurrentUser:
     if creds is None or creds.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token ausente.")
@@ -153,18 +165,47 @@ async def current_user(
     import structlog
     structlog.contextvars.bind_contextvars(user=user.login)
 
-    # Presença: toca last_seen_at da sessão (throttled a 30s). Só funciona
-    # para tokens emitidos após a feature de sessões existir (que carregam sid).
+    # Presença: toca last_seen_at da sessão (throttled a 30s). Se o
+    # request carrega ``X-Work-Context``, também atualiza
+    # ``active_municipality_id`` / ``active_facility_id`` — precisamos
+    # disso aqui (e não só no ``current_context``) pra endpoints que
+    # dependem apenas de ``current_user`` também marcarem a presença
+    # corretamente. Só funciona para tokens emitidos após a feature de
+    # sessões existir (que carregam ``sid``).
     sid = payload.get("sid")
     if sid:
         try:
             from app.modules.sessions.service import SessionService
 
-            await SessionService(db).touch(UUID(sid), user_id=user.id)
+            ctx_mun: UUID | None = None
+            ctx_fac: UUID | None = None
+            if x_work_context:
+                try:
+                    ctx_payload = decode_token(x_work_context)
+                    if ctx_payload.get("typ") == "context":
+                        mun_raw = ctx_payload.get("mun")
+                        fac_raw = ctx_payload.get("fac")
+                        if mun_raw: ctx_mun = UUID(str(mun_raw))
+                        if fac_raw: ctx_fac = UUID(str(fac_raw))
+                except Exception:  # noqa: BLE001
+                    pass  # context inválido/expirado — segue sem active_*
+
+            await SessionService(db).touch(
+                UUID(sid),
+                user_id=user.id,
+                municipality_id=ctx_mun,
+                facility_id=ctx_fac,
+            )
         except Exception:  # noqa: BLE001
             pass  # presença nunca pode quebrar o request
 
-    return CurrentUser(id=user.id, login=user.login, name=user.name, token_version=user.token_version)
+    sid_claim = payload.get("sid")
+    session_id = UUID(str(sid_claim)) if sid_claim else None
+    return CurrentUser(
+        id=user.id, login=user.login, name=user.name,
+        token_version=user.token_version,
+        session_id=session_id,
+    )
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(current_user)]
@@ -303,12 +344,14 @@ async def current_context(
     # município/unidade agora). Usado pela query de presence pra não
     # marcar o user como online em cidade onde ele só tem acesso mas
     # não está atuando. Best-effort — falhas não quebram o request.
-    sid_raw = payload.get("sid")
-    if sid_raw:
+    #
+    # ``sid`` NÃO está no token de contexto (só no access token); pegamos
+    # direto do CurrentUser, que já extraiu o claim do bearer.
+    if user.session_id is not None:
         try:
             from app.modules.sessions.service import SessionService
             await SessionService(db).touch(
-                UUID(str(sid_raw)),
+                user.session_id,
                 user_id=user.id,
                 municipality_id=ctx.municipality_id,
                 facility_id=ctx.facility_id,

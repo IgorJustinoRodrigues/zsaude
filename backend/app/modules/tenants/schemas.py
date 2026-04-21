@@ -28,6 +28,11 @@ class CnesBindingRead(CamelModel):
     cnes_professional_id: str
     cnes_snapshot_cpf: str | None = None
     cnes_snapshot_nome: str | None = None
+    # Preview do role/módulos efetivos **quando este binding for o ativo**.
+    # Em options_for calculamos considerando binding.role_id quando existe;
+    # senão cai pro role_id do FacilityAccess pai.
+    role: str = ""
+    modules: list[str] = []
 
 
 class FacilityWithAccess(CamelModel):

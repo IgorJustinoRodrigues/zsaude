@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.permissions.registry import all_permissions
 from app.modules.permissions.models import (
+    CboAbility,
     FacilityAccessPermissionOverride,
     Role,
     RolePermission,
@@ -47,9 +48,19 @@ _CACHE_KEY_FMT = "perms:{user_id}:{access_id}:{role_id}"
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPermissions:
-    """Resultado da resolução. Usar `code in perms` para checar."""
+    """Resultado da resolução.
+
+    - ``codes``: permissões de sistema concedidas pelo role/overrides.
+    - ``abilities``: direitos clínicos derivados do CBO do binding ativo
+      no work-context (vazio quando não há binding ativo).
+    - ``is_root``: MASTER — passa todas as checagens, inclusive abilities.
+
+    Ação clínica passa por dois gates:
+        ``code in perms AND perms.has_ability(ability)``.
+    """
 
     codes: frozenset[str]
+    abilities: frozenset[str] = frozenset()
     is_root: bool = False
 
     def __contains__(self, code: str) -> bool:
@@ -65,6 +76,18 @@ class ResolvedPermissions:
             return True
         prefix = f"{module}."
         return any(c.startswith(prefix) for c in self.codes)
+
+    def has_ability(self, ability: str) -> bool:
+        """Verifica se o CBO ativo concede essa ability.
+
+        MASTER passa em qualquer ability. Sem binding ativo, só passa
+        abilities que o caller tenha explicitamente concedido via outra
+        via (ex.: role também pode declarar ability por sobrescrita
+        futura — hoje não).
+        """
+        if self.is_root:
+            return True
+        return ability in self.abilities
 
     def modules(self) -> frozenset[str]:
         """Módulos derivados das permissões concedidas.
@@ -102,15 +125,17 @@ class PermissionService:
         access_id: uuid.UUID | None,
         *,
         role_id_override: uuid.UUID | None = None,
+        cbo_id: str | None = None,
     ) -> ResolvedPermissions:
         """Resolve permissões efetivas para o par (usuário, acesso).
 
-        - MASTER → is_root=True (passa tudo).
+        - MASTER → is_root=True (passa tudo, inclusive abilities).
         - Sem acesso ou acesso sem role_id → conjunto vazio.
-        - ``role_id_override`` (opcional): quando presente, substitui o
-          ``role_id`` do ``FacilityAccess``. Usado pelo work-context pra
-          aplicar o papel do vínculo CBO ativo no lugar do papel base do
-          acesso, quando o binding define um papel próprio.
+        - ``role_id_override`` (opcional): substitui ``access.role_id``.
+          Usado pelo work-context quando o binding ativo tem role próprio.
+        - ``cbo_id`` (opcional): CBO do binding ativo — traz as abilities
+          clínicas associadas (prescrever, liberar laudo, etc.). Sem CBO
+          ativo, ``abilities`` vem vazio.
         """
         user = await self.db.get(User, user_id)
         if user is None or not user.is_active:
@@ -141,7 +166,8 @@ class PermissionService:
             if cached:
                 try:
                     codes = frozenset(json.loads(cached))
-                    return ResolvedPermissions(codes=codes)
+                    abilities = await self._abilities_for(cbo_id)
+                    return ResolvedPermissions(codes=codes, abilities=abilities)
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -175,9 +201,14 @@ class PermissionService:
             effective[ov.permission_code] = ov.granted
 
         codes = frozenset(code for code, granted in effective.items() if granted)
-        resolved = ResolvedPermissions(codes=codes)
+
+        # Abilities do CBO ativo (se o work-context selecionou um binding).
+        abilities = await self._abilities_for(cbo_id)
+        resolved = ResolvedPermissions(codes=codes, abilities=abilities)
 
         # Grava no cache (fire-and-forget — falha nunca quebra request).
+        # Cache armazena só as codes; abilities dependem do CBO ativo e
+        # são resolvidas sempre (custo: 1 query barata por context token).
         if self.valkey is not None:
             try:
                 await self.valkey.setex(cache_key, _CACHE_TTL, json.dumps(sorted(codes)))
@@ -190,8 +221,16 @@ class PermissionService:
         self,
         user_id: uuid.UUID,
         facility_id: uuid.UUID,
+        *,
+        role_id_override: uuid.UUID | None = None,
+        cbo_id: str | None = None,
     ) -> tuple[FacilityAccess | None, ResolvedPermissions]:
-        """Conveniência: busca o FacilityAccess por (user, facility) e resolve."""
+        """Conveniência: busca o FacilityAccess por (user, facility) e resolve.
+
+        Aceita overrides vindos do binding ativo (quando o work-context
+        tem ``bnd`` no token): ``role_id_override`` substitui o role do
+        acesso; ``cbo_id`` traz as abilities clínicas do CBO.
+        """
         access = await self.db.scalar(
             select(FacilityAccess).where(
                 FacilityAccess.user_id == user_id,
@@ -200,7 +239,20 @@ class PermissionService:
         )
         if access is None:
             return None, await self.resolve(user_id, None)
-        return access, await self.resolve(user_id, access.id)
+        return access, await self.resolve(
+            user_id, access.id,
+            role_id_override=role_id_override,
+            cbo_id=cbo_id,
+        )
+
+    async def _abilities_for(self, cbo_id: str | None) -> frozenset[str]:
+        """Abilities do CBO. Vazio quando ``cbo_id is None``."""
+        if not cbo_id:
+            return frozenset()
+        rows = await self.db.scalars(
+            select(CboAbility.ability_code).where(CboAbility.cbo_id == cbo_id)
+        )
+        return frozenset(rows.all())
 
     async def _role_chain(self, role_id: uuid.UUID) -> list[Role]:
         """Cadeia role → role.parent → ... (mais específico primeiro).

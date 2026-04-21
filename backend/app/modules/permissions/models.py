@@ -155,3 +155,20 @@ class FacilityAccessPermissionOverride(Base, TimestampedMixin):
         nullable=False,
     )
     granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class CboAbility(Base):
+    """Mapeamento CBO → direito profissional (ability).
+
+    O catálogo de ``ability_code`` vive em
+    ``app.core.cbo_abilities.registry`` (código), mesmo padrão de
+    ``permissions``. Esta tabela só associa o CBO (vindo do CNES) às
+    abilities declaradas. Ação clínica passa por dois gates:
+
+        role_permission(X) AND cbo_has_ability(Y)
+    """
+
+    __tablename__ = "cbo_abilities"
+
+    cbo_id: Mapped[str] = mapped_column(String(6), primary_key=True)
+    ability_code: Mapped[str] = mapped_column(String(100), primary_key=True)

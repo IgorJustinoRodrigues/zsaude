@@ -30,7 +30,22 @@ async def options(db: DB, user: CurrentUserDep) -> WorkContextOptions:
 
 @router.post("/select", response_model=WorkContextIssued)
 async def select(payload: WorkContextSelect, db: DB, user: CurrentUserDep) -> WorkContextIssued:
-    return await TenantService(db).select(user.id, payload)
+    issued = await TenantService(db).select(user.id, payload)
+    # Marca o contexto ativo da sessão aqui mesmo — assim a presença
+    # fica correta já na primeira consulta, sem depender do próximo
+    # request com ``X-Work-Context`` passar pelo ``current_context``.
+    if user.session_id is not None:
+        try:
+            from app.modules.sessions.service import SessionService
+            await SessionService(db).touch(
+                user.session_id,
+                user_id=user.id,
+                municipality_id=issued.municipality.id,
+                facility_id=issued.facility.id,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return issued
 
 
 @router.get("/current", response_model=WorkContextCurrent)

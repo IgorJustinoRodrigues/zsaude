@@ -242,6 +242,7 @@ class UserService:
                 status=u.status.value if hasattr(u.status, "value") else str(u.status),
                 level=u.level.value if hasattr(u.level, "value") else str(u.level),
                 primary_role=u.primary_role,
+                current_photo_id=u.current_photo_id,
                 created_at=u.created_at,
                 municipality_count=counts_by_user[u.id][0],
                 facility_count=counts_by_user[u.id][1],
@@ -355,6 +356,7 @@ class UserService:
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             birth_date=user.birth_date,
+            current_photo_id=user.current_photo_id,
             email_verified_at=user.email_verified_at,
             pending_email=user.pending_email,
             created_at=user.created_at,
@@ -432,6 +434,20 @@ class UserService:
             # (ou o próprio usuário) disparar o link via verify-request.
             user.email_verified_at = None
             user.pending_email = None
+
+        # CPF: só muda quando enviado (``model_fields_set``). Sem CPF
+        # o usuário ainda precisa ter e-mail — valida antes de aplicar.
+        if "cpf" in payload.model_fields_set and payload.cpf != user.cpf:
+            if payload.cpf:
+                other = await self.repo.get_by_cpf(payload.cpf)
+                if other and other.id != user.id:
+                    raise ConflictError("CPF já cadastrado para outro usuário.")
+            elif not user.email:
+                raise ConflictError(
+                    "Não é possível remover o CPF sem um e-mail cadastrado.",
+                )
+            _track("cpf", user.cpf, payload.cpf)
+            user.cpf = payload.cpf
 
         if payload.name is not None:
             _track("name", user.name, payload.name)

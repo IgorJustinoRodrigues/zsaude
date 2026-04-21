@@ -39,7 +39,7 @@ export function SysFacilityListPage() {
     setParams({ municipalityId: munId }, { replace: true })
     let cancelled = false
     setLoadingFacs(true)
-    directoryApi.listFacilities(munId)
+    directoryApi.listFacilities(munId, undefined, { includeArchived: true })
       .then(r => { if (!cancelled) setFacilities(r) })
       .catch(e => {
         if (!cancelled) toast.error('Falha ao carregar unidades', e instanceof HttpError ? e.message : '')

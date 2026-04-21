@@ -19,6 +19,7 @@ export interface UserListItem {
   status: UserStatus
   level: UserLevel
   primaryRole: string
+  currentPhotoId: string | null
   createdAt: string
   municipalityCount: number
   facilityCount: number
@@ -72,6 +73,7 @@ export interface UserDetail {
   isActive: boolean
   isSuperuser: boolean
   birthDate: string | null
+  currentPhotoId: string | null
   /** ISO ou null. null = e-mail não verificado. */
   emailVerifiedAt: string | null
   /** Novo endereço aguardando confirmação (troca em andamento). */
@@ -137,6 +139,8 @@ export interface UserCreateInput {
 export interface UserUpdateInput {
   email?: string
   name?: string
+  /** Só MASTER pode mudar. Envie ``null`` para limpar (exige email setado). */
+  cpf?: string | null
   /** CNS opcional. Envie ``null`` para limpar o campo. */
   cns?: string | null
   phone?: string

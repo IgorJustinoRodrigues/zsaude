@@ -81,6 +81,11 @@ async def sync_permissions(session: AsyncSession) -> int:
 # ─── SYSTEM roles base ──────────────────────────────────────────────────────
 
 # (code, name, description, [permission_codes])
+#
+# Perfis = função no SISTEMA (UI/fluxos). Função clínica vem do CBO do
+# binding CNES (abilities). Esse catálogo é deliberadamente enxuto — o
+# mesmo usuário pode ter perfis diferentes por vínculo CBO, e a competência
+# profissional (prescrever, dispensar, etc.) vem do CBO, não do perfil.
 _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
     (
         "system_admin",
@@ -106,64 +111,68 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
         ],
     ),
     (
-        "receptionist_base",
-        "Recepcionista",
-        "Perfil base de recepção. Cadastro e consulta de pacientes.",
+        "operator_base",
+        "Operador",
+        "Executa o dia-a-dia assistencial: cadastra e atende paciente, "
+        "solicita exame, registra evolução. Competência profissional vem "
+        "do CBO do vínculo CNES.",
         [
             "hsp.patient.view", "hsp.patient.create", "hsp.patient.edit",
-            "hsp.patient_photo.view", "hsp.patient_photo.upload",
-        ],
-    ),
-    (
-        "nurse_base",
-        "Enfermagem",
-        "Perfil base de enfermagem. Pacientes, histórico e solicitação de exames.",
-        [
-            "hsp.patient.view", "hsp.patient.edit",
             "hsp.patient_history.view",
             "hsp.patient_photo.view", "hsp.patient_photo.upload",
             "dgn.exam.view", "dgn.exam.request",
         ],
     ),
     (
-        "doctor_base",
-        "Médico",
-        "Perfil base médico. Hoje cobre solicitação de exames no DGN.",
+        "coordinator_base",
+        "Coordenador de Unidade",
+        "Operador + visão gerencial local: relatórios da unidade, sessões, "
+        "aprovações de escala.",
         [
+            "hsp.patient.view", "hsp.patient.create", "hsp.patient.edit",
+            "hsp.patient_history.view",
+            "hsp.patient_photo.view", "hsp.patient_photo.upload",
             "dgn.exam.view", "dgn.exam.request",
+            "users.user.view", "users.access.view",
+            "ops.session.view", "ops.report.view", "ops.report.export",
         ],
     ),
     (
-        "lab_tech_base",
-        "Técnico de Laboratório",
-        "Perfil base de laboratório. Hoje cobre visualização de exames.",
+        "auditor_base",
+        "Auditor",
+        "Leitura ampla + exportações: logs, relatórios, produção. Não "
+        "executa fluxos assistenciais.",
         [
+            "hsp.patient.view", "hsp.patient_history.view",
+            "dgn.exam.view",
+            "users.user.view", "users.access.view",
+            "audit.log.view",
+            "ops.session.view", "ops.report.view", "ops.report.export",
+        ],
+    ),
+    (
+        "viewer_base",
+        "Visualizador",
+        "Consulta mínima. Útil para estágio, auditoria externa ou visão "
+        "restrita por demanda.",
+        [
+            "hsp.patient.view",
             "dgn.exam.view",
         ],
     ),
-    (
-        "manager_base",
-        "Gestor",
-        "Relatórios, auditoria, importações e visão gerencial dos usuários.",
-        [
-            "users.user.view",
-            "users.access.view",
-            "audit.log.view",
-            "ops.session.view",
-            "ops.report.view",
-            "ops.report.export",
-            "ops.import.execute",
-            "ops.import.view",
-        ],
-    ),
-    (
-        "visa_agent_base",
-        "Fiscal Sanitário",
-        "Perfil base VISA. Ganha permissões conforme o módulo FSC for "
-        "implementado.",
-        [],
-    ),
 ]
+
+# Roles antigos (clinicos) que foram substituídos pelos enxutos. O seed
+# os arquiva (``archived=True``) pra evitar que apareçam em novos
+# cadastros, sem quebrar FacilityAccess já vinculados.
+_LEGACY_CODES_TO_ARCHIVE: set[str] = {
+    "receptionist_base",
+    "nurse_base",
+    "doctor_base",
+    "lab_tech_base",
+    "manager_base",
+    "visa_agent_base",
+}
 
 
 async def ensure_system_base_roles(session: AsyncSession) -> int:
@@ -172,12 +181,30 @@ async def ensure_system_base_roles(session: AsyncSession) -> int:
     Também sincroniza as permissions deles (grant=true) e recria eventuais
     linhas faltando em role_permissions. Permissões removidas do catálogo
     de um role são removidas; adicionadas são criadas.
+
+    Roles legados (``_LEGACY_CODES_TO_ARCHIVE``) são marcados como
+    ``archived=True`` — FacilityAccess antigos continuam válidos, mas o
+    role não aparece em novos cadastros.
     """
     created_or_updated = 0
     for code, name, description, perm_codes in _SYSTEM_BASE_ROLES:
         role = await _upsert_system_role(session, code, name, description)
         await _sync_role_permissions(session, role_id=role.id, perm_codes=perm_codes)
         created_or_updated += 1
+
+    # Arquiva legados sem apagar (preserva referências históricas).
+    if _LEGACY_CODES_TO_ARCHIVE:
+        legacy_rows = await session.scalars(
+            select(Role).where(
+                Role.code.in_(_LEGACY_CODES_TO_ARCHIVE),
+                Role.scope == RoleScope.SYSTEM,
+            )
+        )
+        for r in legacy_rows.all():
+            if not r.archived:
+                r.archived = True
+                r.version = r.version + 1
+
     return created_or_updated
 
 
