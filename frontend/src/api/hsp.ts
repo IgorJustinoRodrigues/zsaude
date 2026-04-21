@@ -196,6 +196,11 @@ export interface PatientRead extends PatientBaseFields {
   dataConsentimentoLgpd: string | null
   currentPhotoId: string | null
   hasPhoto: boolean
+  /** Seta quando o totem enrollou uma foto muito diferente do embedding
+   *  atual (anti-spoofing). Recepção valida e limpa. */
+  identityReviewNeeded: boolean
+  identityReviewReason: string | null
+  identityReviewAt: string | null
   createdBy: string | null
   updatedBy: string | null
   createdAt: string
@@ -219,6 +224,7 @@ export interface PatientListItem {
   phone: string
   active: boolean
   hasPhoto: boolean
+  identityReviewNeeded: boolean
   createdAt: string
   updatedAt: string
 }
@@ -233,6 +239,8 @@ export interface PatientPhotoMeta {
   uploadedBy: string | null
   uploadedByName: string
   uploadedAt: string
+  /** Marcada como suspeita pelo enroll facial. Recepção revisa. */
+  flagged: boolean
 }
 
 export interface PatientFieldHistoryItem {
@@ -371,6 +379,19 @@ export const hspApi = {
   /** Define uma foto antiga como a atual. */
   restorePhoto: (id: string, photoId: string) =>
     apiFetch<PatientRead>(`/api/v1/hsp/patients/${id}/photos/${photoId}/restore`, {
+      method: 'POST', withContext: true,
+    }),
+
+  /** Marca/desmarca uma foto como suspeita (anti-spoofing). */
+  setPhotoFlag: (id: string, photoId: string, flagged: boolean) =>
+    apiFetch<void>(
+      `/api/v1/hsp/patients/${id}/photos/${photoId}/flag?flagged=${flagged}`,
+      { method: 'PATCH', withContext: true },
+    ),
+
+  /** Recepção valida a identidade do paciente e limpa o flag de revisão. */
+  clearIdentityReview: (id: string) =>
+    apiFetch<void>(`/api/v1/hsp/patients/${id}/identity-review/clear`, {
       method: 'POST', withContext: true,
     }),
 

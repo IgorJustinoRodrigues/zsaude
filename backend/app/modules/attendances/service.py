@@ -471,12 +471,22 @@ class AttendanceService:
             raise
 
         # Learning: atualiza o embedding com essa foto nova (UPSERT 1:1).
-        await face_service.enroll_from_photo(
+        result = await face_service.enroll_from_photo(
             self.tenant_db,
             patient_id=patient_id,
             photo_bytes=photo_bytes,
             photo_id=photo_uuid,
         )
+
+        # Foto muito diferente do embedding atual → possível spoofing.
+        # Marca a foto + sinaliza revisão no cadastro. A recepção decide
+        # (ver o gallery, excluir fotos ruins, limpar o flag).
+        if result.status == "mismatch":
+            photo.flagged = True
+            patient.identity_review_needed = True
+            patient.identity_review_reason = "face_mismatch_totem"
+            patient.identity_review_at = datetime.now(UTC)
+            await self.tenant_db.flush()
 
     # ── Internos ──────────────────────────────────────────────────────
 

@@ -467,6 +467,57 @@ async def remove_patient_photo(
     return Response(status_code=204)
 
 
+# ── Revisão de identidade ────────────────────────────────────────────────
+
+@router.post("/patients/{patient_id}/identity-review/clear", status_code=204)
+async def clear_identity_review(
+    patient_id: UUID,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient.edit"),
+) -> Response:
+    """Recepção limpa o flag de revisão após checar/ajustar as fotos."""
+    patient = await db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Paciente não encontrado.")
+    was_needed = patient.identity_review_needed
+    patient.identity_review_needed = False
+    patient.identity_review_reason = None
+    patient.identity_review_at = None
+    await db.flush()
+    if was_needed:
+        patient_name = await _patient_name(db, patient_id)
+        await write_audit(
+            db, module="hsp", action="identity_review_clear", severity="info",
+            resource="patient", resource_id=str(patient_id),
+            description=describe_change(
+                actor=get_audit_context().user_name,
+                verb="validou a identidade de",
+                target_name=patient_name,
+            ),
+            details={"patientName": patient_name},
+        )
+    return Response(status_code=204)
+
+
+@router.patch("/patients/{patient_id}/photos/{photo_id}/flag", status_code=204)
+async def set_photo_flag(
+    patient_id: UUID,
+    photo_id: UUID,
+    flagged: bool,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient_photo.upload"),
+) -> Response:
+    """Marca/desmarca uma foto como suspeita. Útil pra recepção
+    reclassificar uma foto que foi flagada por engano."""
+    from app.tenant_models.patients import PatientPhoto
+    photo = await db.get(PatientPhoto, photo_id)
+    if photo is None or photo.patient_id != patient_id:
+        raise HTTPException(status_code=404, detail="Foto não encontrada.")
+    photo.flagged = flagged
+    await db.flush()
+    return Response(status_code=204)
+
+
 # ── Histórico ────────────────────────────────────────────────────────────
 
 @router.get("/patients/{patient_id}/history", response_model=Page[PatientFieldHistoryOut])

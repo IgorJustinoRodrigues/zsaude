@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 interface Props {
-  title: string
+  title: React.ReactNode
   subtitle?: string
   back?: string
   actions?: React.ReactNode

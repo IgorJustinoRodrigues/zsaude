@@ -33,7 +33,9 @@ from app.tenant_models.patients import Patient, PatientPhoto
 log = logging.getLogger(__name__)
 
 
-FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled", "duplicate"]
+FaceStatus = Literal[
+    "ok", "no_face", "low_quality", "error", "disabled", "duplicate", "mismatch",
+]
 """Status devolvido ao caller quando uma foto é processada.
 
 - ``ok`` — embedding gerado e salvo.
@@ -43,6 +45,10 @@ FaceStatus = Literal["ok", "no_face", "low_quality", "error", "disabled", "dupli
 - ``disabled`` — feature desligada globalmente.
 - ``duplicate`` — rosto bate com outra pessoa acima do threshold de duplicata.
   Embedding NÃO é salvo; a foto em si pode ser mantida pelo caller.
+- ``mismatch`` — rosto é muito diferente do embedding atual do mesmo
+  paciente (< ``self_change_threshold``). Embedding NÃO é atualizado —
+  protege contra tentativa de se passar por outra pessoa. A foto pode
+  ser mantida pelo caller pra auditoria.
 """
 
 
@@ -109,6 +115,20 @@ def _match_threshold() -> float:
 def _min_detection_score() -> float:
     """Score mínimo do detector pra aceitar um rosto (tanto enroll quanto match)."""
     return get_float_sync("hsp.face.min_detection_score", 0.50)
+
+
+def _self_change_threshold() -> float:
+    """Similaridade mínima entre uma foto nova e o embedding EXISTENTE do
+    mesmo paciente pra permitir atualização.
+
+    Rosto muda com tempo, luz, barba, etc — mas não vira outra pessoa.
+    0.40 aceita variações razoáveis da mesma pessoa e bloqueia um
+    estranho tentando sobrescrever a identidade por força bruta (ex.:
+    alguém digitando o CPF da vítima e encostando o próprio rosto). A
+    foto é salva no gallery mesmo assim — recepção/auditoria revisa.
+    Ajustável via ``hsp.face.self_change_threshold``.
+    """
+    return get_float_sync("hsp.face.self_change_threshold", 0.40)
 
 
 # ─── Enroll ──────────────────────────────────────────────────────────────────
@@ -184,6 +204,19 @@ async def enroll_from_photo(
         )
         return EnrollResult("duplicate", duplicate_of=duplicate)
 
+    # ── Checagem de "mesmo paciente" (anti-spoofing) ────────────────
+    # Se já existe embedding pra esse paciente, a foto nova tem que ser
+    # razoavelmente parecida. Senão alguém está tentando se passar por
+    # outra pessoa usando o CPF/CNS dela.
+    self_sim = await _self_similarity(db, result.embedding, patient_id)
+    if self_sim is not None and self_sim < _self_change_threshold():
+        log.warning(
+            "face_enroll_mismatch",
+            patient_name=patient_name, patient_id=str(patient_id),
+            similarity=self_sim, threshold=_self_change_threshold(),
+        )
+        return EnrollResult("mismatch")
+
     adapter = get_adapter(db.bind.dialect.name)
     await adapter.execute_upsert(
         db,
@@ -250,6 +283,37 @@ async def _find_duplicate_patient(
         name=row["name"] or "",
         similarity=float(row["similarity"]),
     )
+
+
+async def _self_similarity(
+    db: AsyncSession,
+    embedding: list[float],
+    patient_id: UUID,
+) -> float | None:
+    """Retorna a similaridade entre ``embedding`` e o embedding existente
+    do próprio paciente. ``None`` se ainda não há embedding cadastrado
+    (primeiro enroll — nada pra comparar)."""
+    adapter = get_adapter(db.bind.dialect.name)
+    dist = adapter.vector_cosine_distance_sql("fe.embedding", "q")
+    dialect = db.bind.dialect.name
+
+    sql = f"""
+        SELECT 1 - ({dist}) AS similarity
+          FROM patient_face_embeddings fe
+         WHERE fe.patient_id = :pid
+    """
+    if dialect == "postgresql":
+        q_param = str(embedding)
+        pid_param: object = patient_id
+    else:
+        import array as _array
+        q_param = _array.array("f", embedding)
+        pid_param = patient_id.bytes
+
+    row = (await db.execute(
+        text(sql), {"q": q_param, "pid": pid_param},
+    )).mappings().first()
+    return float(row["similarity"]) if row else None
 
 
 # ─── Match ───────────────────────────────────────────────────────────────────

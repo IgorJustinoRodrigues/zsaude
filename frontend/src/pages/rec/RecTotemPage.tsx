@@ -95,6 +95,22 @@ export function RecTotemPage() {
   // que o fluxo passe por confirmação facial E depois emissão (ambos
   // têm patientId conhecido).
   const enrollAttempted = useRef(false)
+  // Info do rodapé — uma requisição só no mount, depois fica em memória.
+  const [facilityInfo, setFacilityInfo] = useState<{
+    facilityName: string
+    municipalityName: string
+    municipalityUf: string
+  } | null>(null)
+  useEffect(() => {
+    if (!deviceToken) return
+    recApi.deviceFacilityInfo(deviceToken)
+      .then(info => setFacilityInfo({
+        facilityName: info.facilityName,
+        municipalityName: info.municipalityName,
+        municipalityUf: info.municipalityUf,
+      }))
+      .catch(() => { /* sem rodapé, não é crítico */ })
+  }, [deviceToken])
 
   const reset = useCallback(() => {
     setStep('greeting')
@@ -356,10 +372,10 @@ export function RecTotemPage() {
         )}
       </div>
 
-      {/* Rodapé suave — instrução + cidade/unidade mock */}
-      {step === 'greeting' && (
-        <footer className="px-6 py-3 text-center text-xs text-slate-400 dark:text-slate-600">
-          CENTRO DE SAÚDE ARTURO BERMURDEZ MAYORGA · Goianésia/GO
+      {/* Rodapé — nome da unidade + município (vem do backend via device). */}
+      {step === 'greeting' && facilityInfo && (
+        <footer className="px-6 py-3 text-center text-xs uppercase tracking-wider text-slate-400 dark:text-slate-600">
+          {facilityInfo.facilityName} · {facilityInfo.municipalityName}/{facilityInfo.municipalityUf}
         </footer>
       )}
 
@@ -386,7 +402,9 @@ function Greeting({
   fullscreen: boolean
   onEnterFullscreen: () => void
 }) {
-  const now = useNow(60_000)
+  // useNow é puro client-side (setInterval + Date local). Zero requisições.
+  // 15s é um bom balanço entre reatividade (virada de hora/minuto) e CPU.
+  const now = useNow(15_000)
   const greeting = greetingFor(now.getHours())
   const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
   const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -441,7 +459,7 @@ function FullscreenSetupPill({ onClick }: { onClick: () => void }) {
       </span>
       <span className="flex flex-col items-start leading-tight">
         <span className="text-[10px] font-normal uppercase tracking-widest opacity-60">
-          Modo tablet
+          Modo Apresentação
         </span>
         <span>Ativar tela cheia</span>
       </span>

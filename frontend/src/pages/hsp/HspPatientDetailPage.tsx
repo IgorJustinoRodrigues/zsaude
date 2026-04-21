@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Edit, History, User2, Trash2, FileText, X, RotateCcw, AlertTriangle, Maximize2, Minimize2 } from 'lucide-react'
+import { Edit, History, User2, Trash2, FileText, X, RotateCcw, AlertTriangle, Maximize2, Minimize2, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
 import { hspApi, type PatientFieldHistoryItem, type PatientRead } from '../../api/hsp'
@@ -150,7 +150,19 @@ export function HspPatientDetailPage() {
   return (
     <div>
       <PageHeader
-        title={patient.socialName || patient.name}
+        title={
+          <span className="inline-flex items-center gap-2">
+            {patient.socialName || patient.name}
+            {patient.identityReviewNeeded && (
+              <span
+                title="Identidade requer validação"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[11px] font-semibold uppercase tracking-wide"
+              >
+                <ShieldAlert size={11} /> Revisar
+              </span>
+            )}
+          </span>
+        }
         subtitle={[
           patient.socialName ? `Registro: ${patient.name}` : null,
           `Prontuário ${patient.prontuario}`,
@@ -191,6 +203,35 @@ export function HspPatientDetailPage() {
             <span className="font-semibold">Paciente inativo.</span>{' '}
             O cadastro não aparece em buscas padrão. Clique em Reativar para reverter.
           </p>
+        </div>
+      )}
+
+      {patient.identityReviewNeeded && (
+        <div className="mb-6 border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 rounded-lg p-4 flex items-start gap-3">
+          <ShieldAlert size={18} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <p className="text-sm text-rose-900 dark:text-rose-200">
+              <span className="font-semibold">Identidade requer validação.</span>{' '}
+              O totem detectou uma foto muito diferente das anteriores
+              {patient.identityReviewAt && ` em ${formatDateTime(patient.identityReviewAt)}`}.
+              Confira o gallery de fotos abaixo e, se estiver tudo certo, confirme a identidade.
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              if (!patient) return
+              try {
+                await hspApi.clearIdentityReview(patient.id)
+                toast.success('Identidade validada.')
+                void reload()
+              } catch (err) {
+                if (err instanceof HttpError) toast.error(err.message)
+              }
+            }}
+            className="shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium"
+          >
+            <ShieldCheck size={14} /> Validar identidade
+          </button>
         </div>
       )}
 

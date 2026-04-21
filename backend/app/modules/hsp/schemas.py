@@ -168,6 +168,7 @@ class PatientListItem(CamelModel):
     phone: str
     active: bool
     has_photo: bool = False
+    identity_review_needed: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -181,6 +182,11 @@ class PatientRead(PatientBase):
     data_consentimento_lgpd: datetime | None = None
     current_photo_id: UUID | None = None
     has_photo: bool = False
+    # Flag de revisão de identidade — setado quando o totem detecta
+    # spoofing em potencial. Recepção limpa via endpoint dedicado.
+    identity_review_needed: bool = False
+    identity_review_reason: str | None = None
+    identity_review_at: datetime | None = None
     created_by: UUID | None = None
     updated_by: UUID | None = None
     created_at: datetime
@@ -203,9 +209,15 @@ class PatientPhotoOut(CamelModel):
     uploaded_by: UUID | None = None
     uploaded_by_name: str
     uploaded_at: datetime
+    # Suspeita — setado quando o totem enrollou uma foto muito
+    # diferente do embedding. Recepção decide se é spoofing ou mudança
+    # legítima (ajuste de threshold ou clear manual).
+    flagged: bool = False
     # Status do enrollment facial feito automaticamente no upload.
     # Presente só no POST /photo; GET/lista devolve None.
-    face_status: Literal["ok", "no_face", "low_quality", "error", "disabled", "duplicate"] | None = None
+    face_status: Literal[
+        "ok", "no_face", "low_quality", "error", "disabled", "duplicate", "mismatch",
+    ] | None = None
     # Quando ``face_status='duplicate'``, identifica o paciente cuja face
     # bateu acima do threshold. Frontend mostra alerta e admin decide.
     face_duplicate_of: dict | None = None

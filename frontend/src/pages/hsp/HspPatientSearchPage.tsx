@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, ArrowRight, UserPlus, AlertCircle, ScanLine, ScanFace, Loader2 } from 'lucide-react'
+import { Search, ArrowRight, UserPlus, AlertCircle, ScanLine, ScanFace, Loader2, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
@@ -367,7 +367,17 @@ export function HspPatientSearchPage() {
                       ) : initials(p.socialName || p.name)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">{p.socialName || p.name}</p>
+                      <p className="font-medium text-sm inline-flex items-center gap-2">
+                        {p.socialName || p.name}
+                        {p.identityReviewNeeded && (
+                          <span
+                            title="Identidade requer validação"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-semibold uppercase tracking-wide"
+                          >
+                            <ShieldAlert size={9} /> Revisar
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         Prontuário {p.prontuario}
                         {p.cpf && ` · CPF ${formatCPF(p.cpf)}`}

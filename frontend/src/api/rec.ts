@@ -126,6 +126,18 @@ export const recApi = {
     })
   },
 
+  deviceFacilityInfo: (deviceToken: string) =>
+    apiFetch<{
+      facilityName: string
+      facilityShortName: string
+      municipalityName: string
+      municipalityUf: string
+      timezone: string
+    }>('/api/v1/rec/device/facility-info', {
+      headers: { 'X-Device-Token': deviceToken },
+      anonymous: true,
+    }),
+
   /** Baixa a foto atual do paciente como Blob (device auth). */
   patientPhoto: async (deviceToken: string, patientId: string): Promise<Blob> => {
     const BASE_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '')

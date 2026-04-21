@@ -187,6 +187,32 @@ async def assume_handover(
     return AttendanceRead.model_validate(att)
 
 
+# ─── Info da unidade (totem — device auth) ───────────────────────────────
+
+@router.get("/device/facility-info")
+async def device_facility_info(
+    db: DB,
+    device: CurrentDeviceDep,
+) -> dict:
+    """Info da unidade/município pro totem exibir no rodapé.
+    Device-auth — usa o facility_id vinculado ao device."""
+    if device.facility_id is None:
+        raise HTTPException(status_code=400, detail="Device sem unidade vinculada.")
+    facility = await db.get(Facility, device.facility_id)
+    if facility is None:
+        raise HTTPException(status_code=404, detail="Unidade não encontrada.")
+    municipality = await db.get(Municipality, facility.municipality_id)
+    if municipality is None:
+        raise HTTPException(status_code=404, detail="Município não encontrado.")
+    return {
+        "facilityName": facility.name,
+        "facilityShortName": facility.short_name,
+        "municipalityName": municipality.name,
+        "municipalityUf": municipality.state,
+        "timezone": municipality.timezone or "America/Sao_Paulo",
+    }
+
+
 # ─── Foto do paciente (totem — device auth) ──────────────────────────────
 
 @router.get("/patients/{patient_id}/photo")

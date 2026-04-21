@@ -166,6 +166,17 @@ class Patient(TenantBase):
     importado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("0"))
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("1"), index=True)
 
+    # Revisão de identidade — acionada quando o totem detecta enroll
+    # com foto muito diferente do embedding atual (anti-spoofing). A
+    # recepção revisa o gallery, ajusta a foto oficial, e limpa o flag.
+    identity_review_needed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"),
+    )
+    identity_review_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    identity_review_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
     data_obito: Mapped[date | None] = mapped_column(Date, nullable=True)
     data_ultima_revisao_cadastro: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     observacoes: Mapped[str] = mapped_column(String(4000), nullable=False, server_default=" ")
@@ -223,6 +234,13 @@ class PatientPhoto(TenantBase):
     uploaded_by_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+    # Marcada como suspeita pelo enroll facial — a pessoa tentou
+    # sobrescrever o embedding com um rosto muito diferente. Recepção
+    # revisa, exclui se for spoofing, ou limpa o flag se for legítimo.
+    flagged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"),
     )
 
 
