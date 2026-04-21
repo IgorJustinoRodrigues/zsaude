@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useUIStore } from '../../store/uiStore'
 import { useTheme } from '../../hooks/useTheme'
+import { useUserSocket } from '../../hooks/useUserSocket'
 import { SYSTEMS } from '../../mock/users'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
@@ -31,15 +32,29 @@ export function TopBar({ module, birthday, onBirthdayClick }: Props) {
   const { user, context, contextOptions, logout } = useAuthStore()
   const can = useAuthStore(s => s.can)
   const canManageRoles = can('roles.role.view')
-  const { notifications, unreadCount, markRead, markAllRead, refresh, refreshCount } = useNotificationStore()
+  const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotificationStore()
 
-  // Polling: lista completa no mount, e só o count em seguida pra ficar leve.
-  // Cadência 30s (inbox é menos "ao vivo" que presença).
+  // Carga inicial + real-time via WS. O servidor publica
+  // ``notification:new/read/all-read/dismissed`` no canal do usuário;
+  // sem polling. Mantemos um ``refresh()`` de segurança a cada 5min
+  // como backup pra drifts (reconexão perdida, deploy, etc.).
   useEffect(() => {
     void refresh()
-    const id = setInterval(() => { void refreshCount() }, 30_000)
+    const id = setInterval(() => { void refresh() }, 300_000)
     return () => clearInterval(id)
-  }, [refresh, refreshCount])
+  }, [refresh])
+  useUserSocket({
+    onEvent: ({ event }) => {
+      if (event === 'notification:new'
+          || event === 'notification:read'
+          || event === 'notification:all-read'
+          || event === 'notification:dismissed') {
+        // Simples e robusto: sempre refaz do backend. Payload tem pouca
+        // info, e a lista do sino fica sempre consistente com o DB.
+        void refresh()
+      }
+    },
+  })
   const { openMobileSidebar } = useUIStore()
   const { theme, toggle: toggleDarkMode } = useTheme()
   const darkMode = theme === 'dark'

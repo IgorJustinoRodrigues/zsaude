@@ -23,14 +23,22 @@ from uuid import UUID
 from sqlalchemy import and_, desc, func, or_, select, update
 
 from app.modules.notifications.models import Notification, NotificationBroadcast
+from app.modules.users.hub import publish_user_event
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    import redis.asyncio as redis
 
 
 class NotificationService:
-    def __init__(self, session: "AsyncSession") -> None:
+    def __init__(
+        self, session: "AsyncSession", valkey: "redis.Redis | None" = None,
+    ) -> None:
         self.session = session
+        # Valkey é opcional: passe nos callers que quiserem publicar
+        # eventos WS em tempo real. Sem ele, o service continua
+        # funcionando (o front cai no polling como antes).
+        self.valkey = valkey
 
     # ── Criação ───────────────────────────────────────────────────────────
 
@@ -79,6 +87,13 @@ class NotificationService:
         )
         self.session.add(row)
         await self.session.flush()
+        await self._publish(user_id, "notification:new", {
+            "id": str(row.id),
+            "type": row.type,
+            "category": row.category,
+            "title": row.title,
+            "message": row.message,
+        })
         return row
 
     async def get_for_user(
@@ -142,7 +157,12 @@ class NotificationService:
             )
             .values(read_at=now)
         )
-        return (res.rowcount or 0) > 0
+        ok = (res.rowcount or 0) > 0
+        if ok:
+            await self._publish(user_id, "notification:read", {
+                "id": str(notification_id),
+            })
+        return ok
 
     async def mark_all_read(self, user_id: UUID) -> int:
         now = datetime.now(UTC)
@@ -155,7 +175,10 @@ class NotificationService:
             )
             .values(read_at=now)
         )
-        return res.rowcount or 0
+        n = res.rowcount or 0
+        if n > 0:
+            await self._publish(user_id, "notification:all-read", {})
+        return n
 
     async def dismiss(self, user_id: UUID, notification_id: UUID) -> bool:
         now = datetime.now(UTC)
@@ -172,4 +195,22 @@ class NotificationService:
                 read_at=func.coalesce(Notification.read_at, now),
             )
         )
-        return (res.rowcount or 0) > 0
+        ok = (res.rowcount or 0) > 0
+        if ok:
+            await self._publish(user_id, "notification:dismissed", {
+                "id": str(notification_id),
+            })
+        return ok
+
+    # ── Eventos WS ─────────────────────────────────────────────────────
+
+    async def _publish(self, user_id: UUID, event: str, payload: dict) -> None:
+        """Wrapper silencioso: se não tem Valkey (callers que não
+        passaram) ou a publish falha, não quebra o fluxo — o front cai
+        no polling como fallback."""
+        if self.valkey is None:
+            return
+        try:
+            await publish_user_event(self.valkey, user_id, event, payload)
+        except Exception:
+            pass

@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
-from app.core.deps import DB, AdminOrMasterDep, CurrentUserDep
+from app.core.deps import DB, AdminOrMasterDep, CurrentUserDep, Valkey
 from app.modules.notifications.broadcast_service import BroadcastService
 from app.modules.notifications.models import Notification, NotificationBroadcast
 from app.modules.notifications.schemas import (
@@ -110,25 +110,27 @@ async def get_notification_detail(
 
 @router.patch("/{notification_id}/read", response_model=MessageResponse)
 async def mark_read(
-    notification_id: UUID, db: DB, user: CurrentUserDep,
+    notification_id: UUID, db: DB, valkey: Valkey, user: CurrentUserDep,
 ) -> MessageResponse:
-    ok = await NotificationService(db).mark_read(user.id, notification_id)
+    ok = await NotificationService(db, valkey).mark_read(user.id, notification_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Notificação não encontrada ou já lida.")
     return MessageResponse(message="Marcada como lida.")
 
 
 @router.post("/read-all", response_model=MessageResponse)
-async def mark_all_read(db: DB, user: CurrentUserDep) -> MessageResponse:
-    n = await NotificationService(db).mark_all_read(user.id)
+async def mark_all_read(
+    db: DB, valkey: Valkey, user: CurrentUserDep,
+) -> MessageResponse:
+    n = await NotificationService(db, valkey).mark_all_read(user.id)
     return MessageResponse(message=f"{n} marcadas como lidas.")
 
 
 @router.delete("/{notification_id}", status_code=204)
 async def dismiss(
-    notification_id: UUID, db: DB, user: CurrentUserDep,
+    notification_id: UUID, db: DB, valkey: Valkey, user: CurrentUserDep,
 ) -> None:
-    await NotificationService(db).dismiss(user.id, notification_id)
+    await NotificationService(db, valkey).dismiss(user.id, notification_id)
 
 
 # ─── Admin (MASTER/ADMIN): broadcast ─────────────────────────────────────
@@ -138,13 +140,14 @@ async def dismiss(
 async def create_broadcast(
     payload: BroadcastCreate,
     db: DB,
+    valkey: Valkey,
     actor: AdminOrMasterDep,
 ) -> BroadcastRead:
     actor_row = await db.scalar(select(User).where(User.id == actor.id))
     if actor_row is None:
         raise HTTPException(status_code=401)
     try:
-        bcast = await BroadcastService(db).create_broadcast(
+        bcast = await BroadcastService(db, valkey).create_broadcast(
             actor=actor_row,
             scope_type=payload.scope_type,
             scope_id=payload.scope_id,

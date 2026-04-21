@@ -131,17 +131,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         pass
 
-    # Hub de devices (WebSocket + Redis pub/sub)
+    # Hubs WS (devices + users). Cada um mantém seu próprio canal Redis.
     from app.core.deps import _valkey_client
     from app.modules.devices.hub import init_hub
+    from app.modules.users.hub import init_user_hub
     device_hub = init_hub(_valkey_client())
+    user_hub = init_user_hub(_valkey_client())
     await device_hub.start()
+    await user_hub.start()
 
     try:
         yield
     finally:
         log.info("shutdown")
         await device_hub.stop()
+        await user_hub.stop()
         await registry.dispose_all()
         await dispose_engine()
 

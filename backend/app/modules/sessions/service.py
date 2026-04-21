@@ -14,11 +14,16 @@ from app.modules.sessions.models import SessionEndReason, UserSession
 from app.modules.users.models import User
 
 # Janela de presença: sessão sem ended_at e com last_seen_at dentro desse
-# intervalo é considerada "online agora". Padrão Slack/GitHub.
-ONLINE_WINDOW_SECONDS = 120
+# intervalo é considerada "online agora". Reduzida de 120s pra 30s pra
+# que o status "offline" fique bem perto do tempo real em que o usuário
+# fecha a aba ou perde conexão.
+ONLINE_WINDOW_SECONDS = 30
 
 # Throttle de writes no last_seen_at (evita UPDATE a cada request).
-TOUCH_THROTTLE_SECONDS = 30
+# Tem que ser **menor que a janela** senão um tick pode passar sem
+# atualizar e a presence pisca offline. Com polling de 15s no front,
+# 10s garante que todo tick passa pelo throttle.
+TOUCH_THROTTLE_SECONDS = 10
 
 
 class SessionService:
@@ -137,13 +142,14 @@ class SessionService:
     async def presence(self, *, scope: set[uuid.UUID] | None = None) -> list[tuple[User, UserSession]]:
         """Retorna (User, Session) de quem está online **agora**.
 
-        Se ``scope`` é dado, filtra por sessões cujo **active_municipality_id**
-        está no escopo — ou seja, o usuário está atuando *neste* município
-        neste momento (não só tem acesso a ele). MASTER é excluído da
-        presença escopada: ele não opera num município específico.
+        Dedupe por ``(user_id, ip)``: múltiplas abas/sessões do mesmo
+        usuário no mesmo IP contam como **um** login. IPs distintos do
+        mesmo usuário ainda aparecem separados (útil pra notar acesso
+        paralelo, ex.: desktop + celular).
 
-        Sem ``scope`` (MASTER consultando tudo), devolve todas as sessões
-        vivas — incluindo MASTERs e sessões em shell sem contexto.
+        Se ``scope`` é dado, filtra por sessões cujo
+        ``active_municipality_id`` está no escopo. MASTER é excluído da
+        presença escopada.
         """
         from app.modules.users.models import UserLevel
 
@@ -151,12 +157,19 @@ class SessionService:
             datetime.now(UTC).timestamp() - ONLINE_WINDOW_SECONDS, tz=UTC,
         )
 
+        # DISTINCT ON (user_id, ip) — pega a sessão mais recente de cada
+        # combinação. Requer ORDER BY iniciando com as mesmas colunas.
         stmt = (
             select(User, UserSession)
             .join(UserSession, UserSession.user_id == User.id)
             .where(UserSession.ended_at.is_(None))
             .where(UserSession.last_seen_at >= cutoff)
-            .order_by(desc(UserSession.last_seen_at))
+            .distinct(UserSession.user_id, UserSession.ip)
+            .order_by(
+                UserSession.user_id,
+                UserSession.ip,
+                desc(UserSession.last_seen_at),
+            )
         )
         if scope is not None:
             stmt = (
@@ -164,26 +177,38 @@ class SessionService:
                     .where(User.level != UserLevel.MASTER)
             )
         rows = (await self.session.execute(stmt)).all()
-        return [(r[0], r[1]) for r in rows]
+        # Reordena pelo ``last_seen_at`` desc pra exibição — a cláusula
+        # DISTINCT ON exigiu outra ordem na SQL.
+        tuples = [(r[0], r[1]) for r in rows]
+        tuples.sort(key=lambda t: t[1].last_seen_at or t[1].started_at, reverse=True)
+        return tuples
 
     async def count_online(self, *, scope: set[uuid.UUID] | None = None) -> int:
+        """Conta "logins" ativos agora — tupla ``(user_id, ip)`` distinta.
+
+        Regra: mesmo usuário no mesmo IP (várias abas, sessões reusadas)
+        = 1 login. IPs diferentes do mesmo user contam separado (ex.:
+        desktop + celular)."""
         from app.modules.users.models import UserLevel
 
         cutoff = datetime.fromtimestamp(
             datetime.now(UTC).timestamp() - ONLINE_WINDOW_SECONDS, tz=UTC,
         )
-        stmt = (
-            select(func.count(func.distinct(UserSession.user_id)))
+        # Subquery DISTINCT (user_id, ip) e depois COUNT das tuplas.
+        subq = (
+            select(UserSession.user_id, UserSession.ip)
             .where(UserSession.ended_at.is_(None))
             .where(UserSession.last_seen_at >= cutoff)
         )
         if scope is not None:
-            stmt = (
-                stmt.where(UserSession.active_municipality_id.in_(scope))
+            subq = (
+                subq.where(UserSession.active_municipality_id.in_(scope))
                     .where(UserSession.user_id.in_(
                         select(User.id).where(User.level != UserLevel.MASTER)
                     ))
             )
+        subq = subq.distinct().subquery()
+        stmt = select(func.count()).select_from(subq)
         return int((await self.session.scalar(stmt)) or 0)
 
     async def revoke_by_id(self, session_id: uuid.UUID, reason: SessionEndReason) -> UserSession | None:

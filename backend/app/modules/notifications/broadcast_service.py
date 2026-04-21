@@ -17,11 +17,15 @@ from app.modules.users.models import User, UserLevel
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    import redis.asyncio as redis
 
 
 class BroadcastService:
-    def __init__(self, session: "AsyncSession") -> None:
+    def __init__(
+        self, session: "AsyncSession", valkey: "redis.Redis | None" = None,
+    ) -> None:
         self.session = session
+        self.valkey = valkey
 
     # ── Resolução do escopo → lista de destinatários ─────────────────────
 
@@ -184,7 +188,7 @@ class BroadcastService:
         self.session.add(bcast)
         await self.session.flush()  # garante bcast.id
 
-        notif_svc = NotificationService(self.session)
+        notif_svc = NotificationService(self.session, self.valkey)
         for uid in recipients:
             await notif_svc.notify(
                 user_id=uid,

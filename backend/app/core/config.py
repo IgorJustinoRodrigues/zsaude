@@ -44,7 +44,11 @@ class Settings(BaseSettings):
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 30
     jwt_reset_ttl_minutes: int = 15
-    work_context_ttl_minutes: int = 480
+    # 30 dias — bate com o refresh token. O work_context guarda município +
+    # unidade + CBO selecionados; é operacional, não é credencial de acesso,
+    # e forçar reseleção depois de horas ociosas causava atrito em
+    # usuários que ficam logados o dia todo (e totens/painéis 24/7).
+    work_context_ttl_minutes: int = 43200
     email_verification_ttl_hours: int = 24
     # Quando True, tentativa de login via e-mail exige que ``email_verified_at``
     # esteja preenchido. Login por CPF nunca é afetado. Default False pra não

@@ -4,7 +4,7 @@
 // registrar chegada manual. Ainda sem backend — tudo mock.
 
 import { useEffect, useState } from 'react'
-import { Clock, PhoneCall, Plus, Search, UserPlus } from 'lucide-react'
+import { Clock, PhoneCall, Plus, Search, Sparkles, UserPlus } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { recApi } from '../../api/rec'
 import { toast } from '../../store/toastStore'
@@ -29,6 +29,14 @@ const MOCK_QUEUE_INITIAL: QueueEntry[] = [
 ]
 
 const COUNTERS = ['Guichê 1', 'Guichê 2', 'Guichê 3'] as const
+
+// Pool de nomes usado pelo botão "Testar chamada" (fake — só pra demo/teste).
+const TEST_NAMES = [
+  'Ana Lúcia Ferreira', 'Bruno Campos', 'Carla Mendonça', 'Diego Figueiredo',
+  'Eduarda Pereira', 'Fernando Lopes', 'Gabriela Monteiro', 'Helena Rocha',
+  'Igor Justino', 'Juliana Torres', 'Luiz Fernando', 'Maria Aparecida',
+  'Paulo Henrique', 'Rafael Campos', 'Simone Araújo', 'Thales Marques',
+]
 
 export function RecQueuePage() {
   const [counter, setCounter] = useState<string>(COUNTERS[0])
@@ -58,6 +66,20 @@ export function RecQueuePage() {
     const firstPriority = queue.find(e => e.priority)
     const target = firstPriority ?? queue[0]
     if (target) callEntry(target.id)
+  }
+
+  // "Testar chamada" — gera uma chamada fake aleatória e publica no painel.
+  // Útil pra validar o fluxo de ponta-a-ponta sem depender da fila real.
+  function testCall() {
+    const priority = Math.random() < 0.25
+    const ticket = `${priority ? 'P' : 'R'}-${String(Math.floor(Math.random() * 900) + 100)}`
+    const patientName = TEST_NAMES[Math.floor(Math.random() * TEST_NAMES.length)]
+    recApi.publishCall({
+      ticket, counter, patientName, priority,
+    }).then(
+      () => toast.success('Chamada enviada', `${ticket} · ${patientName}`),
+      () => toast.error('Painel', 'Falha ao enviar chamada.'),
+    )
   }
 
   return (
@@ -100,6 +122,14 @@ export function RecQueuePage() {
 
         <div className="flex-1" />
 
+        <button
+          onClick={testCall}
+          title="Envia uma chamada aleatória pro painel (útil pra testar)"
+          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-300 font-medium text-xs hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+        >
+          <Sparkles size={14} />
+          Testar chamada
+        </button>
         <button
           onClick={callNext}
           disabled={queue.length === 0}

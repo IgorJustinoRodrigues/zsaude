@@ -21,6 +21,18 @@ interface Options {
 const MIN_BACKOFF_MS = 1_000
 const MAX_BACKOFF_MS = 30_000
 
+/** Origem do WebSocket do device. Usa ``VITE_API_URL`` se absoluto (aí
+ *  vira ``ws(s)://host:porta``); se vazio, cai no origin atual (cenário
+ *  de proxy do Vite). */
+function resolveWsBase(): string {
+  const apiUrl = (import.meta.env.VITE_API_URL ?? '').trim()
+  if (apiUrl) {
+    return apiUrl.replace(/^http/i, 'ws').replace(/\/+$/, '')
+  }
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${window.location.host}`
+}
+
 export function useDeviceSocket({ onEvent, onUnauthorized }: Options) {
   const token = useDeviceStore(s => s.deviceToken)
   const onEventRef = useRef(onEvent)
@@ -37,8 +49,7 @@ export function useDeviceSocket({ onEvent, onUnauthorized }: Options) {
 
     function connect() {
       if (closed) return
-      const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-      const url = `${proto}://${window.location.host}/api/v1/devices/ws?token=${encodeURIComponent(token!)}`
+      const url = `${resolveWsBase()}/api/v1/devices/ws?token=${encodeURIComponent(token!)}`
       ws = new WebSocket(url)
 
       ws.onopen = () => {

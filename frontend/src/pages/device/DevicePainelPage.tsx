@@ -3,6 +3,7 @@
 import { useDeviceStore } from '../../store/deviceStore'
 import { useDeviceSocket } from '../../hooks/useDeviceSocket'
 import { useDeviceConfig } from '../../hooks/useDeviceConfig'
+import { usePainelAnnouncer } from '../../hooks/usePainelAnnouncer'
 import { useLiveCallStore } from '../../store/liveCallStore'
 import { DevicePairingScreen } from './DevicePairingScreen'
 import { DeviceWaitingConfigScreen } from './DeviceWaitingConfigScreen'
@@ -12,6 +13,14 @@ export function DevicePainelPage() {
   const { deviceToken, type, deviceId, reset } = useDeviceStore()
   const { config, loading } = useDeviceConfig()
   const pushCall = useLiveCallStore(s => s.push)
+  const currentCall = useLiveCallStore(s => s.current)
+
+  // Áudio (Web Speech API) — desligado por padrão, ligado via config.
+  usePainelAnnouncer({
+    enabled: config?.painel?.announceAudio ?? false,
+    mode: config?.painel?.mode ?? 'senha',
+    call: currentCall,
+  })
 
   useDeviceSocket({
     onEvent: ({ event, payload }) => {
