@@ -12,9 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  ArrowLeft, BellRing, Clock, Maximize, X,
-} from 'lucide-react'
+import { ArrowLeft, Maximize, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 interface Call {
@@ -94,7 +92,7 @@ export function RecPainelPage() {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 flex flex-col text-white select-none overflow-hidden">
+    <div className="fixed inset-0 z-[60] bg-slate-50 flex flex-col text-slate-900 select-none overflow-hidden">
       {/* Zona invisível de destrave admin — canto sup esquerdo */}
       <div
         onPointerDown={handleUnlockTap}
@@ -103,100 +101,71 @@ export function RecPainelPage() {
       />
 
       {/* Header */}
-      <header className="flex items-center justify-between px-6 sm:px-10 py-4 border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-300 flex items-center justify-center">
-            <BellRing size={20} />
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-widest text-slate-400">Painel de chamadas</p>
-            <p className="text-base font-semibold">Centro de Saúde Arturo Bermurdez Mayorga · Goianésia/GO</p>
-          </div>
-        </div>
+      <header className="flex items-center justify-between px-8 sm:px-12 py-5 shrink-0">
+        <p className="text-sm sm:text-base font-medium text-slate-500 truncate">
+          Centro de Saúde Arturo Bermurdez Mayorga · Goianésia/GO
+        </p>
         <ClockBlock />
       </header>
 
       {/* Conteúdo */}
-      <main className="flex-1 grid grid-cols-1 landscape:grid-cols-[1fr_340px] gap-4 p-6 sm:p-10 overflow-hidden">
-        {/* Chamada atual */}
-        <section className={cn(
-          'flex flex-col items-center justify-center rounded-3xl border p-6 sm:p-10 transition-all',
-          flash
-            ? 'border-teal-300 bg-teal-500/10 shadow-[0_0_120px_rgba(20,184,166,0.35)]'
-            : 'border-white/10 bg-white/5',
+      <main className="flex-1 flex flex-col items-center justify-center px-8 sm:px-12 overflow-hidden">
+        <p className={cn(
+          'text-xs sm:text-sm uppercase tracking-[0.4em] mb-2 transition-colors',
+          flash ? 'text-teal-600' : 'text-slate-400',
         )}>
-          <p className="text-sm sm:text-base uppercase tracking-[0.4em] text-teal-300/90 mb-4">
-            {flash ? 'Chamando agora' : 'Última chamada'}
-          </p>
-          <div
-            className="text-[18vw] landscape:text-[14vw] font-black leading-none tracking-tight tabular-nums"
-            style={{ color: current.priority ? '#f87171' : '#2dd4bf' }}
-          >
-            {current.ticket}
-          </div>
-          <p className="mt-4 text-3xl sm:text-5xl font-bold">
-            {current.counter}
-          </p>
-          {current.patientName && (
-            <p className="mt-3 text-xl sm:text-2xl text-white/70">
-              {current.patientName}
-            </p>
+          {flash ? 'Chamando' : 'Última chamada'}
+        </p>
+        <div
+          className={cn(
+            'text-[22vw] landscape:text-[16vw] font-black leading-none tracking-tight tabular-nums transition-transform',
+            flash && 'scale-[1.02]',
           )}
-          {current.priority && (
-            <span className="mt-4 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/20 text-red-300 text-sm font-semibold uppercase tracking-wider">
-              Prioritário
-            </span>
-          )}
-        </section>
-
-        {/* Histórico lateral */}
-        <aside className="flex flex-col gap-3 overflow-hidden">
-          <p className="text-xs uppercase tracking-widest text-slate-400 px-1">
-            Últimas chamadas
+          style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+        >
+          {current.ticket}
+        </div>
+        <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
+          {current.counter}
+        </p>
+        {current.patientName && (
+          <p className="mt-2 text-xl sm:text-2xl text-slate-500">
+            {current.patientName}
           </p>
-          <div className="flex-1 space-y-2 overflow-hidden">
-            {history.map(h => (
-              <div
-                key={h.id}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center gap-3"
-              >
-                <div
-                  className="text-3xl sm:text-4xl font-black tabular-nums shrink-0 min-w-[6rem]"
-                  style={{ color: h.priority ? '#f87171' : '#2dd4bf' }}
-                >
-                  {h.ticket}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-base font-semibold truncate">{h.counter}</p>
-                  <p className="text-xs text-slate-400 truncate">
-                    {h.patientName ?? '—'}
-                  </p>
-                </div>
-                <p className="text-xs text-slate-500 shrink-0">
-                  {timeAgo(h.at)}
-                </p>
-              </div>
-            ))}
-            {history.length === 0 && (
-              <p className="text-sm text-slate-500 italic text-center pt-6">
-                Sem chamadas anteriores.
-              </p>
-            )}
-          </div>
-        </aside>
+        )}
       </main>
+
+      {/* Histórico — faixa no rodapé */}
+      <footer className="shrink-0 border-t border-slate-200 px-6 sm:px-10 py-4 flex items-center gap-6 overflow-x-auto">
+        {history.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">Sem chamadas anteriores.</p>
+        ) : (
+          history.map(h => (
+            <div key={h.id} className="flex items-baseline gap-3 shrink-0">
+              <span
+                className="text-2xl sm:text-3xl font-black tabular-nums"
+                style={{ color: h.priority ? '#dc2626' : '#0d9488' }}
+              >
+                {h.ticket}
+              </span>
+              <span className="text-sm text-slate-500">{h.counter}</span>
+              <span className="text-xs text-slate-400">{timeAgo(h.at)}</span>
+            </div>
+          ))
+        )}
+      </footer>
 
       {/* Pill de tela cheia */}
       {!fullscreen && (
         <button
           onClick={enterFullscreen}
-          className="fixed bottom-5 right-5 z-20 group inline-flex items-center gap-2.5 pl-4 pr-5 py-3 rounded-full bg-white text-slate-900 text-sm font-semibold shadow-lg shadow-black/40 hover:shadow-xl transition-all hover:-translate-y-0.5"
+          className="fixed bottom-5 right-5 z-20 group inline-flex items-center gap-2.5 pl-4 pr-5 py-3 rounded-full bg-teal-600 text-white text-sm font-semibold shadow-lg shadow-teal-900/20 hover:shadow-xl transition-all hover:-translate-y-0.5"
         >
-          <span className="w-8 h-8 rounded-full bg-teal-500 text-white flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+          <span className="w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
             <Maximize size={16} />
           </span>
           <span className="flex flex-col items-start leading-tight">
-            <span className="text-[10px] font-normal uppercase tracking-widest opacity-60">
+            <span className="text-[10px] font-normal uppercase tracking-widest opacity-75">
               Modo TV
             </span>
             <span>Ativar tela cheia</span>
@@ -256,15 +225,10 @@ function ClockBlock() {
     return () => window.clearInterval(id)
   }, [])
   const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-  const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
   return (
-    <div className="text-right">
-      <p className="text-3xl font-bold tabular-nums leading-none">
-        <Clock size={18} className="inline mr-2 text-slate-400" />
-        {timeStr}
-      </p>
-      <p className="text-xs text-slate-400 mt-1 capitalize">{dateStr}</p>
-    </div>
+    <p className="text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight text-slate-700">
+      {timeStr}
+    </p>
   )
 }
 
