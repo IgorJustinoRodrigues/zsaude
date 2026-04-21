@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Building2, Search, Palette, Archive, ArchiveRestore, MapPin } from 'lucide-react'
+import { Plus, Building2, Search, Palette, Archive, ArchiveRestore, MapPin, Settings } from 'lucide-react'
 import { directoryApi, type FacilityDto, type MunicipalityDto } from '../../api/workContext'
 import { sysApi } from '../../api/sys'
 import { toast } from '../../store/toastStore'
@@ -243,6 +243,14 @@ export function SysFacilityListPage() {
                   >
                     <Palette size={12} />
                     <span className="hidden md:inline">Personalizar</span>
+                  </button>
+                  <button
+                    onClick={() => navigate(`/sys/unidades/${f.id}/modulos`)}
+                    title="Personalizar módulos da unidade"
+                    className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                  >
+                    <Settings size={12} />
+                    <span className="hidden md:inline">Módulos</span>
                   </button>
                 </div>
               ))}

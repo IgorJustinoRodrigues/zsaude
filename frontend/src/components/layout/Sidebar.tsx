@@ -13,6 +13,7 @@ import { UserAvatar } from '../shared/UserAvatar'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { BrandName } from '../shared/BrandName'
+import { useEffectiveRecConfig } from '../../hooks/useEffectiveRecConfig'
 
 const MODULE_META: Record<SystemId, { label: string; abbrev: string; icon: React.ReactNode; color: string }> = {
   cln: { label: 'Clínica',     abbrev: 'CLN', icon: <Stethoscope size={18} />,    color: '#0ea5e9' },
@@ -99,6 +100,14 @@ export function Sidebar({ module }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const meta = module ? MODULE_META[module] : null
+
+  // Config efetiva do módulo Recepção — usada pra esconder itens de
+  // features desativadas no escopo atual.
+  const { config: recConfig } = useEffectiveRecConfig()
+  const rawNav = module ? MODULE_NAV[module] : undefined
+  const navEntries = (module === 'rec' && rawNav && recConfig)
+    ? filterRecNav(rawNav, recConfig)
+    : rawNav
 
   // Grupos expandidos: inicializa aberto se algum filho estiver ativo
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
@@ -259,7 +268,7 @@ export function Sidebar({ module }: Props) {
                 onClick={() => { navigate(`/${module}`); closeMobileSidebar(); closeAllGroups() }}
               />
 
-              {MODULE_NAV[module]?.map((entry, i) => {
+              {navEntries?.map((entry, i) => {
                 if (entry.kind === 'section') {
                   return (
                     <div key={`sec-${i}`}>
@@ -463,6 +472,31 @@ interface NavItemProps {
   color: string
   collapsed: boolean
   onClick: () => void
+}
+
+/** Filtra itens do rec baseados na config efetiva: esconde Totem/Painel/Recepção
+ *  quando a feature está desativada no escopo atual. Também tira seções vazias. */
+function filterRecNav(
+  entries: NavEntry[],
+  config: import('../../api/recConfig').EffectiveRecConfig,
+): NavEntry[] {
+  const hiddenPaths = new Set<string>()
+  if (!config.recepcao.enabled) hiddenPaths.add('/rec/atendimento')
+  if (!config.totem.enabled)    hiddenPaths.add('/rec/totem')
+  if (!config.painel.enabled)   hiddenPaths.add('/rec/painel')
+
+  const kept = entries.filter(e => {
+    if (e.kind === 'item')  return !hiddenPaths.has(e.path)
+    if (e.kind === 'group') return e.children.some(c => !hiddenPaths.has(c.path))
+    return true // section — avaliado abaixo
+  })
+
+  // Remove seções órfãs (sem item/group depois da filtragem).
+  return kept.filter((e, i) => {
+    if (e.kind !== 'section') return true
+    const next = kept[i + 1]
+    return next !== undefined && next.kind !== 'section'
+  })
 }
 
 function NavItem({ icon, label, active, color, collapsed, onClick }: NavItemProps) {

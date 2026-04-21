@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, MapPin, Search, Archive, ArchiveRestore, Palette } from 'lucide-react'
+import { Plus, MapPin, Search, Archive, ArchiveRestore, Palette, Settings } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -124,6 +124,14 @@ export function SysMunicipalityListPage() {
                 >
                   <Palette size={12} />
                   <span className="hidden md:inline">Personalizar</span>
+                </button>
+                <button
+                  onClick={() => navigate(`/sys/municipios/${m.id}/modulos`)}
+                  title="Personalizar módulos do município"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-teal-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                >
+                  <Settings size={12} />
+                  <span className="hidden md:inline">Módulos</span>
                 </button>
                 <button
                   onClick={() => toggleArchive(m)}

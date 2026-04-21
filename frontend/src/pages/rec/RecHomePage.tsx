@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { PageHeader } from '../../components/shared/PageHeader'
+import { useEffectiveRecConfig } from '../../hooks/useEffectiveRecConfig'
 
 interface Stat {
   label: string
@@ -27,6 +28,7 @@ const STATS: Stat[] = [
 ]
 
 interface Shortcut {
+  key: 'recepcao' | 'totem' | 'painel'
   title: string
   subtitle: string
   icon: ComponentType<{ size?: number }>
@@ -35,18 +37,21 @@ interface Shortcut {
 
 const SHORTCUTS: Shortcut[] = [
   {
+    key: 'recepcao',
     title: 'Fila de atendimento',
     subtitle: 'Console do guichê: ver fila e chamar senhas',
     icon: Users,
     to: '/rec/atendimento',
   },
   {
+    key: 'totem',
     title: 'Totem',
     subtitle: 'Modo paciente — abrir na TV/tablet do hall',
     icon: MonitorSmartphone,
     to: '/rec/totem',
   },
   {
+    key: 'painel',
     title: 'Painel de chamadas',
     subtitle: 'Modo TV para exibir as chamadas atuais',
     icon: BellRing,
@@ -56,6 +61,14 @@ const SHORTCUTS: Shortcut[] = [
 
 export function RecHomePage() {
   const navigate = useNavigate()
+  const { config } = useEffectiveRecConfig()
+
+  // Filtra atalhos pelas features habilitadas. Enquanto config ainda não
+  // carregou (``null``), mostramos todos pra evitar piscar — quando chegar,
+  // os desativados somem.
+  const shortcuts = config
+    ? SHORTCUTS.filter(s => config[s.key].enabled)
+    : SHORTCUTS
 
   return (
     <div>
@@ -84,7 +97,7 @@ export function RecHomePage() {
       <section>
         <h2 className="text-sm font-semibold mb-3">Atalhos</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {SHORTCUTS.map(s => {
+          {shortcuts.map(s => {
             const Icon = s.icon
             return (
               <button

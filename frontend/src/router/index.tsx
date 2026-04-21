@@ -5,6 +5,7 @@ import { RequireAuth } from '../components/auth/RequireAuth'
 import { RequireContext } from '../components/auth/RequireContext'
 import { RequireModule } from '../components/auth/RequireModule'
 import { RequireMaster } from '../components/auth/RequireMaster'
+import { RequireRecFeature } from '../components/auth/RequireRecFeature'
 import { RedirectIfAuthed } from '../components/auth/RedirectIfAuthed'
 
 import { LoginPage } from '../pages/auth/LoginPage'
@@ -105,6 +106,16 @@ import { SysReferencePage } from '../pages/sys/SysReferencePage'
 import { SysCadsusPage } from '../pages/sys/SysCadsusPage'
 import { SysAiPage } from '../pages/sys/SysAiPage'
 import { SysMunicipalityBrandingPage, SysFacilityBrandingPage } from '../pages/sys/SysBrandingPage'
+import {
+  SysMunicipalityModulesPage,
+  SysFacilityModulesPage,
+  SysMunicipalityModuleSectionsPage,
+  SysFacilityModuleSectionsPage,
+} from '../pages/sys/SysModulesConfigPages'
+import {
+  SysMunicipalityRecSectionPage,
+  SysFacilityRecSectionPage,
+} from '../pages/sys/SysRecConfigPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -155,10 +166,16 @@ export const router = createBrowserRouter([
               { path: '/sys/municipios/:id',              element: <SysMunicipalityViewPage /> },
               { path: '/sys/municipios/:id/editar',       element: <SysMunicipalityFormPage /> },
               { path: '/sys/municipios/:id/personalizar', element: <SysMunicipalityBrandingPage /> },
+              { path: '/sys/municipios/:id/modulos',                      element: <SysMunicipalityModulesPage /> },
+              { path: '/sys/municipios/:id/modulos/:module',              element: <SysMunicipalityModuleSectionsPage /> },
+              { path: '/sys/municipios/:id/modulos/rec/:section',         element: <SysMunicipalityRecSectionPage /> },
               { path: '/sys/unidades',                    element: <SysFacilityListPage /> },
               { path: '/sys/unidades/novo',               element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id',                element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id/personalizar',   element: <SysFacilityBrandingPage /> },
+              { path: '/sys/unidades/:id/modulos',                        element: <SysFacilityModulesPage /> },
+              { path: '/sys/unidades/:id/modulos/:module',                element: <SysFacilityModuleSectionsPage /> },
+              { path: '/sys/unidades/:id/modulos/rec/:section',           element: <SysFacilityRecSectionPage /> },
               { path: '/sys/profissionais',               element: <SysProfessionalsPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
               { path: '/sys/usuarios/novo',         element: <OpsUserFormPage /> },
@@ -292,10 +309,25 @@ export const router = createBrowserRouter([
               {
                 element: <RequireModule moduleId="rec" />,
                 children: [
-                  { path: '/rec',            element: <RecHomePage /> },
-                  { path: '/rec/atendimento', element: <RecQueuePage /> },
-                  { path: '/rec/totem',  element: <RecTotemPage /> },
-                  { path: '/rec/painel', element: <RecPainelPage /> },
+                  { path: '/rec', element: <RecHomePage /> },
+                  {
+                    element: <RequireRecFeature feature="recepcao" />,
+                    children: [
+                      { path: '/rec/atendimento', element: <RecQueuePage /> },
+                    ],
+                  },
+                  {
+                    element: <RequireRecFeature feature="totem" />,
+                    children: [
+                      { path: '/rec/totem', element: <RecTotemPage /> },
+                    ],
+                  },
+                  {
+                    element: <RequireRecFeature feature="painel" />,
+                    children: [
+                      { path: '/rec/painel', element: <RecPainelPage /> },
+                    ],
+                  },
                 ],
               },
 

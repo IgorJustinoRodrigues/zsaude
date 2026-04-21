@@ -68,6 +68,13 @@ class Municipality(Base, TimestampedMixin):
     # None = nunca configurado (tratado como "todos habilitados" no serviço).
     enabled_modules: Mapped[list | None] = mapped_column(JSONType(), nullable=True)
 
+    # Configuração do módulo Recepção (totem, painel, balcão). ``None`` = usa
+    # defaults do sistema. Dict parcial: chaves ausentes herdam dos defaults.
+    # A personalização por unidade (``Facility.rec_config``) é restringida
+    # por este dicionário no serviço — não se liga totem na unidade se o
+    # município desativou.
+    rec_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
+
     # Credenciais da integração CadSUS/DATASUS (por município — cada
     # secretaria recebe do DATASUS um usuário no formato
     # CADSUS.SMS.{MUNICIPIO}.{UF}). Sem configurar, cai no fallback da
@@ -129,6 +136,13 @@ class Facility(Base, TimestampedMixin):
     # herda o município. Lista = personalização; intersectada com o
     # ``Municipality.enabled_modules`` na resolução em tempo real.
     enabled_modules: Mapped[list | None] = mapped_column(JSONType(), nullable=True)
+
+    # Personalização do módulo Recepção nesta unidade. ``None`` = herda o
+    # município integralmente. Dict parcial: chaves ausentes herdam do
+    # município; chaves presentes podem apenas restringir (ex.: desligar
+    # totem se o município tem totem — nunca ligar o que o município
+    # desativou).
+    rec_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
 
 
 class MunicipalityAccess(Base, TimestampedMixin):
