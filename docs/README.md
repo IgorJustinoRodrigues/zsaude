@@ -32,6 +32,11 @@ React 19 · Vite · TypeScript · Tailwind · Zustand
 - [**RBAC no frontend**](./frontend/rbac.md) — `can()`, matriz de permissões, overrides.
 - [Toasts](./frontend/toasts.md) — feedback visual de ações.
 
+## Módulos
+
+- [**Módulo Recepção (`rec`)**](./rec-module.md) — totem, painel, balcão; config em cascata município→unidade; telas MASTER de personalização.
+- [**Dispositivos & tempo real**](./devices.md) — pareamento de totens/painéis, WebSocket, Valkey pub/sub.
+
 ## Operação
 
 - [Comandos do dia a dia](./operations/commands.md) — docker, seed, migrations, testes.

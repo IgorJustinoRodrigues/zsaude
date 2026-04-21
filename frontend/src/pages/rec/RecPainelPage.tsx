@@ -1,34 +1,15 @@
-// Painel de chamadas (TV pública) — layout básico e mockado.
+// Painel de chamadas (TV pública).
 //
-// A tela é pensada pra uma TV na parede da recepção: conteúdo enorme,
-// contraste forte, sem interação do paciente. Mostra:
-//
-// - Chamada atual (senha gigante + guichê)
-// - Unidade/horário no topo
-// - Histórico das últimas chamadas na lateral
-//
-// Sem backend ainda: um timer faz "chamadas" aleatórias a cada ~8s
-// pra demonstrar a animação/som.
+// Lê do ``useLiveCallStore`` — preenchido pelo DevicePainelPage quando
+// recebe eventos ``painel:call`` via WebSocket. No console do balcão,
+// o clique em "Chamar" vai até o backend, publica no Valkey, e o painel
+// conectado à mesma unidade recebe.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Maximize, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-
-interface Call {
-  id: string
-  ticket: string    // ex.: "R-047" ou "P-012"
-  counter: string   // ex.: "Guichê 1" / "Sala 3"
-  patientName: string | null
-  priority: boolean
-  at: Date
-}
-
-const MOCK_CALLS_INITIAL: Call[] = [
-  { id: '3', ticket: 'R-045', counter: 'Guichê 2', patientName: 'Carla M.',     priority: false, at: new Date(Date.now() - 3 * 60 * 1000) },
-  { id: '2', ticket: 'P-011', counter: 'Guichê 1', patientName: 'Raimundo O.',  priority: true,  at: new Date(Date.now() - 2 * 60 * 1000) },
-  { id: '1', ticket: 'R-046', counter: 'Guichê 3', patientName: 'Joana da S.',  priority: false, at: new Date(Date.now() - 1 * 60 * 1000) },
-]
+import { useLiveCallStore } from '../../store/liveCallStore'
 
 const ADMIN_UNLOCK_TAPS = 5
 const ADMIN_UNLOCK_WINDOW_MS = 2_000
@@ -37,30 +18,16 @@ export function RecPainelPage() {
   const navigate = useNavigate()
   const [fullscreen, setFullscreen] = useState(false)
   const [adminUnlocked, setAdminUnlocked] = useState(false)
-  const [current, setCurrent] = useState<Call>(MOCK_CALLS_INITIAL[MOCK_CALLS_INITIAL.length - 1])
-  const [history, setHistory] = useState<Call[]>(MOCK_CALLS_INITIAL.slice(0, -1))
-  const [flash, setFlash] = useState(true)
+  const current = useLiveCallStore(s => s.current)
+  const history = useLiveCallStore(s => s.history)
+  const [flash, setFlash] = useState(false)
 
-  // Mock: emite uma chamada nova a cada 8s pra demonstrar. Troca por
-  // fonte real (SSE/WS) quando o back entrar.
+  // Dispara flash visual toda vez que ``current`` muda (nova chamada).
   useEffect(() => {
-    const id = window.setInterval(() => {
-      const priority = Math.random() < 0.25
-      const nextNum = Math.floor(40 + Math.random() * 50)
-      const next: Call = {
-        id: String(Date.now()),
-        ticket: `${priority ? 'P' : 'R'}-${String(nextNum).padStart(3, '0')}`,
-        counter: `Guichê ${1 + Math.floor(Math.random() * 3)}`,
-        patientName: Math.random() < 0.7 ? fakeName() : null,
-        priority,
-        at: new Date(),
-      }
-      setHistory(h => [current, ...h].slice(0, 4))
-      setCurrent(next)
-      setFlash(true)
-      window.setTimeout(() => setFlash(false), 1500)
-    }, 8_000)
-    return () => window.clearInterval(id)
+    if (!current) return
+    setFlash(true)
+    const t = window.setTimeout(() => setFlash(false), 1500)
+    return () => window.clearTimeout(t)
   }, [current])
 
   // Fullscreen + unlock admin (mesma receita do totem)
@@ -110,27 +77,35 @@ export function RecPainelPage() {
 
       {/* Conteúdo */}
       <main className="flex-1 flex flex-col items-center justify-center px-8 sm:px-12 overflow-hidden">
-        <p className={cn(
-          'text-xs sm:text-sm uppercase tracking-[0.4em] mb-2 transition-colors',
-          flash ? 'text-teal-600' : 'text-slate-400',
-        )}>
-          {flash ? 'Chamando' : 'Última chamada'}
-        </p>
-        <div
-          className={cn(
-            'text-[22vw] landscape:text-[16vw] font-black leading-none tracking-tight tabular-nums transition-transform',
-            flash && 'scale-[1.02]',
-          )}
-          style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
-        >
-          {current.ticket}
-        </div>
-        <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
-          {current.counter}
-        </p>
-        {current.patientName && (
-          <p className="mt-2 text-xl sm:text-2xl text-slate-500">
-            {current.patientName}
+        {current ? (
+          <>
+            <p className={cn(
+              'text-xs sm:text-sm uppercase tracking-[0.4em] mb-2 transition-colors',
+              flash ? 'text-teal-600' : 'text-slate-400',
+            )}>
+              {flash ? 'Chamando' : 'Última chamada'}
+            </p>
+            <div
+              className={cn(
+                'text-[22vw] landscape:text-[16vw] font-black leading-none tracking-tight tabular-nums transition-transform',
+                flash && 'scale-[1.02]',
+              )}
+              style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+            >
+              {current.ticket}
+            </div>
+            <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
+              {current.counter}
+            </p>
+            {current.patientName && (
+              <p className="mt-2 text-xl sm:text-2xl text-slate-500">
+                {current.patientName}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-2xl sm:text-4xl text-slate-400 italic">
+            Aguardando próxima chamada…
           </p>
         )}
       </main>
@@ -242,7 +217,3 @@ function timeAgo(d: Date): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function fakeName(): string {
-  const names = ['Maria A.', 'João B.', 'Ana C.', 'Pedro D.', 'Luiza E.', 'Ricardo F.', 'Helena G.', 'Bruno H.']
-  return names[Math.floor(Math.random() * names.length)]
-}

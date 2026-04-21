@@ -2,9 +2,9 @@
 // entrar no contexto dele.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Upload, FileArchive, CheckCircle2, XCircle, AlertTriangle, Clock, MapPin } from 'lucide-react'
+import { Upload, FileArchive, CheckCircle2, XCircle, AlertTriangle, Clock, MapPin, Inbox } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
-import { cnesAdminApi, type CnesImportMasterResult, type CnesImportStatus } from '../../api/cnes'
+import { cnesAdminApi, type CnesImportMasterResult, type CnesImportStatus, type CnesImportStatusOut } from '../../api/cnes'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -39,6 +39,69 @@ function detectIbgeFromFilename(filename: string): string | null {
   return m ? m[1] : null
 }
 
+/** "há 3 dias" / "há 2 meses" / "hoje" a partir de uma data ISO. */
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime()
+  const diff = Date.now() - then
+  const day = 24 * 60 * 60 * 1000
+  if (diff < day) return 'hoje'
+  const days = Math.floor(diff / day)
+  if (days < 30) return `há ${days} dia${days === 1 ? '' : 's'}`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `há ${months} ${months === 1 ? 'mês' : 'meses'}`
+  const years = Math.floor(months / 12)
+  return `há ${years} ano${years === 1 ? '' : 's'}`
+}
+
+/** Resumo do último import CNES do município selecionado. */
+function MunImportBadge({
+  status, loading,
+}: {
+  status: CnesImportStatusOut | null
+  loading: boolean
+}) {
+  if (loading) {
+    return (
+      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs text-slate-500">
+        <Clock size={12} className="animate-spin" />
+        Verificando histórico…
+      </div>
+    )
+  }
+  if (!status || !status.imported) {
+    return (
+      <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
+        <Inbox size={12} />
+        Nenhuma importação CNES para este município ainda.
+      </div>
+    )
+  }
+  const st = status.lastStatus ? STATUS_STYLE[status.lastStatus] : null
+  return (
+    <div className="mt-3 flex items-start gap-3 px-3 py-2.5 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/40">
+      <CheckCircle2 size={14} className="text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-sky-900 dark:text-sky-200">
+          <span className="font-semibold">Última importação:</span>{' '}
+          {status.lastCompetencia ? formatCompetencia(status.lastCompetencia) : '—'}
+          {status.lastImportAt && (
+            <span className="text-sky-700/70 dark:text-sky-300/70"> · {timeAgo(status.lastImportAt)}</span>
+          )}
+        </p>
+        {st && (
+          <span className={cn(
+            'inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded border text-[10px] font-semibold',
+            st.cls,
+          )}>
+            {st.icon}
+            {st.label}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function SysImportCnesPage() {
   const [munList, setMunList] = useState<MunicipalityDto[]>([])
   const [munId, setMunId] = useState<string | null>(null)
@@ -46,6 +109,9 @@ export function SysImportCnesPage() {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<CnesImportMasterResult | null>(null)
   const [loadingDir, setLoadingDir] = useState(true)
+  // Histórico CNES do município selecionado (só o resumo da última importação).
+  const [munStatus, setMunStatus] = useState<CnesImportStatusOut | null>(null)
+  const [loadingStatus, setLoadingStatus] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -67,6 +133,19 @@ export function SysImportCnesPage() {
       toast.info('Município detectado', `${match.name}/${match.state} · IBGE ${ibge}`)
     }
   }, [file, munList, munId])
+
+  // Busca o histórico de importação do município selecionado.
+  useEffect(() => {
+    if (!munId) { setMunStatus(null); return }
+    let cancelled = false
+    setLoadingStatus(true)
+    cnesAdminApi.importStatus(munId)
+      .then(s => { if (!cancelled) setMunStatus(s) })
+      .catch(() => { if (!cancelled) setMunStatus(null) })
+      .finally(() => { if (!cancelled) setLoadingStatus(false) })
+    return () => { cancelled = true }
+    // Refetch também após uma importação terminar (result muda).
+  }, [munId, result])
 
   const munOptions = useMemo<ComboBoxOption[]>(
     () => munList.map(m => ({ value: m.id, label: m.name, hint: `${m.state} · ${m.ibge}` })),
@@ -122,6 +201,9 @@ export function SysImportCnesPage() {
               O ZIP será extraído no schema <span className="font-mono">mun_{chosenMun.ibge}</span>.
             </p>
           )}
+
+          {/* Histórico de importação do município selecionado */}
+          {chosenMun && <MunImportBadge status={munStatus} loading={loadingStatus} />}
         </div>
 
         {/* Arquivo */}

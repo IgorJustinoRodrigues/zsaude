@@ -25,6 +25,10 @@ from app.modules.notifications.router import (
 from app.modules.dgn.router import router as dgn_router
 from app.modules.hsp.router import router as hsp_router
 from app.modules.hsp.face_router import router as hsp_face_router
+from app.modules.devices.router import (
+    public_router as devices_public_router,
+    router as devices_router,
+)
 from app.modules.rec.router import (
     admin_router as rec_admin_router,
     router as rec_router,
@@ -76,3 +80,5 @@ api_v1.include_router(notifications_router)
 api_v1.include_router(notifications_admin_router)
 api_v1.include_router(rec_router)
 api_v1.include_router(rec_admin_router)
+api_v1.include_router(devices_public_router)
+api_v1.include_router(devices_router)

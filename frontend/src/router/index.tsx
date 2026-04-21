@@ -18,6 +18,10 @@ import { ModulePlaceholder } from '../pages/ModulePlaceholder'
 import { ForbiddenPage } from '../pages/ForbiddenPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 
+// Dispositivos (URLs públicas — totem/painel rodam aqui sem login)
+import { DeviceTotemPage } from '../pages/device/DeviceTotemPage'
+import { DevicePainelPage } from '../pages/device/DevicePainelPage'
+
 // Shared
 import { UsersPage } from '../pages/shared/UsersPage'
 import { NotificationsPage } from '../pages/shared/NotificationsPage'
@@ -80,6 +84,7 @@ import { RecHomePage } from '../pages/rec/RecHomePage'
 import { RecQueuePage } from '../pages/rec/RecQueuePage'
 import { RecTotemPage } from '../pages/rec/RecTotemPage'
 import { RecPainelPage } from '../pages/rec/RecPainelPage'
+import { RecDevicesPage } from '../pages/rec/RecDevicesPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -146,6 +151,11 @@ export const router = createBrowserRouter([
   // Erros globais (acessíveis com ou sem auth)
   { path: '/403', element: <ForbiddenPage /> },
   { path: '/404', element: <NotFoundPage /> },
+
+  // Dispositivos (totem/painel) — públicas. Gerenciam o próprio token
+  // via deviceStore; não dependem de user auth.
+  { path: '/dispositivo/totem',  element: <DeviceTotemPage /> },
+  { path: '/dispositivo/painel', element: <DevicePainelPage /> },
 
   // Área autenticada (sem exigir contexto) — seleção de contexto/sistema
   {
@@ -310,6 +320,7 @@ export const router = createBrowserRouter([
                 element: <RequireModule moduleId="rec" />,
                 children: [
                   { path: '/rec', element: <RecHomePage /> },
+                  { path: '/rec/dispositivos', element: <RecDevicesPage /> },
                   {
                     element: <RequireRecFeature feature="recepcao" />,
                     children: [

@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Truck, LayoutGrid, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
   BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2,
-  MonitorSmartphone,
+  MonitorSmartphone, Plug,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -53,6 +53,8 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
     { kind: 'section', label: 'Exibição' },
     { kind: 'item', icon: <MonitorSmartphone size={16} />, label: 'Totem', path: '/rec/totem' },
     { kind: 'item', icon: <BellRing size={16} />, label: 'Painel', path: '/rec/painel' },
+    { kind: 'section', label: 'Administração' },
+    { kind: 'item', icon: <Plug size={16} />, label: 'Dispositivos', path: '/rec/dispositivos' },
   ],
   ops: [
     { kind: 'section', label: 'Cadastros' },

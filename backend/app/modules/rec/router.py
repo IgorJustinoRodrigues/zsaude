@@ -18,7 +18,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.audit import get_audit_context
-from app.core.deps import DB, CurrentContextDep, CurrentUserDep, MasterDep
+from app.core.deps import DB, CurrentContextDep, CurrentUserDep, MasterDep, Valkey
+from app.core.schema_base import CamelModel
+from app.modules.devices.hub import publish_facility_event
 from app.modules.rec.schemas import (
     EffectiveRecConfig,
     RecConfigRead,
@@ -146,3 +148,37 @@ async def effective_rec_config(
         status_code=400,
         detail="Sem contexto — informe facilityId ou municipalityId.",
     )
+
+
+# ─── Chamada de senha (publicada no painel) ──────────────────────────────────
+
+class CallInput(CamelModel):
+    ticket: str
+    counter: str
+    patient_name: str | None = None
+    priority: bool = False
+
+
+@router.post("/calls", status_code=204)
+async def publish_call(
+    payload: CallInput, valkey: Valkey, ctx: CurrentContextDep,
+) -> None:
+    """Chamada disparada pelo console do balcão. Publica o evento
+    ``painel:call`` no canal da unidade — todo painel conectado recebe
+    via WS."""
+    await publish_facility_event(
+        valkey, ctx.facility_id,
+        "painel:call",
+        {
+            "ticket": payload.ticket,
+            "counter": payload.counter,
+            "patientName": payload.patient_name,
+            "priority": payload.priority,
+            "at": datetime_now_iso(),
+        },
+    )
+
+
+def datetime_now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()

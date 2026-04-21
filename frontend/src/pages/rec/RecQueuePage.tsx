@@ -6,6 +6,8 @@
 import { useEffect, useState } from 'react'
 import { Clock, PhoneCall, Plus, Search, UserPlus } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
+import { recApi } from '../../api/rec'
+import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
 interface QueueEntry {
@@ -36,7 +38,17 @@ export function RecQueuePage() {
   function callEntry(id: string) {
     setQueue(q => {
       const picked = q.find(e => e.id === id)
-      if (picked) setCurrent(picked)
+      if (picked) {
+        setCurrent(picked)
+        // Publica no painel — todo dispositivo painel conectado à unidade
+        // recebe via WS. Erro não bloqueia: a chamada local já aconteceu.
+        recApi.publishCall({
+          ticket: picked.ticket,
+          counter,
+          patientName: picked.patientName,
+          priority: picked.priority,
+        }).catch(() => toast.error('Painel', 'Falha ao enviar chamada ao painel.'))
+      }
       return q.filter(e => e.id !== id)
     })
   }
