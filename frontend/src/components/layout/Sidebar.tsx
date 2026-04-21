@@ -5,6 +5,7 @@ import {
   ClipboardCheck, Truck, LayoutGrid, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
   BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2,
+  MonitorSmartphone,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -44,6 +45,11 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
         { label: 'Cadastro', path: '/hsp/pacientes/novo',   icon: <UserPlus    size={13} /> },
       ],
     },
+  ],
+  rec: [
+    { kind: 'section', label: 'Atendimento' },
+    { kind: 'item', icon: <MonitorSmartphone size={16} />, label: 'Totem', path: '/rec/totem' },
+    { kind: 'item', icon: <BellRing size={16} />, label: 'Painel', path: '/rec/painel' },
   ],
   ops: [
     { kind: 'section', label: 'Cadastros' },

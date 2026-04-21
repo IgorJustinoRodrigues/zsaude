@@ -74,6 +74,10 @@ import { OpsHabilitacaoSearchPage } from '../pages/ops/OpsHabilitacaoSearchPage'
 import { OpsCompatibilidadeSearchPage } from '../pages/ops/OpsCompatibilidadeSearchPage'
 import { OpsFormaOrgSearchPage } from '../pages/ops/OpsFormaOrgSearchPage'
 
+// REC – Recepção
+import { RecTotemPage } from '../pages/rec/RecTotemPage'
+import { RecPainelPage } from '../pages/rec/RecPainelPage'
+
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
 import { SysMunicipalityListPage } from '../pages/sys/SysMunicipalityListPage'
@@ -279,6 +283,15 @@ export const router = createBrowserRouter([
                   { path: '/ops/pesquisas/habilitacoes',      element: <OpsHabilitacaoSearchPage /> },
                   { path: '/ops/pesquisas/compatibilidades',  element: <OpsCompatibilidadeSearchPage /> },
                   { path: '/ops/pesquisas/formas-organizacao',element: <OpsFormaOrgSearchPage /> },
+                ],
+              },
+
+              // REC — Recepção
+              {
+                element: <RequireModule moduleId="rec" />,
+                children: [
+                  { path: '/rec/totem',  element: <RecTotemPage /> },
+                  { path: '/rec/painel', element: <RecPainelPage /> },
                 ],
               },
 
