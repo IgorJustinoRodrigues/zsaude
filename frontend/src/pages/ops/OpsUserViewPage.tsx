@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, User, Mail, Phone, MapPin, Building2, Shield,
   Eye as EyeIcon, EyeOff, KeyRound, RefreshCw, Check, X, Copy, Lock,
   UserCheck, UserX, ShieldOff, Activity as ActivityIcon, Clock, LogOut as LogOutIcon,
+  Stethoscope, AlertTriangle,
 } from 'lucide-react'
-import { initials, cn } from '../../lib/utils'
+import { cn } from '../../lib/utils'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 import { userApi, type UserDetail } from '../../api/users'
 import { sessionsApi, type SessionRead } from '../../api/sessions'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
 import type { SystemId } from '../../types'
 
 // ─── Modal de reset de senha (agora consome a API) ────────────────────────────
@@ -225,11 +228,19 @@ const STATUS_STYLE: Record<string, string> = {
 export function OpsUserViewPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // MASTER acessa via /sys/usuarios; demais via /ops/usuarios.
+  const base = pathname.startsWith('/sys/') ? '/sys/usuarios' : '/ops/usuarios'
+  // Alvo é o próprio ator? Esconde ações destrutivas (inativar, bloquear,
+  // resetar a própria senha).
+  const currentUserId = useAuthStore(s => s.user?.id)
+  const isSelf = currentUserId === id
   const [user, setUser] = useState<UserDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showResetModal, setShowResetModal] = useState(false)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [verifyingEmail, setVerifyingEmail] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -250,6 +261,21 @@ export function OpsUserViewPage() {
   }
 
   useEffect(() => { void load() }, [id]) // eslint-disable-line
+
+  const handleRequestEmailVerification = async () => {
+    if (!user) return
+    setVerifyingEmail(true)
+    try {
+      const res = await userApi.requestEmailVerification(user.id)
+      toast.success('Link enviado', res.message)
+      await load()
+    } catch (e) {
+      const msg = e instanceof HttpError ? e.message : 'Não foi possível enviar o link.'
+      toast.error('Falha ao enviar verificação', msg)
+    } finally {
+      setVerifyingEmail(false)
+    }
+  }
 
   const handleStatus = async (action: 'activate' | 'deactivate' | 'block') => {
     if (!user) return
@@ -291,7 +317,7 @@ export function OpsUserViewPage() {
       <div className="flex flex-col items-center justify-center py-24 text-slate-400">
         <User size={40} className="mb-3 opacity-30" />
         <p className="text-sm text-slate-500">{error || 'Usuário não encontrado'}</p>
-        <button onClick={() => navigate('/ops/usuarios')} className="mt-3 text-xs text-sky-500 hover:underline">
+        <button onClick={() => navigate(base)} className="mt-3 text-xs text-sky-500 hover:underline">
           Voltar à lista
         </button>
       </div>
@@ -305,7 +331,7 @@ export function OpsUserViewPage() {
       {/* Cabeçalho */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/ops/usuarios')}
+          <button onClick={() => navigate(base)}
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <ArrowLeft size={18} />
           </button>
@@ -321,29 +347,33 @@ export function OpsUserViewPage() {
             {user.status}
           </span>
 
-          {/* Ações de status */}
-          {user.status !== 'Ativo' && (
+          {/* Ações de status — escondidas pra própria conta */}
+          {!isSelf && user.status !== 'Ativo' && (
             <StatusBtn icon={<UserCheck size={13} />} label="Ativar" color="emerald"
               onClick={() => handleStatus('activate')} disabled={statusLoading} />
           )}
-          {user.status === 'Ativo' && (
+          {!isSelf && user.status === 'Ativo' && (
             <StatusBtn icon={<UserX size={13} />} label="Inativar" color="slate"
               onClick={() => handleStatus('deactivate')} disabled={statusLoading} />
           )}
-          {user.status !== 'Bloqueado' && (
+          {!isSelf && user.status !== 'Bloqueado' && (
             <StatusBtn icon={<ShieldOff size={13} />} label="Bloquear" color="red"
               onClick={() => handleStatus('block')} disabled={statusLoading} />
           )}
 
+          {/* Reset de senha — também escondido pra própria conta
+              (use "Minha conta" → "Alterar senha"). */}
+          {!isSelf && (
+            <button
+              onClick={() => setShowResetModal(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">Redefinir senha</span>
+            </button>
+          )}
           <button
-            onClick={() => setShowResetModal(true)}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-          >
-            <KeyRound size={14} />
-            <span className="hidden sm:inline">Redefinir senha</span>
-          </button>
-          <button
-            onClick={() => navigate(`/ops/usuarios/${user.id}/editar`)}
+            onClick={() => navigate(`${base}/${user.id}/editar`)}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors"
           >
             <Pencil size={14} />
@@ -356,16 +386,34 @@ export function OpsUserViewPage() {
       <ViewSection title="Dados pessoais" icon={<User size={15} />}>
         <div className="flex flex-col sm:flex-row gap-6">
           <div className="shrink-0 flex flex-col items-center gap-2">
-            <div className="w-20 h-20 rounded-full bg-sky-500 flex items-center justify-center text-xl font-bold text-white ring-2 ring-slate-200 dark:ring-slate-700">
-              {initials(user.name)}
-            </div>
+            <UserAvatar
+              userId={user.id}
+              userName={user.name}
+              photoId={user.currentPhotoId}
+              className="w-20 h-20 ring-2 ring-slate-200 dark:ring-slate-700"
+              initialsClassName="text-xl"
+            />
           </div>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
             <ReadField label="Nome completo" value={user.name} className="sm:col-span-2" />
-            <ReadField label="Nome de acesso" value={user.login} icon={<Lock size={12} />} />
-            <ReadField label="CPF" value={user.cpf} />
-            <ReadField label="E-mail" value={user.email} icon={<Mail size={12} />} />
+            <ReadField label="CPF" value={user.cpf || '—'} icon={<Lock size={12} />} />
+            <EmailField
+              email={user.email}
+              verifiedAt={user.emailVerifiedAt}
+              pendingEmail={user.pendingEmail}
+              onVerify={handleRequestEmailVerification}
+              verifying={verifyingEmail}
+            />
             <ReadField label="Telefone" value={user.phone || '—'} icon={<Phone size={12} />} />
+            {user.level !== 'master' && (
+              <ReadField
+                label="CNS"
+                value={user.cns
+                  ? `${user.cns.slice(0, 3)} ${user.cns.slice(3, 7)} ${user.cns.slice(7, 11)} ${user.cns.slice(11, 15)}`
+                  : '—'}
+                icon={<Stethoscope size={12} />}
+              />
+            )}
             <ReadField label="Perfil" value={user.primaryRole} icon={<Shield size={12} />} />
           </div>
         </div>
@@ -418,16 +466,84 @@ export function OpsUserViewPage() {
                               {MODULE_LABEL[mod]}
                             </span>
                           ))}
-                          <button
-                            onClick={() => navigate(`/ops/usuarios/${user.id}/acessos/${fac.facilityAccessId}/permissoes`)}
-                            title="Personalizar permissões deste acesso"
-                            className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
-                          >
-                            <KeyRound size={11} />
-                            Permissões
-                          </button>
+                          {/* Botão "Permissões" só faz sentido no contexto
+                              OPS (ADMIN do município editando acesso). MASTER
+                              vendo da plataforma não tem contexto de
+                              trabalho — esconde o botão. */}
+                          {base === '/ops/usuarios' && (
+                            <button
+                              onClick={() => navigate(`${base}/${user.id}/acessos/${fac.facilityAccessId}/permissoes`)}
+                              title="Personalizar permissões deste acesso"
+                              className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border text-[10px] font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <KeyRound size={11} />
+                              Permissões
+                            </button>
+                          )}
                         </div>
                       </div>
+                      {fac.cnesBindings && fac.cnesBindings.length > 0 && (
+                        <div className="mt-3 ml-5 space-y-1.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                            <Stethoscope size={10} />
+                            Vínculos CNES
+                          </p>
+                          <div className="space-y-1">
+                            {fac.cnesBindings.map(b => {
+                              const userCpfDigits = (user.cpf || '').replace(/\D/g, '')
+                              const mismatch = userCpfDigits.length === 11
+                                && b.cnesSnapshotCpf
+                                && b.cnesSnapshotCpf.replace(/\D/g, '') !== userCpfDigits
+                              return (
+                                <div key={b.id}
+                                  className="flex items-start gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200 truncate">
+                                      {b.cnesSnapshotNome || 'Profissional'}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 mr-1.5">
+                                        CBO {b.cboId}
+                                      </span>
+                                      {b.cboDescription || '—'}
+                                    </p>
+                                    {b.role && (
+                                      <div className="mt-0.5">
+                                        <p className="text-[10px] text-sky-600 dark:text-sky-400 flex items-center gap-1">
+                                          <Shield size={10} />
+                                          Perfil próprio: {b.role}
+                                        </p>
+                                        {b.modules && b.modules.length > 0 && (
+                                          <div className="flex flex-wrap gap-1 mt-1 ml-3.5">
+                                            {b.modules.map(mod => (
+                                              <span key={mod}
+                                                className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                                                style={{ backgroundColor: MODULE_COLOR[mod] + '1a', color: MODULE_COLOR[mod] }}>
+                                                {MODULE_LABEL[mod]}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    {b.cnesSnapshotCpf && (
+                                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                        CPF {b.cnesSnapshotCpf.slice(0,3)}.{b.cnesSnapshotCpf.slice(3,6)}.{b.cnesSnapshotCpf.slice(6,9)}-{b.cnesSnapshotCpf.slice(9,11)}
+                                      </p>
+                                    )}
+                                    {mismatch && (
+                                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1">
+                                        <AlertTriangle size={10} />
+                                        CPF divergente do cadastro do usuário.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -642,6 +758,64 @@ function ReadField({
       <div className="flex items-center gap-1.5">
         {icon && <span className="text-slate-300 dark:text-slate-600 shrink-0">{icon}</span>}
         <p className="text-sm text-slate-800 dark:text-slate-200 break-all">{value || '—'}</p>
+      </div>
+    </div>
+  )
+}
+
+function EmailField({
+  email, verifiedAt, pendingEmail, onVerify, verifying,
+}: {
+  email: string | null
+  verifiedAt: string | null
+  pendingEmail: string | null
+  onVerify: () => void
+  verifying: boolean
+}) {
+  // Alvo da verificação: o ``pending_email`` vence sobre o ``email`` atual.
+  const target = pendingEmail || email
+  const status: 'none' | 'verified' | 'pending' | 'unverified' =
+    !email && !pendingEmail
+      ? 'none'
+      : pendingEmail
+        ? 'pending'
+        : verifiedAt
+          ? 'verified'
+          : 'unverified'
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">E-mail</p>
+      <div className="flex items-start gap-1.5">
+        <Mail size={12} className="text-slate-300 dark:text-slate-600 shrink-0 mt-1" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-800 dark:text-slate-200 break-all">{email || '—'}</p>
+          {pendingEmail && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 break-all">
+              Novo: {pendingEmail} (aguardando confirmação)
+            </p>
+          )}
+          {status !== 'none' && (
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <span className={cn(
+                'inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded',
+                status === 'verified' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
+                status === 'pending'  && 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400',
+                status === 'unverified' && 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+              )}>
+                {status === 'verified' && <><Check size={10} />Verificado</>}
+                {status === 'pending'  && <><Clock size={10} />Pendente</>}
+                {status === 'unverified' && <><AlertTriangle size={10} />Não verificado</>}
+              </span>
+              {status !== 'verified' && target && (
+                <button type="button" onClick={onVerify} disabled={verifying}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 disabled:opacity-50">
+                  {verifying ? <RefreshCw size={11} className="animate-spin" /> : <Mail size={11} />}
+                  {status === 'pending' ? 'Reenviar link' : 'Enviar link de verificação'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

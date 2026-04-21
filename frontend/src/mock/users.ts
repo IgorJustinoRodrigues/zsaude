@@ -301,6 +301,9 @@ export const SYSTEMS: SystemAccess[] = [
   { id: 'pln', name: 'Planos',      abbrev: 'PLN', originalName: 'PLN – Planos',               description: 'Convênios, coberturas e beneficiários de planos de saúde',               color: '#10b981', icon: 'shield-check' },
   { id: 'fsc', name: 'Fiscal',      abbrev: 'FSC', originalName: 'FSC – Fiscal Sanitário',     description: 'Vigilância sanitária, alvarás e inspeções de estabelecimentos',          color: '#f97316', icon: 'clipboard-check' },
   { id: 'ops', name: 'Operações',   abbrev: 'OPS', originalName: 'OPS – Operações',            description: 'Frota, transporte e logística de saúde',                                 color: '#6b7280', icon: 'truck' },
+  { id: 'ind', name: 'Indicadores', abbrev: 'IND', originalName: 'IND – Indicadores',          description: 'Dashboards e análise de indicadores de saúde do município',              color: '#ec4899', icon: 'trending-up' },
+  { id: 'rec', name: 'Recepção',    abbrev: 'REC', originalName: 'REC – Recepção',             description: 'Totem, balcão e painel de chamadas — funções habilitáveis por unidade',  color: '#14b8a6', icon: 'concierge-bell' },
+  { id: 'esu', name: 'Integra Esus',abbrev: 'ESU', originalName: 'ESU – Integração e-SUS',     description: 'Integração com o e-SUS (envio e recebimento de dados)',                   color: '#6366f1', icon: 'link-2' },
 ]
 
 // ─── User presence (display only) ────────────────────────────────────────────

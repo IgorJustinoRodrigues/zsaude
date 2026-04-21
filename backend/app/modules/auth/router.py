@@ -8,10 +8,13 @@ from fastapi import APIRouter, Depends, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import settings
 from app.core.deps import DB, CurrentUserDep, client_ip
+from app.core.email import EmailMessage, EmailServiceDep
 from app.core.logging import get_logger
 from app.modules.auth.schemas import (
     ChangePasswordRequest,
+    ConfirmEmailRequest,
     ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
@@ -22,7 +25,7 @@ from app.modules.auth.schemas import (
 )
 from app.modules.auth.service import AuthService
 from app.modules.system.service import get_int_sync
-from app.modules.users.schemas import UserRead
+from app.modules.users.schemas import UserRead, user_read_from_orm
 from app.modules.users.service import UserService
 
 log = get_logger(__name__)
@@ -71,7 +74,7 @@ async def logout(payload: LogoutRequest, db: DB) -> MessageResponse:
 @router.get("/me", response_model=UserRead)
 async def me(db: DB, user: CurrentUserDep) -> UserRead:
     record = await UserService(db).get_or_404(user.id)
-    return UserRead.model_validate(record)
+    return user_read_from_orm(record)
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
@@ -80,12 +83,31 @@ async def forgot_password(
     request: Request,
     payload: ForgotPasswordRequest,
     db: DB,
+    email_service: EmailServiceDep,
 ) -> MessageResponse:
+    from app.modules.email_templates.dispatcher import EmailDispatcher
+
     svc = AuthService(db)
     token = await svc.forgot_password(payload.email, client_ip(request))
     if token:
-        # TODO: enviar email via MailHog/SMTP (ARQ job). Por ora, logar (dev only).
-        log.info("password_reset_issued", email=payload.email, token_preview=token[:8] + "...")
+        user = await svc.users.get_by_identifier(payload.email)
+        reset_link = f"{settings.app_public_url.rstrip('/')}/redefinir-senha?token={token}"
+        ctx = {
+            "app_name": settings.email_from_name,
+            "user_name": user.name if user else "",
+            "reset_link": reset_link,
+            "expires_in_minutes": settings.jwt_reset_ttl_minutes,
+        }
+        # Recuperação de senha é um fluxo ANÔNIMO — não sabemos município
+        # ainda. Resolve só com escopo SYSTEM (ou fallback de arquivo).
+        # Sem idempotency_key — cada solicitação gera um novo link, e o
+        # rate-limit já protege contra abuso.
+        await EmailDispatcher(db, email_service).send(
+            code="password_reset",
+            to=payload.email,
+            context=ctx,
+            user_id=user.id if user else None,
+        )
     # Resposta sempre genérica, não revela se e-mail existe
     return MessageResponse(
         message="Se o e-mail existir, enviaremos instruções para redefinir a senha."
@@ -107,3 +129,17 @@ async def change_password(
     record = await UserService(db).get_or_404(user.id)
     await AuthService(db).change_password(record, payload.current_password, payload.new_password)
     return MessageResponse(message="Senha alterada.")
+
+
+@router.post("/email/confirm", response_model=MessageResponse)
+async def confirm_email(payload: ConfirmEmailRequest, db: DB) -> MessageResponse:
+    """Confirma um e-mail a partir do token recebido por e-mail.
+
+    Endpoint público — quem tem o token tem autoridade suficiente pra
+    marcar aquele endereço como verificado.
+    """
+    from app.core.email import get_email_service
+    from app.modules.users.email_verification_service import EmailVerificationService
+
+    await EmailVerificationService(db, get_email_service()).confirm(payload.token)
+    return MessageResponse(message="E-mail confirmado.")

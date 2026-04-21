@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.modules import OPERATIONAL_MODULES
 from app.core.pagination import Page
 from app.core.security import generate_opaque_token, hash_password
 from app.modules.tenants.models import Facility, Municipality
@@ -26,8 +27,8 @@ from app.modules.users.schemas import (
     UserUpdateMe,
 )
 
-# Módulos válidos (deve espelhar o backend/modelos)
-VALID_MODULES = {"cln", "dgn", "hsp", "pln", "fsc", "ops"}
+# Módulos válidos — alias de `OPERATIONAL_MODULES` pra legibilidade local.
+VALID_MODULES = OPERATIONAL_MODULES
 
 # Comprimento mínimo de senha gerada por admin (mix de letras/números/símbolos)
 PROVISIONAL_PASSWORD_LEN = 12
@@ -104,20 +105,89 @@ class UserService:
                     "Você não pode atribuir acesso a município fora do seu escopo."
                 )
 
-    async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> User:
+    async def update_me(self, user_id: UUID, payload: UserUpdateMe) -> tuple[User, bool]:
+        """Atualiza dados do próprio usuário.
+
+        Troca de e-mail **não** substitui ``email`` direto — grava em
+        ``pending_email``, mantém o atual válido pra login/comunicações
+        e o router é quem dispara o e-mail de verificação. Retorna
+        ``(user, email_change_requested)``.
+        """
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change, diff_fields, snapshot_fields
+        from app.modules.audit.writer import write_audit
+
         user = await self.get_or_404(user_id)
+        before = snapshot_fields(
+            user, ["name", "social_name", "phone", "email", "pending_email", "birth_date", "face_opt_in"]
+        )
+
         if payload.name is not None:
             user.name = payload.name
+        if payload.social_name is not None:
+            user.social_name = payload.social_name
         if payload.phone is not None:
             user.phone = payload.phone
-        if payload.email is not None:
-            # checa colisão
-            other = await self.repo.get_by_email(payload.email)
-            if other and other.id != user.id:
-                raise ConflictError("E-mail já cadastrado para outro usuário.")
-            user.email = payload.email
+        if payload.birth_date is not None:
+            user.birth_date = payload.birth_date
+        if payload.face_opt_in is not None:
+            user.face_opt_in = payload.face_opt_in
+
+        email_change_requested = False
+        # ``"email" in model_fields_set`` distingue "campo ausente" de
+        # "campo enviado com null" — o segundo é o sinal de "remover".
+        if "email" in payload.model_fields_set:
+            new_email = payload.email  # pode ser None = "remover"
+            if new_email is None:
+                if user.email is None and user.pending_email is None:
+                    pass  # já está vazio, nada a fazer
+                else:
+                    # Regra de negócio: CPF OU e-mail obrigatório.
+                    if not user.cpf:
+                        raise ConflictError(
+                            "Não é possível remover o e-mail sem um CPF "
+                            "cadastrado — o sistema exige ao menos um dos dois.",
+                        )
+                    user.email = None
+                    user.pending_email = None
+                    user.email_verified_at = None
+            elif new_email == user.email:
+                # Re-submissão do e-mail atual: cancela qualquer pending.
+                user.pending_email = None
+            elif new_email == user.pending_email:
+                # Mesmo alvo pendente — nada a fazer (reenviar via endpoint
+                # /verify-request se o link se perdeu).
+                pass
+            else:
+                # Checagem de colisão: nenhum outro usuário pode ter esse
+                # e-mail como ativo.
+                other = await self.repo.get_by_email(new_email)
+                if other and other.id != user.id:
+                    raise ConflictError("E-mail já cadastrado para outro usuário.")
+                user.pending_email = new_email
+                email_change_requested = True
         await self.repo.update(user)
-        return user
+
+        after = snapshot_fields(
+            user, ["name", "social_name", "phone", "email", "pending_email", "birth_date", "face_opt_in"]
+        )
+        changes = diff_fields(before, after)
+        if changes:
+            actor = get_audit_context().user_name or user.name
+            await write_audit(
+                self.session,
+                module="users",
+                action="user_self_update",
+                severity="info",
+                resource="User",
+                resource_id=str(user.id),
+                description=describe_change(
+                    actor=actor, verb="atualizou os próprios dados",
+                    changed_fields=[c.label for c in changes],
+                ),
+                details={"changes": [c.as_dict() for c in changes]},
+            )
+        return user, email_change_requested
 
     # ─── Admin: listagem ─────────────────────────────────────────────────────
 
@@ -153,11 +223,10 @@ class UserService:
             # Módulos agregados via CTE (considera herança do role).
             modules_by_user = await self.repo.bulk_modules_by_user(ids)
             # MASTER vê todos os módulos operacionais (super-usuário).
-            _OPERATIONAL = {"cln", "dgn", "hsp", "pln", "fsc", "ops"}
             for u in rows:
                 mods_set = modules_by_user.get(u.id, set())
                 if u.level == UserLevel.MASTER:
-                    mods_set = set(_OPERATIONAL)
+                    mods_set = set(OPERATIONAL_MODULES)
                 muns, facs, _ = counts_by_user[u.id]
                 counts_by_user[u.id] = (muns, facs, mods_set)
 
@@ -168,10 +237,12 @@ class UserService:
                 email=u.email,
                 name=u.name,
                 cpf=u.cpf,
+                cns=u.cns,
                 phone=u.phone,
                 status=u.status.value if hasattr(u.status, "value") else str(u.status),
                 level=u.level.value if hasattr(u.level, "value") else str(u.level),
                 primary_role=u.primary_role,
+                current_photo_id=u.current_photo_id,
                 created_at=u.created_at,
                 municipality_count=counts_by_user[u.id][0],
                 facility_count=counts_by_user[u.id][1],
@@ -191,10 +262,13 @@ class UserService:
         user = await self.get_or_404(user_id)
         fac_rows = await self.repo.list_facility_accesses(user_id)
 
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
-
-        # Cache local de roles por id (evita N queries repetidas).
-        role_ids = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
+        # Cache local de roles por id (evita N queries repetidas). Inclui
+        # tanto os roles do acesso quanto os roles específicos de binding.
+        role_ids: set[UUID] = {fa.role_id for fa, _, _ in fac_rows if fa.role_id}
+        for fa, _, _ in fac_rows:
+            for b in (fa.cnes_bindings or []):
+                if b.role_id:
+                    role_ids.add(b.role_id)
         roles_by_id: dict[UUID, Role] = {}
         if role_ids:
             r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids)))
@@ -219,10 +293,37 @@ class UserService:
 
             resolved = await perm_svc.resolve(user.id, fa.id)
             if resolved.is_root:
-                mods = sorted(_OPERATIONAL)
+                mods = sorted(OPERATIONAL_MODULES)
             else:
-                mods = sorted(resolved.modules() & _OPERATIONAL)
+                mods = sorted(resolved.modules() & OPERATIONAL_MODULES)
 
+            from app.modules.users.schemas import CnesBindingDetail
+            # Precisa de effective_facility_modules pro cálculo per-binding.
+            from app.modules.tenants.service import TenantService
+
+            effective_mods = TenantService.effective_facility_modules(mun, fac)
+            bindings: list[CnesBindingDetail] = []
+            for b in (fa.cnes_bindings or []):
+                b_modules: list[str] | None = None
+                if b.role_id and b.role_id != fa.role_id:
+                    b_resolved = await perm_svc.resolve(
+                        user.id, fa.id, role_id_override=b.role_id,
+                    )
+                    if b_resolved.is_root:
+                        b_modules = sorted(effective_mods & OPERATIONAL_MODULES)
+                    else:
+                        b_modules = sorted(b_resolved.modules() & effective_mods & OPERATIONAL_MODULES)
+                bindings.append(CnesBindingDetail(
+                    id=b.id,
+                    cbo_id=b.cbo_id,
+                    cbo_description=b.cbo_description,
+                    cnes_professional_id=b.cnes_professional_id,
+                    cnes_snapshot_cpf=b.cnes_snapshot_cpf,
+                    cnes_snapshot_nome=b.cnes_snapshot_nome,
+                    role_id=b.role_id,
+                    role=(roles_by_id[b.role_id].name if b.role_id and b.role_id in roles_by_id else None),
+                    modules=b_modules,
+                ))
             by_mun[key]["facilities"].append(
                 FacilityAccessDetail(
                     facility_access_id=fa.id,
@@ -233,6 +334,7 @@ class UserService:
                     role_id=fa.role_id,
                     role=role_name,
                     modules=mods,
+                    cnes_bindings=bindings,
                 )
             )
 
@@ -259,6 +361,7 @@ class UserService:
             email=user.email,
             name=user.name,
             cpf=user.cpf,
+            cns=user.cns,
             phone=user.phone,
             status=user.status.value if hasattr(user.status, "value") else str(user.status),
             level=user.level.value if hasattr(user.level, "value") else str(user.level),
@@ -266,6 +369,9 @@ class UserService:
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             birth_date=user.birth_date,
+            current_photo_id=user.current_photo_id,
+            email_verified_at=user.email_verified_at,
+            pending_email=user.pending_email,
             created_at=user.created_at,
             updated_at=user.updated_at,
             municipalities=municipalities,
@@ -276,20 +382,33 @@ class UserService:
     async def create(self, payload: UserCreate, *, scope: set[UUID] | None = None) -> User:
         self._ensure_payload_in_scope(scope, payload.municipalities)
 
-        if await self.repo.get_by_login(payload.login):
-            raise ConflictError("Login já está em uso.")
-        if await self.repo.get_by_email(payload.email):
-            raise ConflictError("E-mail já está em uso.")
-        if await self.repo.get_by_cpf(payload.cpf):
+        # Pelo menos um entre CPF e e-mail é obrigatório — o schema já
+        # rejeita payload sem nenhum dos dois, isso aqui é defesa em
+        # profundidade.
+        if not payload.cpf and not payload.email:
+            raise ConflictError("Informe CPF ou e-mail.")
+
+        # Colisão só é checada para o campo que foi informado.
+        if payload.cpf and await self.repo.get_by_cpf(payload.cpf):
             raise ConflictError("CPF já está em uso.")
+        if payload.email and await self.repo.get_by_email(payload.email):
+            raise ConflictError("E-mail já está em uso.")
+        if payload.cns and await self.repo.get_by_cns(payload.cns):
+            raise ConflictError("CNS já está em uso.")
+
+        # ``login`` é interno: preferimos CPF, senão e-mail (slug antes do @).
+        login = payload.cpf or (payload.email or "").lower()
+        if await self.repo.get_by_login(login):
+            raise ConflictError("Identificador já está em uso.")
 
         status_enum = UserStatus(payload.status)
         level_enum = UserLevel(payload.level)
         user = User(
-            login=payload.login,
+            login=login,
             email=payload.email,
             name=payload.name,
             cpf=payload.cpf,
+            cns=payload.cns,
             phone=payload.phone,
             password_hash=hash_password(payload.password),
             status=status_enum,
@@ -323,10 +442,39 @@ class UserService:
                 raise ConflictError("E-mail já cadastrado para outro usuário.")
             _track("email", user.email, payload.email)
             user.email = payload.email
+            # Admin trocou o endereço → zera verificação e limpa pendente.
+            # O novo e-mail fica marcado como "não verificado" até o admin
+            # (ou o próprio usuário) disparar o link via verify-request.
+            user.email_verified_at = None
+            user.pending_email = None
+
+        # CPF: só muda quando enviado (``model_fields_set``). Sem CPF
+        # o usuário ainda precisa ter e-mail — valida antes de aplicar.
+        if "cpf" in payload.model_fields_set and payload.cpf != user.cpf:
+            if payload.cpf:
+                other = await self.repo.get_by_cpf(payload.cpf)
+                if other and other.id != user.id:
+                    raise ConflictError("CPF já cadastrado para outro usuário.")
+            elif not user.email:
+                raise ConflictError(
+                    "Não é possível remover o CPF sem um e-mail cadastrado.",
+                )
+            _track("cpf", user.cpf, payload.cpf)
+            user.cpf = payload.cpf
 
         if payload.name is not None:
             _track("name", user.name, payload.name)
             user.name = payload.name
+        # ``cns`` é opcional. ``"cns" in payload.model_fields_set`` distingue
+        # "não enviou" de "enviou null" — admin pode limpar o campo enviando
+        # string vazia/null; front omite quando não quer alterar.
+        if "cns" in payload.model_fields_set and payload.cns != user.cns:
+            if payload.cns:
+                other = await self.repo.get_by_cns(payload.cns)
+                if other and other.id != user.id:
+                    raise ConflictError("CNS já está em uso.")
+            _track("cns", user.cns, payload.cns)
+            user.cns = payload.cns
         if payload.phone is not None:
             _track("phone", user.phone, payload.phone)
             user.phone = payload.phone
@@ -365,16 +513,26 @@ class UserService:
 
         # Se alguma coisa mudou, grava um único audit log com o diff enxuto.
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
 
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes.keys()]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="users",
+                action="user_update",
                 severity="info",
                 resource="User",
                 resource_id=str(user.id),
-                description=f"Editou usuário {user.name}",
+                description=describe_change(
+                    actor=actor,
+                    verb="editou",
+                    target_kind="usuário",
+                    target_name=user.name,
+                    changed_fields=field_labels,
+                ),
                 details={
                     "targetUserId": str(user.id),
                     "targetUserName": user.name,
@@ -399,6 +557,10 @@ class UserService:
         # Estado antes.
         rows_before = await self.repo.list_facility_accesses(user_id)
         before: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_before}
+        before_bindings: dict[UUID, set[tuple[str, str]]] = {
+            fa.facility_id: {(b.cnes_professional_id, b.cbo_id) for b in (fa.cnes_bindings or [])}
+            for fa, _, _ in rows_before
+        }
         fac_name_map: dict[UUID, str] = {
             fac.id: (fac.short_name or fac.name)
             for _, fac, _ in rows_before
@@ -415,6 +577,10 @@ class UserService:
 
         rows_after = await self.repo.list_facility_accesses(user_id)
         after: dict[UUID, UUID] = {fa.facility_id: fa.role_id for fa, _, _ in rows_after}
+        after_bindings: dict[UUID, set[tuple[str, str]]] = {
+            fa.facility_id: {(b.cnes_professional_id, b.cbo_id) for b in (fa.cnes_bindings or [])}
+            for fa, _, _ in rows_after
+        }
         for _, fac, mun in rows_after:
             fac_name_map.setdefault(fac.id, fac.short_name or fac.name)
             mun_name_map.setdefault(mun.id, (mun.name, mun.state))
@@ -454,12 +620,26 @@ class UserService:
             }
             for fid in after if fid in before and before[fid] != after[fid]
         ]
-        if not (added or removed or changed):
+        bindings_changed = []
+        for fid in after:
+            if fid not in before:
+                continue
+            b_before = before_bindings.get(fid, set())
+            b_after = after_bindings.get(fid, set())
+            if b_before == b_after:
+                continue
+            bindings_changed.append({
+                **_fac_label(fid),
+                "added":   [{"cnesProfessionalId": p, "cboId": c} for p, c in sorted(b_after - b_before)],
+                "removed": [{"cnesProfessionalId": p, "cboId": c} for p, c in sorted(b_before - b_after)],
+            })
+        if not (added or removed or changed or bindings_changed):
             return None
         result: dict = {}
-        if added:   result["added"]   = added
-        if removed: result["removed"] = removed
-        if changed: result["changed"] = changed
+        if added:            result["added"]           = added
+        if removed:          result["removed"]         = removed
+        if changed:          result["changed"]         = changed
+        if bindings_changed: result["cnesBindings"]    = bindings_changed
         return result
 
     async def _apply_accesses(
@@ -477,12 +657,45 @@ class UserService:
           ADMIN não gerencia) ficam intactos.
         """
         municipality_ids: set[UUID] = set()
-        facilities: list[tuple[UUID, UUID]] = []  # (facility_id, role_id)
+        # Tupla: (facility_id, role_id, bindings)
+        # bindings é list[dict] com os campos de CnesBindingInput.
+        facilities: list[tuple[UUID, UUID, list[dict]]] = []
+
+        def _norm(v: str | None) -> str | None:
+            if v is None:
+                return None
+            s = v.strip()
+            return s or None
 
         for mun in tree:
             municipality_ids.add(mun.municipality_id)
             for fac in mun.facilities:
-                facilities.append((fac.facility_id, fac.role_id))
+                raw_bindings = getattr(fac, "cnes_bindings", None) or []
+                bindings: list[dict] = []
+                seen: set[tuple[str, str]] = set()
+                for b in raw_bindings:
+                    cbo_id = _norm(getattr(b, "cbo_id", None))
+                    cnes_prof = _norm(getattr(b, "cnes_professional_id", None))
+                    if not cbo_id or not cnes_prof:
+                        raise ConflictError(
+                            "Vínculo CNES incompleto — informe ao menos "
+                            "cboId e cnesProfessionalId.",
+                        )
+                    key = (cnes_prof, cbo_id)
+                    if key in seen:
+                        continue  # ignora duplicatas silenciosamente
+                    seen.add(key)
+                    bindings.append({
+                        "cbo_id": cbo_id,
+                        "cbo_description": _norm(getattr(b, "cbo_description", None)),
+                        "cnes_professional_id": cnes_prof,
+                        "cnes_snapshot_cpf": _norm(getattr(b, "cnes_snapshot_cpf", None)),
+                        "cnes_snapshot_nome": _norm(getattr(b, "cnes_snapshot_nome", None)),
+                        # ``role_id`` opcional: quando presente, sobrescreve
+                        # o papel do acesso pai no resolve.
+                        "role_id": getattr(b, "role_id", None),
+                    })
+                facilities.append((fac.facility_id, fac.role_id, bindings))
 
         # Preserva acessos fora do escopo quando ADMIN está editando
         if scope is not None:
@@ -494,7 +707,19 @@ class UserService:
             existing_facs = await self.repo.list_facility_accesses(user_id)
             for fa, fac, _mun in existing_facs:
                 if fac.municipality_id not in scope:
-                    facilities.append((fa.facility_id, fa.role_id))
+                    preserved_bindings = [
+                        {
+                            "cbo_id": b.cbo_id,
+                            "cbo_description": b.cbo_description,
+                            "cnes_professional_id": b.cnes_professional_id,
+                            "cnes_snapshot_cpf": b.cnes_snapshot_cpf,
+                            "cnes_snapshot_nome": b.cnes_snapshot_nome,
+                        }
+                        for b in (fa.cnes_bindings or [])
+                    ]
+                    facilities.append((
+                        fa.facility_id, fa.role_id, preserved_bindings,
+                    ))
 
         # Valida existência dos municípios/unidades referenciados
         if municipality_ids:
@@ -513,7 +738,7 @@ class UserService:
             )
             fac_list = list(fac_rows.all())
             fac_map = {f.id: f for f in fac_list}
-            for fid, _role_id in facilities:
+            for fid, _role_id, _bindings in facilities:
                 if fid not in fac_map:
                     raise NotFoundError("Unidade informada não existe.")
                 # Unidade precisa pertencer a um município vinculado
@@ -524,13 +749,13 @@ class UserService:
         if facilities:
             from app.modules.permissions.models import Role, RoleScope
 
-            role_ids_needed = {rid for _, rid in facilities}
+            role_ids_needed = {rid for _, rid, _bindings in facilities}
             r_rows = await self.session.scalars(select(Role).where(Role.id.in_(role_ids_needed)))
             role_map = {r.id: r for r in r_rows.all()}
             missing = role_ids_needed - set(role_map.keys())
             if missing:
                 raise NotFoundError("Perfil informado não existe.")
-            for fid, rid in facilities:
+            for fid, rid, _bindings in facilities:
                 role = role_map[rid]
                 # MUNICIPALITY role precisa ser do mesmo município da unidade.
                 if (
@@ -546,11 +771,37 @@ class UserService:
     async def admin_reset_password(
         self, user_id: UUID, payload: AdminResetPasswordRequest
     ) -> AdminResetPasswordResponse:
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
         user = await self.get_or_404(user_id)
-        new_plain = payload.new_password or _gen_provisional_password()
-        user.password_hash = hash_password(new_plain)
-        user.token_version += 1  # invalida tokens existentes
-        await self.repo.update(user)
+        # Admin pode gerar uma senha provisória ou enviar uma explicitamente.
+        # A cada tentativa que colide com histórico, geramos outra (até 5x).
+        provided = payload.new_password
+        for _ in range(5):
+            candidate = provided or _gen_provisional_password()
+            try:
+                # require_change=True: senha é provisória; usuário vai
+                # precisar trocar antes de navegar no sistema.
+                await apply_new_password(
+                    self.session, user, candidate, require_change=True,
+                )
+                new_plain = candidate
+                break
+            except PasswordReuseError:
+                # Se o admin forneceu explicitamente, propaga o erro — não
+                # devemos adivinhar outra senha por ele.
+                if provided is not None:
+                    raise ConflictError(
+                        "Nova senha não pode ser igual a uma das senhas anteriores.",
+                    )
+                # Senão, gera outra automática e tenta de novo.
+                continue
+        else:
+            raise ConflictError(
+                "Não foi possível gerar uma senha provisória única. Tente de novo.",
+            )
         return AdminResetPasswordResponse(
             message="Senha redefinida. Entregue a senha provisória ao usuário.",
             new_password=new_plain,
@@ -605,3 +856,155 @@ class UserService:
             await SessionService(self.session).end_all_for_user(user_id, reason)
         await self.repo.update(user)
         return user
+
+
+    # ─── Aniversário + estatísticas ──────────────────────────────────────
+
+    async def anniversary(self, user: User) -> dict:
+        """Calcula ``is_birthday`` + estatísticas de uso do último ano.
+
+        Métricas agregadas a partir de ``audit_logs`` (apenas ações do
+        próprio usuário). Quando o usuário não tem ``birth_date`` cadastrado
+        ou a data não bate com hoje, ``is_birthday=False`` — o frontend
+        usa isso pra decidir se mostra o modal comemorativo.
+        """
+        from datetime import UTC, date, datetime, timedelta
+
+        from sqlalchemy import and_, func, select as sa_select
+
+        from app.modules.audit.models import AuditLog
+
+        today = date.today()
+        is_birthday = (
+            user.birth_date is not None
+            and user.birth_date.month == today.month
+            and user.birth_date.day == today.day
+        )
+        age = None
+        if user.birth_date is not None:
+            age = today.year - user.birth_date.year
+            # Corrige se aniversário ainda não passou neste ano.
+            if (today.month, today.day) < (user.birth_date.month, user.birth_date.day):
+                age -= 1
+
+        since = datetime.now(UTC) - timedelta(days=365)
+        base_where = and_(
+            AuditLog.user_id == user.id,
+            AuditLog.at >= since,
+        )
+
+        total_actions = int(
+            await self.session.scalar(
+                sa_select(func.count()).select_from(AuditLog).where(base_where)
+            ) or 0
+        )
+        days_active = int(
+            await self.session.scalar(
+                sa_select(func.count(func.distinct(func.date(AuditLog.at))))
+                .where(base_where)
+            ) or 0
+        )
+        logins = int(
+            await self.session.scalar(
+                sa_select(func.count()).select_from(AuditLog)
+                .where(base_where)
+                .where(AuditLog.action == "login")
+            ) or 0
+        )
+        patients_touched = int(
+            await self.session.scalar(
+                sa_select(func.count(func.distinct(AuditLog.resource_id)))
+                .where(base_where)
+                .where(AuditLog.resource == "patient")
+            ) or 0
+        )
+
+        # Módulo mais usado
+        mod_row = (
+            await self.session.execute(
+                sa_select(AuditLog.module, func.count().label("n"))
+                .where(base_where)
+                .group_by(AuditLog.module)
+                .order_by(func.count().desc())
+                .limit(1)
+            )
+        ).first()
+        most_used_module = mod_row[0] if mod_row else None
+        most_used_module_count = int(mod_row[1]) if mod_row else 0
+
+        # social_name pode vir com espaço em branco (server_default=" ").
+        display = (user.social_name or "").strip() or user.name or ""
+        first_name = display.split(" ")[0] if display else ""
+
+        return {
+            "is_birthday": is_birthday,
+            "first_name": first_name,
+            "age": age if is_birthday else None,
+            "stats": {
+                "total_actions": total_actions,
+                "days_active": days_active,
+                "logins": logins,
+                "patients_touched": patients_touched,
+                "most_used_module": most_used_module,
+                "most_used_module_count": most_used_module_count,
+            },
+        }
+
+
+    # ─── Aniversariantes (listagem mensal) ────────────────────────────────
+
+    async def birthdays(
+        self, month: int, *, scope: set[UUID] | None = None,
+    ) -> list[dict]:
+        """Retorna usuários cujo ``birth_date`` cai no mês informado.
+
+        Ordenado pelo dia do aniversário (ascendente). Inclui ``isToday``
+        pro frontend destacar. Idade é a que a pessoa completa **neste ano**.
+
+        ``scope`` opcional restringe aos usuários com MunicipalityAccess
+        em algum dos municípios informados (usado em /ops pra listar só
+        aniversariantes do município ativo). ``None`` = todos.
+        """
+        from datetime import date
+        from sqlalchemy import extract, func as sa_func
+
+        today = date.today()
+        stmt = (
+            select(User)
+            .where(User.birth_date.is_not(None))
+            .where(extract("month", User.birth_date) == month)
+            .where(User.is_active.is_(True))
+            .order_by(
+                sa_func.extract("day", User.birth_date).asc(),
+                User.name.asc(),
+            )
+        )
+        if scope:
+            from app.modules.tenants.models import MunicipalityAccess
+            stmt = stmt.where(
+                User.id.in_(
+                    select(MunicipalityAccess.user_id)
+                    .where(MunicipalityAccess.municipality_id.in_(scope))
+                )
+            )
+        users = list((await self.session.scalars(stmt)).all())
+        out = []
+        for u in users:
+            bd = u.birth_date
+            if bd is None:
+                continue
+            is_today = bd.month == today.month and bd.day == today.day
+            age_this_year = today.year - bd.year
+            out.append({
+                "id": u.id,
+                "name": u.name,
+                "social_name": (u.social_name or "").strip(),
+                "level": u.level.value if hasattr(u.level, "value") else str(u.level),
+                "primary_role": u.primary_role,
+                "birth_date": bd,
+                "day": bd.day,
+                "month": bd.month,
+                "is_today": is_today,
+                "age": age_this_year,
+            })
+        return out

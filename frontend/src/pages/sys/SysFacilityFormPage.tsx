@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
-import { sysApi } from '../../api/sys'
+import { ArrowLeft, Info, Archive, ArchiveRestore } from 'lucide-react'
+import { sysApi, type FacilityAdmin } from '../../api/sys'
 import { directoryApi, type MunicipalityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { SYSTEMS } from '../../mock/users'
+import type { SystemId } from '../../types'
+import { cn } from '../../lib/utils'
 
 const TYPES = ['SMS','UBS','UPA','Hospital','Lab','VISA','Policlínica','CEO','CAPS','Transportes','Outro']
 
@@ -20,6 +23,13 @@ export function SysFacilityFormPage() {
   const [shortName, setShortName] = useState('')
   const [type, setType]           = useState('UBS')
   const [cnes, setCnes]           = useState('')
+
+  // ``null`` = herda os módulos do município; array = personalização.
+  const [enabledModules, setEnabledModules] = useState<SystemId[] | null>(null)
+  // enabled_modules do município escolhido (pra saber o que o user pode marcar)
+  const [munEnabledModules, setMunEnabledModules] = useState<SystemId[] | null>(null)
+  const [archived, setArchived] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [saving,  setSaving]  = useState(false)
@@ -37,12 +47,42 @@ export function SysFacilityFormPage() {
           if (f) {
             setMunicipalityId(f.municipalityId)
             setName(f.name); setShortName(f.shortName); setType(f.type); setCnes(f.cnes ?? '')
+            setEnabledModules(
+              (f.enabledModules as SystemId[] | null | undefined) ?? null,
+            )
+            setArchived(!!f.archived)
           }
         }
       } finally { setLoading(false) }
     }
     void load()
   }, [id, isEdit])
+
+  // Sempre que trocar o município (ou no load), busca os enabled_modules dele.
+  useEffect(() => {
+    if (!municipalityId) { setMunEnabledModules(null); return }
+    sysApi.getMunicipality(municipalityId)
+      .then(m => {
+        setMunEnabledModules((m.enabledModules as SystemId[] | undefined) ?? null)
+      })
+      .catch(() => setMunEnabledModules(null))
+  }, [municipalityId])
+
+  // Opções disponíveis pra marcar: se o município restringiu, só esses;
+  // senão, todos os operacionais (SYSTEMS).
+  const availableModules = useMemo<SystemId[]>(
+    () => munEnabledModules ?? SYSTEMS.map(s => s.id as SystemId),
+    [munEnabledModules],
+  )
+
+  const toggleModule = (m: SystemId) => {
+    // Ao marcar pela primeira vez, deixa de herdar → vira lista.
+    const curr = enabledModules ?? availableModules
+    const next = curr.includes(m) ? curr.filter(x => x !== m) : [...curr, m]
+    setEnabledModules(next)
+  }
+
+  const resetToInherit = () => setEnabledModules(null)
 
   const validate = () => {
     const e: Record<string,string> = {}
@@ -64,19 +104,66 @@ export function SysFacilityFormPage() {
     }
     setSaving(true)
     try {
+      // Se o user customizou (lista não-null), manda a lista; se está
+      // herdando, manda null pro backend limpar a personalização.
+      const payloadMods = enabledModules === null ? null : enabledModules.slice().sort()
       if (isEdit && id) {
-        await sysApi.updateFacility(id, { name, shortName, type, cnes: cnes || null })
+        const updated = await sysApi.updateFacility(id, {
+          name, shortName, type, cnes: cnes || null,
+          enabledModules: payloadMods,
+        })
+        // Ressincroniza o form com a resposta do backend (por exemplo
+        // enabledModules pode ter sido sanitizado).
+        setEnabledModules(
+          (updated.enabledModules as SystemId[] | null | undefined) ?? null,
+        )
         toast.success('Unidade atualizada', name)
+        setSaving(false)
+        // Permanece na tela de edição.
       } else {
-        await sysApi.createFacility({ municipalityId, name, shortName, type, cnes: cnes || null })
+        const created = await sysApi.createFacility({
+          municipalityId, name, shortName, type, cnes: cnes || null,
+          enabledModules: payloadMods,
+        })
         toast.success('Unidade criada', `${shortName} cadastrada.`)
+        // Vai pra edição do recém-criado (permite continuar ajustando
+        // e depois voltar ao list do município onde foi criada).
+        navigate(`/sys/unidades/${created.id}`, { replace: true })
       }
-      navigate('/sys/unidades', { replace: true })
     } catch (e) {
       const msg = e instanceof HttpError ? e.message : 'Erro ao salvar.'
       setError(msg)
       toast.error(isEdit ? 'Falha ao salvar alterações' : 'Falha ao criar unidade', msg)
       setSaving(false)
+    }
+  }
+
+  /** Volta pra lista filtrando pelo município atual (útil pra ver as
+   *  "irmãs" da unidade editada sem perder o recorte). */
+  const backToList = () => {
+    const qs = municipalityId ? `?municipalityId=${municipalityId}` : ''
+    navigate(`/sys/unidades${qs}`)
+  }
+
+  const handleToggleArchive = async () => {
+    if (!id) return
+    setArchiving(true)
+    try {
+      if (archived) {
+        await sysApi.unarchiveFacility(id)
+        toast.success('Unidade ativada', shortName || name)
+      } else {
+        await sysApi.archiveFacility(id)
+        toast.success('Unidade arquivada', shortName || name)
+      }
+      setArchived(prev => !prev)
+    } catch (e) {
+      toast.error(
+        archived ? 'Falha ao ativar' : 'Falha ao arquivar',
+        e instanceof HttpError ? e.message : '',
+      )
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -92,20 +179,40 @@ export function SysFacilityFormPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+    <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate('/sys/unidades')}
+        <button type="button" onClick={backToList}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <div>
-          <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             {isEdit ? 'Editar unidade' : 'Nova unidade'}
+            {isEdit && archived && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                ARQUIVADA
+              </span>
+            )}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
             {isEdit ? 'Município vinculado não pode ser alterado.' : 'Unidade é criada dentro de um município.'}
           </p>
         </div>
+        {isEdit && (
+          <button type="button"
+            onClick={handleToggleArchive}
+            disabled={archiving}
+            className={cn(
+              'shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-colors disabled:opacity-50',
+              archived
+                ? 'border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400',
+            )}
+          >
+            {archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+            {archiving ? '...' : archived ? 'Ativar unidade' : 'Arquivar unidade'}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -141,8 +248,82 @@ export function SysFacilityFormPage() {
         </div>
       </div>
 
+      {/* Módulos habilitados nesta unidade */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              Módulos habilitados
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Quais sistemas aparecem pra quem opera nesta unidade. Por padrão
+              herda tudo o que o município habilitou; você pode restringir
+              (mas não ampliar — se o município desativou um módulo, ele não
+              fica disponível aqui).
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 shrink-0">
+            <input
+              type="checkbox"
+              checked={enabledModules === null}
+              onChange={e => {
+                if (e.target.checked) resetToInherit()
+                else setEnabledModules(availableModules.slice())
+              }}
+            />
+            Herdar do município
+          </label>
+        </div>
+
+        {!municipalityId && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs text-slate-500">
+            <Info size={13} className="shrink-0 mt-0.5" />
+            Selecione o município primeiro pra ver os módulos disponíveis.
+          </div>
+        )}
+
+        {municipalityId && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {SYSTEMS.map(sys => {
+              const allowedByMun = availableModules.includes(sys.id as SystemId)
+              const isChecked = enabledModules === null
+                ? allowedByMun              // herdando = marca tudo que o mun permite
+                : enabledModules.includes(sys.id as SystemId)
+              const disabled = !allowedByMun || enabledModules === null
+              return (
+                <label
+                  key={sys.id}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors',
+                    disabled
+                      ? 'border-slate-200 dark:border-slate-800 opacity-50 cursor-not-allowed'
+                      : 'border-slate-200 dark:border-slate-700 cursor-pointer hover:border-violet-400',
+                    isChecked && !disabled && 'bg-violet-50 dark:bg-violet-950/30 border-violet-300 dark:border-violet-700',
+                  )}
+                  title={!allowedByMun ? 'Módulo não habilitado no município' : ''}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={disabled}
+                    onChange={() => toggleModule(sys.id as SystemId)}
+                  />
+                  <span className="flex-1">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">{sys.abbrev}</span>
+                    <span className="text-slate-400 ml-1.5">{sys.name}</span>
+                  </span>
+                  {!allowedByMun && (
+                    <span className="text-[10px] text-slate-400">mun desativou</span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-end gap-3">
-        <button type="button" onClick={() => navigate('/sys/unidades')} disabled={saving}
+        <button type="button" onClick={backToList} disabled={saving}
           className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
           Cancelar
         </button>

@@ -29,6 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import UUIDType
 revision: str = "0007_rbac_system"
 down_revision: str | None = "0006_user_sessions"
 branch_labels: str | Sequence[str] | None = None
@@ -49,8 +50,8 @@ def upgrade() -> None:
         sa.Column("resource", sa.String(60), nullable=False),
         sa.Column("action", sa.String(60), nullable=False),
         sa.Column("description", sa.String(500), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         schema="app",
     )
     op.create_index("ix_permissions_module", "permissions", ["module"], schema="app")
@@ -58,7 +59,7 @@ def upgrade() -> None:
     # ── roles ─────────────────────────────────────────────────────────────
     op.create_table(
         "roles",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("code", sa.String(60), nullable=False),
         sa.Column("name", sa.String(120), nullable=False),
         sa.Column("description", sa.String(500), nullable=True),
@@ -69,21 +70,21 @@ def upgrade() -> None:
         ),
         sa.Column(
             "municipality_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.municipalities.id", ondelete="CASCADE", name="fk_roles_municipality_id_municipalities"),
             nullable=True,
         ),
         sa.Column(
             "parent_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.roles.id", ondelete="RESTRICT", name="fk_roles_parent_id_roles"),
             nullable=True,
         ),
         sa.Column("is_system_base", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("archived", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("version", sa.Integer(), nullable=False, server_default=sa.text("1")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.CheckConstraint(
             "scope IN ('SYSTEM', 'MUNICIPALITY')",
             name="ck_roles_scope",
@@ -115,7 +116,7 @@ def upgrade() -> None:
         "role_permissions",
         sa.Column(
             "role_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.roles.id", ondelete="CASCADE", name="fk_role_permissions_role_id_roles"),
             primary_key=True,
         ),
@@ -126,18 +127,18 @@ def upgrade() -> None:
             primary_key=True,
         ),
         sa.Column("granted", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         schema="app",
     )
 
     # ── facility_access_permission_overrides ──────────────────────────────
     op.create_table(
         "facility_access_permission_overrides",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column(
             "facility_access_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey(
                 "app.facility_accesses.id",
                 ondelete="CASCADE",
@@ -156,8 +157,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("granted", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint(
             "facility_access_id",
             "permission_code",
@@ -175,7 +176,7 @@ def upgrade() -> None:
     # ── facility_accesses: +role_id, +version (mantém role/modules) ───────
     op.add_column(
         "facility_accesses",
-        sa.Column("role_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("role_id", UUIDType(), nullable=True),
         schema="app",
     )
     op.add_column(
@@ -236,40 +237,40 @@ def downgrade() -> None:
     # Recria os stubs antigos (esqueleto mínimo pra downgrade voltar)
     op.create_table(
         "permissions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("module", sa.String(10), nullable=False),
         sa.Column("action", sa.String(80), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("module", "action", name="uq_permission_module_action"),
         schema="app",
     )
     op.create_table(
         "roles",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("code", sa.String(60), unique=True, nullable=False),
         sa.Column("label", sa.String(120), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         schema="app",
     )
     op.create_table(
         "role_permissions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column(
             "role_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.roles.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "permission_id",
-            postgresql.UUID(as_uuid=True),
+            UUIDType(),
             sa.ForeignKey("app.permissions.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("role_id", "permission_id", name="uq_role_perm"),
         schema="app",
     )

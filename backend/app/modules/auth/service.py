@@ -31,6 +31,20 @@ from app.modules.users.repository import UserRepository
 log = get_logger(__name__)
 
 
+def _as_aware(dt: datetime | None) -> datetime | None:
+    """Normaliza ``datetime`` pra tz-aware (UTC) — tolera leituras Oracle.
+
+    Em Oracle, colunas ``DATE`` (e mesmo ``TIMESTAMP``) voltam naive mesmo
+    que o model declare ``DateTime(timezone=True)``. Comparar com
+    ``datetime.now(UTC)`` falha. Este helper assume UTC quando naive.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -40,18 +54,21 @@ class AuthService:
     # ── Login ───────────────────────────────────────────────────────────
 
     async def login(self, identifier: str, password: str, ip: str, ua: str) -> TokenPair:
-        user = await self.users.get_by_login_or_email(identifier)
+        from app.core.metrics import AUTH_LOGIN_TOTAL
+
+        user = await self.users.get_by_identifier(identifier)
         valid = bool(user and user.is_active and verify_password(password, user.password_hash))
 
         await self.repo.record_login_attempt(identifier, ip, valid)
 
         if not valid or user is None:
+            AUTH_LOGIN_TOTAL.labels(status="invalid_credentials" if user is None or user.is_active else "inactive").inc()
             reason = "Credenciais inválidas."
             if user is not None and not user.is_active:
                 reason = "Usuário inativo ou bloqueado."
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="warning",
                 resource="Session",
@@ -68,7 +85,7 @@ class AuthService:
         if user.status == UserStatus.BLOQUEADO:
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="error",
                 resource="Session",
@@ -84,7 +101,7 @@ class AuthService:
         if user.status == UserStatus.INATIVO:
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="warning",
                 resource="Session",
@@ -98,14 +115,42 @@ class AuthService:
             await self.session.commit()
             raise UnauthorizedError("Usuário inativo.")
 
+        # Quando configurado, bloqueia login via e-mail se o endereço não
+        # foi verificado. Login por CPF permanece sempre válido como
+        # escape hatch — a política só afeta quem usa e-mail.
+        if (
+            settings.enforce_email_verification_login
+            and "@" in identifier
+            and user.email_verified_at is None
+        ):
+            await write_audit(
+                self.session,
+                module="auth",
+                action="login_failed",
+                severity="warning",
+                resource="Session",
+                description=f"Login por e-mail não verificado — {user.name}",
+                details={"identifier": identifier, "reason": "email_unverified"},
+                user_id=user.id,
+                user_name=user.name,
+                ip=ip,
+                user_agent=ua,
+            )
+            await self.session.commit()
+            raise UnauthorizedError(
+                "E-mail não verificado. Confirme pelo link que enviamos "
+                "ou entre usando seu CPF.",
+            )
+
         if needs_rehash(user.password_hash):
             user.password_hash = hash_password(password)
             await self.users.update(user)
 
+        AUTH_LOGIN_TOTAL.labels(status="success").inc()
         pair = await self._issue_pair(user, ip, ua)
         await write_audit(
             self.session,
-            module="AUTH",
+            module="auth",
             action="login",
             severity="info",
             resource="Session",
@@ -144,7 +189,7 @@ class AuthService:
             target_user = await self.users.get_by_id(token.user_id)
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="login_failed",
                 severity="critical",
                 resource="Session",
@@ -161,7 +206,7 @@ class AuthService:
             await self.session.commit()
             raise UnauthorizedError("Refresh reutilizado. Sessão encerrada por segurança.")
 
-        if token.expires_at < now:
+        if _as_aware(token.expires_at) < now:
             raise UnauthorizedError("Refresh expirado.")
 
         user = await self.users.get_by_id(token.user_id)
@@ -209,7 +254,7 @@ class AuthService:
             await SessionService(self.session).end_by_family(token.family_id, SessionEndReason.LOGOUT)
             await write_audit(
                 self.session,
-                module="AUTH",
+                module="auth",
                 action="logout",
                 severity="info",
                 resource="Session",
@@ -225,7 +270,7 @@ class AuthService:
 
         Sempre retorna None ou token sem revelar se o e-mail existe.
         """
-        user = await self.users.get_by_login_or_email(email)
+        user = await self.users.get_by_identifier(email)
         if user is None or not user.is_active:
             return None
         plaintext = generate_opaque_token()
@@ -239,25 +284,43 @@ class AuthService:
         return plaintext
 
     async def reset_password(self, token: str, new_password: str) -> None:
+        from app.core.exceptions import ConflictError
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
         pr = await self.repo.find_password_reset(hash_opaque_token(token))
         now = datetime.now(UTC)
-        if pr is None or pr.used_at is not None or pr.expires_at < now:
+        if pr is None or pr.used_at is not None or _as_aware(pr.expires_at) < now:
             raise UnauthorizedError("Token de reset inválido ou expirado.")
         user = await self.users.get_by_id(pr.user_id)
         if user is None:
             raise UnauthorizedError("Usuário não encontrado.")
-        user.password_hash = hash_password(new_password)
-        user.token_version += 1  # invalida access tokens existentes
+        try:
+            await apply_new_password(self.session, user, new_password)
+        except PasswordReuseError as e:
+            raise ConflictError(str(e)) from e
         pr.used_at = now
-        # Revoga todas as famílias de refresh desse usuário (logout total)
         await self.session.flush()
 
-    async def change_password(self, user: User, current: str, new: str) -> None:
-        if not verify_password(current, user.password_hash):
-            raise UnauthorizedError("Senha atual incorreta.")
-        user.password_hash = hash_password(new)
-        user.token_version += 1
-        await self.session.flush()
+    async def change_password(
+        self, user: User, current: str | None, new: str,
+    ) -> None:
+        from app.core.exceptions import ConflictError
+        from app.modules.auth.password_policy import (
+            PasswordReuseError, apply_new_password,
+        )
+
+        # Usuário com senha provisória (reset de admin) pode pular a
+        # verificação da senha atual — ele já autenticou no login com
+        # essa mesma senha, e o objetivo da tela é justamente substituí-la.
+        if not user.must_change_password:
+            if not current or not verify_password(current, user.password_hash):
+                raise UnauthorizedError("Senha atual incorreta.")
+        try:
+            await apply_new_password(self.session, user, new)
+        except PasswordReuseError as e:
+            raise ConflictError(str(e)) from e
 
     # ── Helpers ────────────────────────────────────────────────────────
 

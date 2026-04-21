@@ -68,30 +68,58 @@ class SessionService:
     def _redis() -> redis.Redis:
         return redis.from_url(settings.valkey_url, decode_responses=True)
 
-    async def touch(self, family_id: uuid.UUID, *, user_id: uuid.UUID | None = None) -> None:
+    async def touch(
+        self,
+        family_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID | None = None,
+        municipality_id: uuid.UUID | None = None,
+        facility_id: uuid.UUID | None = None,
+    ) -> None:
         """Atualiza last_seen_at da sessão. Throttled a 1 write / 30s por sessão.
 
-        Se `family_id` não existe (sessão perdida ou criada antes dessa feature),
-        é best-effort: nada acontece.
+        Se ``municipality_id``/``facility_id`` vierem (request carrega
+        X-Work-Context), atualiza também o contexto ATIVO da sessão —
+        usado pra presence escopada: ``quem está online *neste município*``.
+
+        Se ``family_id`` não existe (sessão perdida ou criada antes dessa
+        feature), é best-effort: nada acontece.
         """
         key = f"session:touch:{family_id}"
+        # O touch por si só é throttled a 30s, MAS quando o contexto
+        # ativo muda (usuário trocou de município), precisamos atualizar
+        # já — senão a presença fica desatualizada. Usamos uma key
+        # separada que inclui o escopo e tem TTL mais curto.
+        ctx_key = f"session:ctx:{family_id}:{municipality_id or '-'}:{facility_id or '-'}"
         client = self._redis()
         try:
-            # SET key NX EX 30: se já foi setado, não toca (throttle ativo).
             applied = await client.set(key, "1", nx=True, ex=TOUCH_THROTTLE_SECONDS)
+            # Se não passou no throttle do last_seen, mas o contexto é novo
+            # (ctx_key ainda não setado), ainda roda o UPDATE pra mexer
+            # no active_municipality_id — mesmo sem tocar last_seen.
+            ctx_changed = False
+            if municipality_id is not None or facility_id is not None:
+                ctx_changed = bool(
+                    await client.set(ctx_key, "1", nx=True, ex=TOUCH_THROTTLE_SECONDS)
+                )
         finally:
             try:
                 await client.aclose()
             except Exception:
                 pass
-        if not applied:
+        if not applied and not ctx_changed:
             return
 
         now = datetime.now(UTC)
+        values: dict = {"last_seen_at": now}
+        if municipality_id is not None:
+            values["active_municipality_id"] = municipality_id
+        if facility_id is not None:
+            values["active_facility_id"] = facility_id
         await self.session.execute(
             update(UserSession)
             .where(UserSession.family_id == family_id, UserSession.ended_at.is_(None))
-            .values(last_seen_at=now)
+            .values(**values)
         )
         await self.session.commit()
 
@@ -107,12 +135,17 @@ class SessionService:
         return list((await self.session.scalars(stmt)).all())
 
     async def presence(self, *, scope: set[uuid.UUID] | None = None) -> list[tuple[User, UserSession]]:
-        """Retorna (User, Session) de quem está online agora.
+        """Retorna (User, Session) de quem está online **agora**.
 
-        Se `scope` é dado (ADMIN), filtra por usuários que tenham
-        municipality_access em algum município do escopo.
+        Se ``scope`` é dado, filtra por sessões cujo **active_municipality_id**
+        está no escopo — ou seja, o usuário está atuando *neste* município
+        neste momento (não só tem acesso a ele). MASTER é excluído da
+        presença escopada: ele não opera num município específico.
+
+        Sem ``scope`` (MASTER consultando tudo), devolve todas as sessões
+        vivas — incluindo MASTERs e sessões em shell sem contexto.
         """
-        from app.modules.tenants.models import MunicipalityAccess
+        from app.modules.users.models import UserLevel
 
         cutoff = datetime.fromtimestamp(
             datetime.now(UTC).timestamp() - ONLINE_WINDOW_SECONDS, tz=UTC,
@@ -126,17 +159,15 @@ class SessionService:
             .order_by(desc(UserSession.last_seen_at))
         )
         if scope is not None:
-            sub = (
-                select(MunicipalityAccess.user_id)
-                .where(MunicipalityAccess.municipality_id.in_(scope))
-                .distinct()
+            stmt = (
+                stmt.where(UserSession.active_municipality_id.in_(scope))
+                    .where(User.level != UserLevel.MASTER)
             )
-            stmt = stmt.where(User.id.in_(sub))
         rows = (await self.session.execute(stmt)).all()
         return [(r[0], r[1]) for r in rows]
 
     async def count_online(self, *, scope: set[uuid.UUID] | None = None) -> int:
-        from app.modules.tenants.models import MunicipalityAccess
+        from app.modules.users.models import UserLevel
 
         cutoff = datetime.fromtimestamp(
             datetime.now(UTC).timestamp() - ONLINE_WINDOW_SECONDS, tz=UTC,
@@ -147,12 +178,12 @@ class SessionService:
             .where(UserSession.last_seen_at >= cutoff)
         )
         if scope is not None:
-            sub = (
-                select(MunicipalityAccess.user_id)
-                .where(MunicipalityAccess.municipality_id.in_(scope))
-                .distinct()
+            stmt = (
+                stmt.where(UserSession.active_municipality_id.in_(scope))
+                    .where(UserSession.user_id.in_(
+                        select(User.id).where(User.level != UserLevel.MASTER)
+                    ))
             )
-            stmt = stmt.where(UserSession.user_id.in_(sub))
         return int((await self.session.scalar(stmt)) or 0)
 
     async def revoke_by_id(self, session_id: uuid.UUID, reason: SessionEndReason) -> UserSession | None:

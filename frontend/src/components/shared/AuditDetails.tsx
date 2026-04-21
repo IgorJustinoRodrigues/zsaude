@@ -16,31 +16,39 @@ import { cn } from '../../lib/utils'
 import { actionLabel, resourceLabel, moduleLabel } from '../../lib/rbacLabels'
 
 const FIELD_LABELS: Record<string, string> = {
-  name:             'Nome',
-  shortName:        'Nome curto',
-  email:            'E-mail',
-  phone:            'Telefone',
-  cpf:              'CPF',
-  cnes:             'CNES',
-  type:             'Tipo',
-  state:            'UF',
-  ibge:             'IBGE',
-  status:           'Status',
-  level:            'Nível',
-  primaryRole:      'Cargo',
-  description:      'Descrição',
-  login:            'Nome de acesso',
-  role:             'Perfil',
-  roleId:           'Perfil',
-  roleName:         'Perfil',
-  parentId:         'Perfil pai',
-  archived:         'Arquivado',
-  facilityId:       'Unidade',
-  facilityName:     'Unidade',
-  municipalityId:   'Município',
-  municipalityName: 'Município',
-  accesses:         'Vínculos',
-  targetUserName:   'Usuário alterado',
+  name:              'Nome',
+  shortName:         'Nome curto',
+  email:             'E-mail',
+  phone:             'Telefone',
+  cpf:               'CPF',
+  cnes:              'CNES',
+  type:              'Tipo',
+  state:             'UF',
+  ibge:              'IBGE',
+  status:            'Status',
+  level:             'Nível',
+  primaryRole:       'Cargo',
+  description:       'Descrição',
+  login:             'Nome de acesso',
+  role:              'Perfil',
+  roleId:            'Perfil',
+  roleName:          'Perfil',
+  parentId:          'Perfil pai',
+  archived:          'Arquivado',
+  facilityId:        'ID da unidade',
+  facilityName:      'Unidade',
+  facilityShortName: 'Unidade (sigla)',
+  facilityType:      'Tipo da unidade',
+  municipalityId:    'ID do município',
+  municipalityName:  'Município',
+  municipalityState: 'UF',
+  municipalityIbge:  'IBGE',
+  enabledModules:    'Módulos habilitados',
+  modules:           'Módulos concedidos',
+  selectedModule:    'Módulo escolhido',
+  accesses:          'Vínculos',
+  targetUserName:    'Usuário alterado',
+  facilitiesArchived:'Unidades também arquivadas',
 }
 
 // Campos puramente técnicos — não exibir na seção "Contexto" do detail.
@@ -115,8 +123,20 @@ export function AuditDetails({ details, className }: Props) {
   // ── campos de contexto (targetUserName, etc.) ─────────────────────────
   const metaRows: Array<[string, unknown]> = []
   const systemKeys = new Set(['changes', 'body', 'method', 'path', 'status', 'query'])
+  // Oculta IDs quando o Name correspondente está presente — evita ruído.
+  const idHiddenIfNamePresent: Array<[string, string]> = [
+    ['municipalityId', 'municipalityName'],
+    ['facilityId',     'facilityName'],
+    ['roleId',         'roleName'],
+  ]
+  const hiddenIds = new Set<string>()
+  for (const [idKey, nameKey] of idHiddenIfNamePresent) {
+    if (obj[nameKey] !== undefined && obj[nameKey] !== null && obj[nameKey] !== '') {
+      hiddenIds.add(idKey)
+    }
+  }
   for (const [k, v] of Object.entries(obj)) {
-    if (systemKeys.has(k) || HIDDEN_CONTEXT_FIELDS.has(k)) continue
+    if (systemKeys.has(k) || HIDDEN_CONTEXT_FIELDS.has(k) || hiddenIds.has(k)) continue
     metaRows.push([k, v])
   }
   if (metaRows.length > 0) {

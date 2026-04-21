@@ -7,13 +7,37 @@ import { useAuthStore } from '../../store/authStore'
 import { cn } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { Toaster } from '../ui/Toaster'
+import { DialogContainer } from '../ui/DialogContainer'
+import { ChangePasswordModal } from '../ui/ChangePasswordModal'
+import { BirthdayModal } from '../ui/BirthdayModal'
+import { useBirthdayCheck } from '../../hooks/useBirthdayCheck'
+import { authApi } from '../../api/auth'
 
-const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops']
+const VALID_MODULES: SystemId[] = ['cln', 'dgn', 'hsp', 'pln', 'fsc', 'ops', 'ind', 'rec', 'esu']
 
 export function AppShell() {
-  const { sidebarCollapsed } = useUIStore()
-  const { currentSystem, selectSystem } = useAuthStore()
+  const { sidebarCollapsed, sidebarHovered } = useUIStore()
+  // "Collapsed efetivo" = preferência persistida + mouse não está em cima.
+  // Quando o user passa o mouse sobre a sidebar colapsada, o conteúdo
+  // principal também se move (ml-60) — a sidebar se comporta como aberta.
+  const effectiveCollapsed = sidebarCollapsed && !sidebarHovered
+  const { currentSystem, selectSystem, user } = useAuthStore()
   const { pathname } = useLocation()
+  const passwordExpired = user?.passwordExpired ?? false
+  const mustChangePassword = user?.mustChangePassword ?? false
+  const blockForPassword = passwordExpired || mustChangePassword
+  const blockReason: 'expired' | 'provisional' =
+    mustChangePassword && !passwordExpired ? 'provisional' : 'expired'
+
+  const birthday = useBirthdayCheck()
+
+  async function handlePasswordChanged() {
+    // Atualiza o user pra remover o estado expirado
+    try {
+      const me = await authApi.me()
+      useAuthStore.setState({ user: me })
+    } catch { /* ignora — próximo reload pega */ }
+  }
 
   // Módulo da URL atual (se for um segmento de módulo válido).
   const segment = pathname.split('/')[1] as SystemId
@@ -40,16 +64,36 @@ export function AppShell() {
           'flex flex-col flex-1 min-w-0 transition-all duration-200',
           'ml-0',
           'md:ml-16',
-          sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60',
+          effectiveCollapsed ? 'lg:ml-16' : 'lg:ml-60',
         )}
       >
-        <TopBar module={currentModule} />
+        <TopBar
+          module={currentModule}
+          birthday={birthday.isBirthday}
+          onBirthdayClick={birthday.openModal}
+        />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 scrollbar-thin">
           <Outlet />
         </main>
       </div>
 
       <Toaster />
+      <DialogContainer />
+
+      {/* Senha expirada ou provisória: modal bloqueante em qualquer tela */}
+      {blockForPassword && (
+        <ChangePasswordModal
+          required
+          reason={blockReason}
+          onClose={() => { /* não permite fechar — required=true */ }}
+          onChanged={handlePasswordChanged}
+        />
+      )}
+
+      {/* Aniversário — auto-abre só uma vez por dia; ícone no nav reabre */}
+      {!blockForPassword && birthday.modalOpen && birthday.data && (
+        <BirthdayModal data={birthday.data} onClose={birthday.closeModal} />
+      )}
     </div>
   )
 }

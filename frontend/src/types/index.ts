@@ -1,6 +1,6 @@
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
-export type SystemId = 'cln' | 'dgn' | 'hsp' | 'pln' | 'fsc' | 'ops'
+export type SystemId = 'cln' | 'dgn' | 'hsp' | 'pln' | 'fsc' | 'ops' | 'ind' | 'rec' | 'esu'
 
 export interface SystemAccess {
   id: SystemId
@@ -40,6 +40,15 @@ export interface MunicipalityAccess {
   facilities: FacilityAccess[]
 }
 
+export interface ActiveCboBinding {
+  id: string
+  cboId: string
+  cboDescription: string | null
+  cnesProfessionalId: string
+  cnesSnapshotCpf: string | null
+  cnesSnapshotNome: string | null
+}
+
 /** The currently active municipality + facility + role + modules */
 export interface WorkContext {
   municipality: Municipality
@@ -48,6 +57,8 @@ export interface WorkContext {
   modules: SystemId[]
   /** Lista de permission codes resolvidos; `['*']` = MASTER (super-usuário). */
   permissions: string[]
+  /** Vínculo CNES ativo na sessão (null se o acesso não tem nenhum ou MASTER). */
+  cboBinding: ActiveCboBinding | null
 }
 
 export interface User {
@@ -285,18 +296,8 @@ export interface Vehicle {
   lastMaintenance?: string
 }
 
-// ─── Notifications ────────────────────────────────────────────────────────────
-
-export type NotificationType = 'info' | 'success' | 'warning' | 'error'
-
-export interface Notification {
-  id: string
-  type: NotificationType
-  title: string
-  message: string
-  read: boolean
-  createdAt: string
-}
+// Notificações vivem em ``api/notifications.ts`` (NotificationType,
+// NotificationItem) — conectadas ao backend real.
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 

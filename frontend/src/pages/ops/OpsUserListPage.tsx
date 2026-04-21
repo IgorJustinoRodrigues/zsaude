@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import {
   Search, UserPlus, ChevronUp, ChevronDown, ChevronsUpDown,
   Eye, Pencil, Users, UserCheck, UserX, ShieldOff,
-  Filter, X, ChevronLeft, ChevronRight,
+  Filter, X, ChevronLeft, ChevronRight, Cake,
 } from 'lucide-react'
 import { initials, cn } from '../../lib/utils'
 import { userApi, type UserListItem, type UserStats, type UserStatus } from '../../api/users'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
+import { BirthdaysPanel } from '../../components/shared/BirthdaysPanel'
 import type { SystemId } from '../../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -43,8 +45,12 @@ function useDebounced<T>(value: T, delay = 300): T {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+type Tab = 'users' | 'birthdays'
+
 export function OpsUserListPage() {
   const navigate = useNavigate()
+  const context = useAuthStore(s => s.context)
+  const [tab, setTab] = useState<Tab>('users')
 
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounced(search, 300)
@@ -133,14 +139,68 @@ export function OpsUserListPage() {
             {stats ? `${stats.total} usuários cadastrados` : 'Carregando...'}
           </p>
         </div>
+        {tab === 'users' && (
+          <button
+            onClick={() => navigate('/ops/usuarios/novo')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors shrink-0"
+          >
+            <UserPlus size={15} />
+            Novo usuário
+          </button>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-slate-200 dark:border-slate-800 flex gap-1">
         <button
-          onClick={() => navigate('/ops/usuarios/novo')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:bg-slate-700 dark:hover:bg-white transition-colors shrink-0"
+          onClick={() => setTab('users')}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+            tab === 'users'
+              ? 'border-sky-500 text-sky-700 dark:text-sky-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
+          )}
         >
-          <UserPlus size={15} />
-          Novo usuário
+          <Users size={14} />
+          Usuários
+        </button>
+        <button
+          onClick={() => setTab('birthdays')}
+          className={cn(
+            'inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
+            tab === 'birthdays'
+              ? 'border-sky-500 text-sky-700 dark:text-sky-400'
+              : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200',
+          )}
+        >
+          <Cake size={14} />
+          Aniversariantes
         </button>
       </div>
+
+      {/* Aniversariantes do município ativo */}
+      {tab === 'birthdays' && (
+        <>
+          {context?.municipality && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Aniversariantes vinculados a{' '}
+              <strong>{context.municipality.name}/{context.municipality.state}</strong>.
+            </p>
+          )}
+          <BirthdaysPanel
+            viewBasePath="/ops/usuarios"
+            accent="sky"
+            municipalityId={context?.municipality.id}
+            contextLabel={context?.municipality
+              ? `${context.municipality.name}/${context.municipality.state}`
+              : undefined}
+          />
+        </>
+      )}
+
+      {/* Resto só aparece na tab "Usuários" */}
+      {tab === 'users' && (
+      <>
 
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -323,6 +383,9 @@ export function OpsUserListPage() {
             </div>
           </div>
         </>
+      )}
+
+      </>
       )}
     </div>
   )

@@ -37,7 +37,6 @@ target_metadata = TenantBase.metadata
 
 
 def _resolve_schema() -> str:
-    # prioridade: -x tenant_schema=... > env ALEMBIC_TENANT_SCHEMA
     x = context.get_x_argument(as_dictionary=True)
     schema = x.get("tenant_schema") or os.environ.get("ALEMBIC_TENANT_SCHEMA")
     if not schema:
@@ -48,6 +47,11 @@ def _resolve_schema() -> str:
     if not re.match(r"^mun_\d{6,7}$", schema):
         raise RuntimeError(f"Schema inválido: {schema!r}")
     return schema
+
+
+def _detect_dialect() -> str:
+    url = settings.database_url
+    return url.split("+")[0].split(":")[0]
 
 
 def run_migrations_offline() -> None:
@@ -65,18 +69,19 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection, schema: str) -> None:
-    # Garante que o schema existe.
-    connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
-    connection.commit()
+    dialect = connection.dialect.name
+
+    if dialect == "postgresql":
+        connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+        connection.commit()
+    # Oracle: schema (user) is created by the adapter before migrations run
 
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table_schema=schema,
+        version_table_schema=schema if dialect == "postgresql" else None,
         compare_type=True,
         compare_server_default=True,
-        # Usamos search_path (setado via server_settings da conexão) para
-        # resolver schemas dos models (que são None).
         include_schemas=False,
     )
     with context.begin_transaction():
@@ -85,17 +90,27 @@ def do_run_migrations(connection: Connection, schema: str) -> None:
 
 async def run_async_migrations() -> None:
     schema = _resolve_schema()
-    # server_settings garante que TODA transação dessa conexão já começa
-    # com o search_path correto — sem depender de SET espalhado no env.
+    dialect = _detect_dialect()
+
+    connect_args: dict = {}
+    if dialect == "postgresql":
+        connect_args["server_settings"] = {
+            "search_path": f'"{schema}", "app", "public"',
+        }
+
+    engine_config = config.get_section(config.config_ini_section) or {}
+
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section) or {},
+        engine_config,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={
-            "server_settings": {"search_path": f'"{schema}", "app", "public"'},
-        },
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
+        if dialect == "oracle":
+            await connection.execute(
+                text(f'ALTER SESSION SET CURRENT_SCHEMA = "{schema.upper()}"')
+            )
         await connection.run_sync(do_run_migrations, schema)
     await connectable.dispose()
 

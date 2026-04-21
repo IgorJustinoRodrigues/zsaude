@@ -33,7 +33,11 @@ interface AuthState {
   login: (login: string, password: string) => Promise<boolean>
   fetchContextOptions: () => Promise<WorkContextOptions | null>
   /** Seleciona contexto via backend. Retorna os módulos disponíveis. */
-  selectContext: (municipalityId: string, facilityId: string) => Promise<SystemId[]>
+  selectContext: (
+    municipalityId: string,
+    facilityId: string,
+    opts?: { cboBindingId?: string | null },
+  ) => Promise<SystemId[]>
   selectSystem: (system: SystemId) => void
   logout: () => Promise<void>
   clearContext: () => void
@@ -159,8 +163,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      selectContext: async (municipalityId, facilityId) => {
-        const issued = await workContextApi.select(municipalityId, facilityId)
+      selectContext: async (municipalityId, facilityId, opts) => {
+        const issued = await workContextApi.select(municipalityId, facilityId, {
+          cboBindingId: opts?.cboBindingId ?? null,
+        })
         set({
           contextToken: issued.contextToken,
           context: {
@@ -180,6 +186,7 @@ export const useAuthStore = create<AuthState>()(
             role: issued.role,
             modules: issued.modules,
             permissions: issued.permissions,
+            cboBinding: issued.cboBinding,
           },
           currentSystem: null,
         })

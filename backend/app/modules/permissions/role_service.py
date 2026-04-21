@@ -432,9 +432,12 @@ async def _audit_role(
     details: dict | None = None,
 ) -> None:
     """Registra evento de mutação em role. Severidade maior para SYSTEM."""
+    from app.core.audit import get_audit_context
+    from app.modules.audit.helpers import describe_change
     from app.modules.audit.writer import write_audit
 
     payload: dict = {
+        "roleName": role.name,
         "roleCode": role.code,
         "scope": role.scope.value,
     }
@@ -443,6 +446,22 @@ async def _audit_role(
     if details:
         payload.update(details)
 
+    # Verbo humano a partir do ``action`` técnico.
+    verb_map = {
+        "role_create":   "criou o perfil",
+        "role_update":   "editou o perfil",
+        "role_edit":     "editou o perfil",
+        "role_delete":   "arquivou o perfil",
+        "role_archive":  "arquivou o perfil",
+        "role_unarchive": "reativou o perfil",
+    }
+    verb = verb_map.get(action, f"{action} no perfil")
+    scope_label = {
+        "SYSTEM": "sistema",
+        "MUNICIPALITY": "município",
+        "FACILITY": "unidade",
+    }.get(role.scope.value.upper(), role.scope.value)
+
     await write_audit(
         db,
         module="roles",
@@ -450,6 +469,11 @@ async def _audit_role(
         severity="warning" if role.scope == RoleScope.SYSTEM else "info",
         resource="role",
         resource_id=str(role.id),
-        description=f"{action} role {role.code} ({role.scope.value})",
+        description=describe_change(
+            actor=get_audit_context().user_name,
+            verb=verb,
+            target_name=role.name or role.code,
+            extra=f"escopo: {scope_label}",
+        ),
         details=payload,
     )

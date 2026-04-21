@@ -31,15 +31,42 @@ P("users.user.archive", "Arquivar usuário")
 P("users.user.reset_password", "Redefinir senha de outro usuário")
 P("users.access.view", "Visualizar acessos de usuário")
 P("users.access.manage", "Conceder/remover acesso a município ou unidade")
+P("users.photo.manage", "Enviar ou remover foto de outro usuário")
+P("users.photo.view", "Visualizar foto de outro usuário")
+P("users.face.match", "Identificar usuário por reconhecimento facial")
 
 # ── Auditoria ───────────────────────────────────────────────────────────────
 P("audit.log.view", "Consultar logs de auditoria")
 
-# ── Operações (relatórios, presença, frota) ─────────────────────────────────
+# ── Operações (relatórios, presença, importações) ──────────────────────────
 P("ops.session.view", "Visualizar sessões e presença de usuários")
 P("ops.report.view", "Visualizar relatórios operacionais")
 P("ops.report.export", "Exportar relatórios")
+P("ops.import.execute", "Executar importações (CNES, etc) no município atual")
+P("ops.import.view", "Visualizar histórico de importações")
 
 # ── DGN (Diagnóstico) ───────────────────────────────────────────────────────
 P("dgn.exam.view", "Visualizar solicitações de exame")
 P("dgn.exam.request", "Solicitar exame")
+
+# ── HSP (Hospitalar) — cadastro de paciente ────────────────────────────────
+P("hsp.patient.view", "Visualizar pacientes")
+P("hsp.patient.create", "Cadastrar paciente")
+P("hsp.patient.edit", "Editar paciente")
+P("hsp.patient.delete", "Desativar paciente")
+P("hsp.patient.export", "Exportar dados de pacientes")
+P("hsp.patient_photo.upload", "Enviar ou remover foto do paciente")
+P("hsp.patient_photo.view", "Visualizar foto do paciente")
+P("hsp.patient_history.view", "Visualizar histórico de alterações do paciente")
+P("hsp.patient.face_match", "Identificar paciente por reconhecimento facial")
+P("hsp.face.reindex", "Reindexar embeddings faciais do município (MASTER)")
+
+# ── REC (Recepção) — totem, balcão e painel de chamadas ────────────────────
+# Por ora só a permissão-base que gate o módulo. Sub-permissões por função
+# (totem/balcão/painel) entram conforme cada função for implementada.
+P("rec.module.access", "Acessar o módulo Recepção")
+
+# ── Gateway de IA ───────────────────────────────────────────────────────────
+P("ai.operations.use", "Usar operações de IA (consumidor)")
+# Configuração de IA é centralizada no SYS (MASTER) — não precisa de perm por
+# município. A tela de OPS foi removida; OPS só consome operations via ai.operations.use.

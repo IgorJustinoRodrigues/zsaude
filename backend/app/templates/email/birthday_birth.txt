@@ -1,0 +1,11 @@
+Feliz aniversário, {{ user_first_name }}!
+
+{% if age %}Hoje você completa {{ age }} anos de história.{% endif %}
+
+Todo o time do {% if municipality_name %}{{ municipality_name }}{% else %}{{ app_name }}{% endif %} deseja um dia especial e um novo ciclo cheio de saúde, alegria e realizações.
+
+Com carinho,
+{% if municipality_name %}Prefeitura de {{ municipality_name }}{% else %}{{ app_name }}{% endif %}
+
+—
+Este e-mail foi enviado automaticamente, não responda.

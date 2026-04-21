@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, Pencil, MapPin, Building2, Plus, Archive, ArchiveRestore,
+  ArrowLeft, Pencil, MapPin, Building2, Plus, Archive, ArchiveRestore, Users, Home,
 } from 'lucide-react'
 import { sysApi, type MunicipalityAdminDetail, type FacilityAdmin } from '../../api/sys'
 import { directoryApi } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { LocationMap, type MapLayer } from '../../components/shared/LocationMap'
+import { SYSTEMS } from '../../mock/users'
 
 export function SysMunicipalityViewPage() {
   const navigate = useNavigate()
@@ -110,11 +112,105 @@ export function SysMunicipalityViewPage() {
       </div>
 
       {/* Resumo */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard label="Unidades" value={mun.facilityCount} />
         <SummaryCard label="Usuários vinculados" value={mun.userCount} />
-        <SummaryCard label="Status" value={mun.archived ? 'Arquivado' : 'Ativo'} />
+        <SummaryCard label="População" value={mun.population != null ? mun.population.toLocaleString('pt-BR') : '—'} />
+        <SummaryCard label="Bairros" value={mun.neighborhoods.length} />
       </div>
+
+      {/* Mapa — sempre visível. Fallback ao centro da UF quando não há
+          pontos cadastrados (zoom afastado). */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <MapPin size={14} className="text-violet-500" /> Território
+          </h2>
+          {!mun.centerLatitude && !mun.territory && mun.neighborhoods.every(h => h.latitude == null && !h.territory) && (
+            <span className="text-[11px] text-slate-400">Nenhuma localização cadastrada — clique em Editar para marcar.</span>
+          )}
+        </div>
+        <LocationMap
+          fallbackCenter={fallbackForUf(mun.state)}
+          point={
+            mun.centerLatitude != null && mun.centerLongitude != null
+              ? [Number(mun.centerLatitude), Number(mun.centerLongitude)]
+              : null
+          }
+          polygon={mun.territory}
+          extraLayers={mun.neighborhoods.flatMap<MapLayer>(h => {
+            const layer: MapLayer = { label: h.name, color: '#0ea5e9' }
+            if (h.latitude != null && h.longitude != null) {
+              layer.point = [Number(h.latitude), Number(h.longitude)]
+            }
+            if (h.territory) layer.polygon = h.territory
+            return (layer.point || layer.polygon) ? [layer] : []
+          })}
+          mode="idle"
+          onPointChange={() => {}}
+          onPolygonChange={() => {}}
+          height="360px"
+          fitKey={mun.id}
+        />
+      </div>
+
+      {/* Módulos habilitados */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-sm font-semibold">Módulos habilitados ({mun.enabledModules?.length ?? 0})</h2>
+        </div>
+        <div className="p-4 flex flex-wrap gap-2">
+          {SYSTEMS.map(sys => {
+            const on = mun.enabledModules?.includes(sys.id) ?? false
+            return (
+              <span
+                key={sys.id}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border',
+                  on
+                    ? 'border-transparent text-white'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-400 line-through',
+                )}
+                style={on ? { backgroundColor: sys.color } : undefined}
+                title={sys.description}
+              >
+                <span className="font-mono text-[10px] opacity-80">{sys.abbrev}</span>
+                {sys.name}
+              </span>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Bairros */}
+      {mun.neighborhoods.length > 0 && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+            <Home size={14} className="text-sky-500" />
+            <h2 className="text-sm font-semibold">Bairros ({mun.neighborhoods.length})</h2>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {mun.neighborhoods.map(h => (
+              <div key={h.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-7 h-7 rounded-lg bg-sky-100 dark:bg-sky-950/40 text-sky-600 flex items-center justify-center shrink-0">
+                  <Home size={12} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{h.name}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {h.population != null && <span className="inline-flex items-center gap-1"><Users size={10} /> {h.population.toLocaleString('pt-BR')} hab</span>}
+                    {h.population != null && (h.latitude != null || h.territory) && ' · '}
+                    {h.latitude != null && '📍 ponto'}
+                    {h.latitude != null && h.territory && ' · '}
+                    {h.territory && '🗺 território'}
+                    {h.population == null && h.latitude == null && !h.territory && '—'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Unidades */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
@@ -158,4 +254,22 @@ function SummaryCard({ label, value }: { label: string; value: number | string }
       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{label}</p>
     </div>
   )
+}
+
+// Coordenadas aproximadas do centro de cada UF para posicionar o mapa
+// quando o município ainda não tem ponto cadastrado.
+const UF_CENTER: Record<string, [number, number, number]> = {
+  AC: [-9.02, -70.81, 6], AL: [-9.57, -36.78, 7], AP: [0.90, -52.00, 6],
+  AM: [-3.41, -65.86, 5], BA: [-12.97, -41.27, 5], CE: [-5.20, -39.53, 6],
+  DF: [-15.83, -47.86, 9], ES: [-19.19, -40.34, 7], GO: [-15.82, -49.83, 6],
+  MA: [-5.42, -45.44, 6], MT: [-12.64, -55.42, 5], MS: [-20.51, -54.54, 6],
+  MG: [-18.51, -44.55, 6], PA: [-4.78, -52.66, 5], PB: [-7.12, -36.72, 7],
+  PR: [-24.49, -51.77, 6], PE: [-8.40, -37.55, 7], PI: [-7.72, -42.73, 6],
+  RJ: [-22.25, -42.66, 7], RN: [-5.79, -36.37, 7], RS: [-29.68, -53.80, 6],
+  RO: [-10.83, -63.34, 6], RR: [2.74, -61.66, 6], SC: [-27.24, -50.22, 6],
+  SP: [-22.19, -48.79, 6], SE: [-10.57, -37.39, 7], TO: [-10.18, -48.33, 6],
+}
+
+function fallbackForUf(uf: string): [number, number, number] {
+  return UF_CENTER[uf] ?? [-15.78, -47.92, 5]
 }

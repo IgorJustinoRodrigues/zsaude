@@ -35,8 +35,13 @@ export const sessionsApi = {
   userSessions: (userId: string, limit = 20) =>
     api.get<SessionRead[]>(`/api/v1/users/${userId}/sessions?limit=${limit}`),
 
-  presence: (scope?: 'actor') =>
-    api.get<PresenceItem[]>(`/api/v1/users/presence${scope ? `?scope=${scope}` : ''}`),
+  presence: (scope?: 'actor', municipalityId?: string | null) => {
+    const p = new URLSearchParams()
+    if (scope) p.set('scope', scope)
+    if (municipalityId) p.set('municipalityId', municipalityId)
+    const qs = p.toString()
+    return api.get<PresenceItem[]>(`/api/v1/users/presence${qs ? `?${qs}` : ''}`)
+  },
 
   revokeSession: (userId: string, sessionId: string) =>
     api.post<{ message: string }>(

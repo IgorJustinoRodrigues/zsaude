@@ -11,9 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.health import router as health_router
+from app.api.metrics import router as metrics_router
 from app.api.v1 import api_v1
 from app.core.config import settings
 from app.core.exceptions import (
@@ -23,8 +25,10 @@ from app.core.exceptions import (
     unhandled_exception_handler,
     validation_error_handler,
 )
+from app.core.cbo_abilities.seed import seed_cbo_abilities
 from app.core.logging import configure_logging, get_logger
 from app.core.permissions.seed import ensure_system_base_roles, sync_permissions
+from app.db.engine_registry import get_registry
 from app.db.session import dispose_engine, engine, sessionmaker
 from app.modules.system.service import SettingsService
 from app.middleware.audit_context import AuditContextMiddleware
@@ -39,28 +43,99 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     log = get_logger("app.lifespan")
     log.info("startup", env=settings.env, api_prefix=settings.api_v1_prefix)
-    # inicializa engine cedo
+    # Inicializa engine registry (multi-database)
+    registry = get_registry()
+    registry.init_app(
+        settings.database_url,
+        pool_size=20,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    # Oracle: registra fix para '' = NULL
+    if registry.app_dialect == "oracle":
+        from app.db.base import _register_oracle_null_fix
+        from app.tenant_models import _register_tenant_oracle_null_fix
+        _register_oracle_null_fix()
+        _register_tenant_oracle_null_fix()
+
+    # inicializa engine legado (compatibilidade com session.py singleton)
     engine()
     # Sincroniza catálogo de permissões (registry → DB) e SYSTEM roles base.
     # Idempotente — barato o bastante para rodar a cada boot.
     try:
         async with sessionmaker()() as session:
             n_perms = await sync_permissions(session)
+            await session.commit()
+        async with sessionmaker()() as session:
             n_roles = await ensure_system_base_roles(session)
             n_settings = await SettingsService(session).warm_up()
             await session.commit()
-            log.info(
-                "rbac_sync_ok",
-                permissions=n_perms,
-                system_roles=n_roles,
-                settings_loaded=n_settings,
-            )
+        # Seed das abilities CBO (idempotente). Roda após os roles pra
+        # garantir que o catálogo está consistente a cada boot.
+        try:
+            async with sessionmaker()() as session:
+                n_abilities = await seed_cbo_abilities(session)
+                await session.commit()
+        except Exception as e:  # noqa: BLE001
+            log.warning("cbo_abilities_seed_failed", error=str(e))
+            n_abilities = 0
+        log.info(
+            "rbac_sync_ok",
+            permissions=n_perms,
+            system_roles=n_roles,
+            settings_loaded=n_settings,
+            cbo_ability_pairs=n_abilities,
+        )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))
+    import asyncio
+
+    # Cria partições futuras do ai_usage_logs. Idempotente, roda em ~50ms.
+    try:
+        async with sessionmaker()() as session:
+            from app.modules.ai.partitions import ensure_partitions
+            await ensure_partitions(session)
+            await session.commit()
+    except Exception as e:  # noqa: BLE001
+        log.warning("ai_partitions_failed", error=str(e))
+
+    # Carrega overrides de banco por município (se tabela existir)
+    n_overrides = await registry.load_overrides_from_db()
+    if n_overrides:
+        log.info("tenant_db_overrides_loaded", count=n_overrides)
+
+    # Aquece o modelo de reconhecimento facial em background.
+    from app.services.face import warm as warm_face
+
+    asyncio.create_task(warm_face())
+
+    # Métricas Prometheus — app info + municípios
+    from app.core.metrics import APP_INFO, MUNICIPALITY_INFO, ACTIVE_MUNICIPALITIES, ACTIVE_USERS
+    APP_INFO.info({"version": "0.1.0", "env": settings.env})
+
+    try:
+        async with sessionmaker()() as session:
+            from app.modules.tenants.models import Municipality
+            from app.modules.users.models import User
+            muns = (await session.scalars(
+                select(Municipality).where(Municipality.archived == False)
+            )).all()
+            for m in muns:
+                MUNICIPALITY_INFO.labels(ibge=m.ibge, name=m.name, state=m.state).set(1)
+            ACTIVE_MUNICIPALITIES.set(len(muns))
+            user_count = (await session.scalars(
+                select(func.count()).select_from(User).where(User.is_active == True)
+            )).one()
+            ACTIVE_USERS.set(user_count)
+    except Exception:
+        pass
+
     try:
         yield
     finally:
         log.info("shutdown")
+        await registry.dispose_all()
         await dispose_engine()
 
 
@@ -94,6 +169,9 @@ def create_app() -> FastAPI:
     app.add_middleware(AuditWriterMiddleware)
     app.add_middleware(AuditContextMiddleware)
     app.add_middleware(RequestIdMiddleware)
+    # Métricas Prometheus (primeiro middleware = mede latência total incluindo outros middlewares)
+    from app.middleware.metrics import MetricsMiddleware
+    app.add_middleware(MetricsMiddleware)
 
     # Handlers
     app.add_exception_handler(AppError, app_error_handler)
@@ -103,6 +181,7 @@ def create_app() -> FastAPI:
 
     # Rotas
     app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(api_v1, prefix=settings.api_v1_prefix)
 
     return app

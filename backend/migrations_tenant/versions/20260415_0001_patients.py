@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import UUIDType
 revision: str = "t0001_patients"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
@@ -26,21 +27,21 @@ def upgrade() -> None:
     # NOTE: sem `schema=`; o search_path já está no schema do município.
     op.create_table(
         "patients",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("prontuario", sa.String(20), nullable=False),
         sa.Column("name", sa.String(200), nullable=False),
         sa.Column("cpf", sa.String(11), nullable=False),
         sa.Column("cns", sa.String(15), nullable=True),
         sa.Column("birth_date", sa.Date(), nullable=True),
         sa.Column("sex", sa.String(1), nullable=True),
-        sa.Column("phone", sa.String(20), nullable=False, server_default=""),
-        sa.Column("email", sa.String(200), nullable=False, server_default=""),
-        sa.Column("mother_name", sa.String(200), nullable=False, server_default=""),
+        sa.Column("phone", sa.String(20), nullable=False, server_default=" "),
+        sa.Column("email", sa.String(200), nullable=False, server_default=" "),
+        sa.Column("mother_name", sa.String(200), nullable=False, server_default=" "),
         sa.Column("father_name", sa.String(200), nullable=True),
         sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_by", UUIDType(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("prontuario", name="uq_patients_prontuario"),
         sa.UniqueConstraint("cpf", name="uq_patients_cpf"),
     )

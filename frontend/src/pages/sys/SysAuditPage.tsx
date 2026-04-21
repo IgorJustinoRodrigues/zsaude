@@ -4,6 +4,7 @@ import { auditApi, type AuditLogItem } from '../../api/audit'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
+import { labelAction, labelModule, labelResource, labelSeverity } from '../../lib/auditLabels'
 import { AuditDetails } from '../../components/shared/AuditDetails'
 
 const SEV_STYLE: Record<string, string> = {
@@ -104,16 +105,16 @@ export function SysAuditPage() {
                   className="w-full flex items-start gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors text-left">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-widest', SEV_STYLE[l.severity] ?? SEV_STYLE.info)}>
-                        {l.severity}
+                      <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full tracking-wide', SEV_STYLE[l.severity] ?? SEV_STYLE.info)}>
+                        {labelSeverity(l.severity)}
                       </span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                        {l.module}
+                        {labelModule(l.module)}
                       </span>
-                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{l.action}</span>
+                      <span className="text-xs font-medium text-slate-700 dark:text-slate-200">{labelAction(l.action)}</span>
                     </div>
                     <p className="text-sm text-slate-700 dark:text-slate-200 mt-1 truncate">{l.description}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{l.userName} · {l.ip} · {fmt(l.at)}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{l.userName || 'Sistema'} · {l.ip || '—'} · {fmt(l.at)}</p>
                   </div>
                 </button>
               ))}
@@ -142,16 +143,19 @@ export function SysAuditPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setSelected(null)}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">{selected.module} · {selected.action}</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                {labelModule(selected.module)} · {labelAction(selected.action)}
+              </p>
               <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mt-1">{selected.description}</h2>
             </div>
             <div className="p-5 space-y-3 text-xs overflow-y-auto">
-              <DetailRow label="Usuário"  value={selected.userName} />
-              <DetailRow label="Papel"    value={selected.role || '—'} />
-              <DetailRow label="IP"       value={selected.ip || '—'} />
-              <DetailRow label="Data"     value={fmt(selected.at)} />
-              <DetailRow label="Recurso"  value={selected.resource ? `${selected.resource}${selected.resourceId ? ' · ' + selected.resourceId : ''}` : '—'} />
-              <DetailRow label="Request"  value={selected.requestId || '—'} mono />
+              <DetailRow label="Usuário"    value={selected.userName || 'Sistema'} />
+              <DetailRow label="Perfil"     value={selected.role || '—'} />
+              <DetailRow label="Gravidade"  value={labelSeverity(selected.severity)} />
+              <DetailRow label="Endereço IP" value={selected.ip || '—'} />
+              <DetailRow label="Data"       value={fmt(selected.at)} />
+              <DetailRow label="Recurso"    value={selected.resource ? `${labelResource(selected.resource)}${selected.resourceId ? ' · ' + selected.resourceId : ''}` : '—'} />
+              <DetailRow label="Identificador da requisição" value={selected.requestId || '—'} mono />
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                 <AuditDetails details={selected.details} />
               </div>

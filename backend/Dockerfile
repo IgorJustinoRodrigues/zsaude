@@ -9,6 +9,12 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
+# Build tools necessários para wheels que não têm binários pré-compilados
+# (ex: ml-dtypes/onnx dependem de gcc + cmake em alguns arm64).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential cmake && \
+    rm -rf /var/lib/apt/lists/*
+
 # uv: fast Python package manager
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 
@@ -23,8 +29,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Copia código
 COPY app ./app
 COPY migrations ./migrations
+COPY migrations_tenant ./migrations_tenant
 COPY scripts ./scripts
-COPY alembic.ini ./
+COPY alembic.ini alembic_tenant.ini ./
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev || uv sync --no-dev
@@ -35,11 +42,20 @@ FROM python:3.13-slim AS runner
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    INSIGHTFACE_HOME=/home/app/.insightface
 
-# Usuário não-root
+# Libs nativas pro opencv-python-headless (usado pelo InsightFace).
+# libgl1 + libglib2.0-0 são exigidos por cv2 mesmo na versão headless.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Usuário não-root + home pra cache de modelos do InsightFace.
 RUN groupadd --system --gid 1001 app && \
-    useradd  --system --uid 1001 --gid app --no-create-home --shell /usr/sbin/nologin app
+    useradd  --system --uid 1001 --gid app --create-home --home-dir /home/app --shell /usr/sbin/nologin app && \
+    mkdir -p /home/app/.insightface && \
+    chown -R app:app /home/app
 
 WORKDIR /app
 

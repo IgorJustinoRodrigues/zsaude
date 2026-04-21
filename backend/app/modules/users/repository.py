@@ -7,7 +7,13 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tenants.models import Facility, FacilityAccess, Municipality, MunicipalityAccess
+from app.modules.tenants.models import (
+    Facility,
+    FacilityAccess,
+    FacilityAccessCnesBinding,
+    Municipality,
+    MunicipalityAccess,
+)
 from app.modules.users.models import User, UserStatus
 
 
@@ -18,19 +24,37 @@ class UserRepository:
     async def get_by_id(self, user_id: UUID) -> User | None:
         return await self.session.scalar(select(User).where(User.id == user_id))
 
-    async def get_by_login_or_email(self, identifier: str) -> User | None:
+    async def get_by_identifier(self, identifier: str) -> User | None:
+        """Lookup por CPF (com ou sem máscara) ou e-mail.
+
+        Não tenta mais casar com ``login``: o sistema só aceita CPF ou
+        e-mail como credencial.
+        """
         ident = identifier.strip().lower()
-        stmt = select(User).where(or_(User.login == ident, User.email == ident))
+        cpf_digits = "".join(ch for ch in ident if ch.isdigit())
+        conditions = [User.email == ident]
+        if len(cpf_digits) == 11:
+            conditions.append(User.cpf == cpf_digits)
+        stmt = select(User).where(or_(*conditions))
         return await self.session.scalar(stmt)
 
     async def get_by_login(self, login: str) -> User | None:
         return await self.session.scalar(select(User).where(User.login == login.strip().lower()))
 
-    async def get_by_email(self, email: str) -> User | None:
+    async def get_by_email(self, email: str | None) -> User | None:
+        if not email:
+            return None
         return await self.session.scalar(select(User).where(User.email == email.strip().lower()))
 
-    async def get_by_cpf(self, cpf: str) -> User | None:
+    async def get_by_cpf(self, cpf: str | None) -> User | None:
+        if not cpf:
+            return None
         return await self.session.scalar(select(User).where(User.cpf == cpf))
+
+    async def get_by_cns(self, cns: str | None) -> User | None:
+        if not cns:
+            return None
+        return await self.session.scalar(select(User).where(User.cns == cns))
 
     async def add(self, user: User) -> User:
         self.session.add(user)
@@ -112,11 +136,14 @@ class UserRepository:
         self,
         user_id: UUID,
         municipality_ids: set[UUID],
-        facilities: list[tuple[UUID, UUID]],
+        facilities: list[tuple[UUID, UUID, list[dict]]],
     ) -> None:
         """Substitui todos os vínculos do usuário de forma atômica.
 
-        ``facilities`` é lista de tuplas ``(facility_id, role_id)``.
+        ``facilities`` é lista de tuplas ``(facility_id, role_id, bindings)``,
+        onde ``bindings`` é lista de dicts com
+        ``{cbo_id, cbo_description, cnes_professional_id, cnes_snapshot_cpf,
+           cnes_snapshot_nome}``. Vazia = acesso sem vínculo CNES.
         """
         from sqlalchemy import delete
 
@@ -125,10 +152,24 @@ class UserRepository:
 
         for mid in municipality_ids:
             self.session.add(MunicipalityAccess(user_id=user_id, municipality_id=mid))
-        for fid, role_id in facilities:
-            self.session.add(
-                FacilityAccess(user_id=user_id, facility_id=fid, role_id=role_id)
+        for fid, role_id, bindings in facilities:
+            fa = FacilityAccess(
+                user_id=user_id,
+                facility_id=fid,
+                role_id=role_id,
             )
+            self.session.add(fa)
+            await self.session.flush()  # precisa de fa.id pros filhos
+            for b in bindings:
+                self.session.add(FacilityAccessCnesBinding(
+                    facility_access_id=fa.id,
+                    cbo_id=b["cbo_id"],
+                    cbo_description=b.get("cbo_description"),
+                    cnes_professional_id=b["cnes_professional_id"],
+                    cnes_snapshot_cpf=b.get("cnes_snapshot_cpf"),
+                    cnes_snapshot_nome=b.get("cnes_snapshot_nome"),
+                    role_id=b.get("role_id"),
+                ))
         await self.session.flush()
 
     async def bulk_modules_by_user(self, user_ids: list[UUID]) -> dict[UUID, set[str]]:
@@ -151,28 +192,53 @@ class UserRepository:
 
         from sqlalchemy import text
 
-        stmt = text(
+        dialect = self.session.bind.dialect.name
+        if dialect == "oracle":
+            # Oracle: CONNECT BY em vez de WITH RECURSIVE, IN em vez de ANY
+            placeholders = ", ".join(f":uid_{i}" for i in range(len(user_ids)))
+            sql = f"""
+                SELECT DISTINCT fa.user_id, p.module
+                  FROM "APP".FACILITY_ACCESSES fa
+                  JOIN (
+                    SELECT id AS source_id, id AS ancestor_id FROM "APP".ROLES
+                    UNION ALL
+                    SELECT CONNECT_BY_ROOT id, id
+                      FROM "APP".ROLES
+                     START WITH parent_id IS NOT NULL
+                   CONNECT BY PRIOR parent_id = id
+                  ) rc ON rc.source_id = fa.role_id
+                  JOIN "APP".ROLE_PERMISSIONS rp
+                    ON rp.role_id = rc.ancestor_id AND rp.granted = 1
+                  JOIN "APP".PERMISSIONS p
+                    ON p.code = rp.permission_code
+                 WHERE fa.user_id IN ({placeholders})
             """
-            WITH RECURSIVE role_chain(source_id, ancestor_id) AS (
-                SELECT id, id FROM app.roles
-                UNION
-                SELECT rc.source_id, r.parent_id
-                  FROM role_chain rc
-                  JOIN app.roles r ON r.id = rc.ancestor_id
-                 WHERE r.parent_id IS NOT NULL
-            )
-            SELECT DISTINCT fa.user_id, p.module
-              FROM app.facility_accesses fa
-              JOIN role_chain rc ON rc.source_id = fa.role_id
-              JOIN app.role_permissions rp
-                ON rp.role_id = rc.ancestor_id AND rp.granted = true
-              JOIN app.permissions p
-                ON p.code = rp.permission_code
-             WHERE fa.user_id = ANY(:user_ids)
+            params = {f"uid_{i}": uid.bytes for i, uid in enumerate(user_ids)}
+        else:
+            sql = """
+                WITH RECURSIVE role_chain(source_id, ancestor_id) AS (
+                    SELECT id, id FROM app.roles
+                    UNION
+                    SELECT rc.source_id, r.parent_id
+                      FROM role_chain rc
+                      JOIN app.roles r ON r.id = rc.ancestor_id
+                     WHERE r.parent_id IS NOT NULL
+                )
+                SELECT DISTINCT fa.user_id, p.module
+                  FROM app.facility_accesses fa
+                  JOIN role_chain rc ON rc.source_id = fa.role_id
+                  JOIN app.role_permissions rp
+                    ON rp.role_id = rc.ancestor_id AND rp.granted = true
+                  JOIN app.permissions p
+                    ON p.code = rp.permission_code
+                 WHERE fa.user_id = ANY(:user_ids)
             """
-        )
-        rows = (await self.session.execute(stmt, {"user_ids": user_ids})).all()
+            params = {"user_ids": user_ids}
+        rows = (await self.session.execute(text(sql), params)).all()
         out: dict[UUID, set[str]] = {uid: set() for uid in user_ids}
         for uid, module in rows:
+            # Oracle (RAW(16)) retorna bytes em ``text()`` cru; PG retorna UUID.
+            if isinstance(uid, bytes):
+                uid = UUID(bytes=uid)
             out[uid].add(module)
         return out

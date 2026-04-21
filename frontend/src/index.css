@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lexend:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -23,6 +23,29 @@
     --input: 214 32% 91%;
     --ring: 217 91% 60%;
     --radius: 0.5rem;
+  }
+
+  /* Tema escuro — alinhado com slate-900/950 já usado pelo layout
+     (Sidebar/AppShell). Mantém os utilitários `bg-background`,
+     `bg-card`, `border-border`, `text-muted-foreground` consistentes. */
+  .dark {
+    --background: 222 47% 6%;        /* ~slate-950 */
+    --foreground: 210 40% 96%;
+    --card: 222 47% 11%;             /* ~slate-900 */
+    --card-foreground: 210 40% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;        /* ~slate-800 */
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 210 40% 96%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
   }
 
   * {
@@ -71,4 +94,57 @@
   .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: #64748b;
   }
+}
+
+/* ─── Acessibilidade ─────────────────────────────────────────────────────
+   Aplicado pelo applyAccessibility() em accessibilityStore. */
+
+html {
+  /* Inicia em 1; setado dinamicamente. Tailwind text-* usa rem, então
+     mudar a base do html escala o app inteiro. */
+  font-size: calc(16px * var(--a11y-font-scale, 1));
+}
+
+/* Famílias alternativas — fontes amplamente disponíveis e
+   reconhecidas por boa legibilidade em tela. */
+html[data-a11y-font='lexend'] body {
+  font-family: 'Lexend', 'Inter', sans-serif;
+}
+html[data-a11y-font='verdana'] body {
+  font-family: Verdana, Geneva, sans-serif;
+}
+html[data-a11y-font='arial'] body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+html[data-a11y-font='tahoma'] body {
+  font-family: Tahoma, Geneva, sans-serif;
+}
+html[data-a11y-font='serif'] body {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* Espaçamento de linha */
+html[data-a11y-line-spacing='relaxed'] body { line-height: 1.65; }
+html[data-a11y-line-spacing='loose']   body { line-height: 1.9; }
+
+/* Reduzir movimento — desativa animações e transições */
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Alto contraste — bordas mais escuras + foco mais marcado */
+html.a11y-high-contrast {
+  --border: 215 30% 35%;
+}
+html.a11y-high-contrast.dark {
+  --border: 215 30% 65%;
+}
+html.a11y-high-contrast :focus-visible {
+  outline: 3px solid currentColor !important;
+  outline-offset: 2px !important;
 }

@@ -56,6 +56,13 @@ export const auditApi = {
       pageSize: params.pageSize,
     })}`),
 
+  /** Logs do próprio usuário (qualquer nível autenticado). */
+  listMine: (params: { page?: number; pageSize?: number } = {}) =>
+    api.get<PageResponse<AuditLogItem>>(`/api/v1/audit/me${qs({
+      page: params.page,
+      pageSize: params.pageSize,
+    })}`),
+
   /**
    * Busca até `maxItems` logs seguindo paginação do servidor.
    * Útil para relatórios que fazem análise client-side.

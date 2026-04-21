@@ -1,0 +1,253 @@
+{
+  "editable": true,
+  "graphTooltip": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "municipio",
+        "label": "Município",
+        "description": "Selecione o município para filtrar todas as métricas",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(municipality_info, name)",
+        "refresh": 2,
+        "includeAll": false,
+        "current": {},
+        "sort": 1
+      },
+      {
+        "name": "ibge",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(municipality_info{name=~\"$municipio\"}, ibge)",
+        "refresh": 2,
+        "includeAll": false,
+        "current": {},
+        "sort": 1,
+        "hide": 2
+      },
+      {
+        "name": "state",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(municipality_info{name=~\"$municipio\"}, state)",
+        "refresh": 2,
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Visão Geral — $municipio ($ibge)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Total de Requests (1h)",
+      "description": "Quantidade total de requests HTTP feitos no contexto deste município na última hora. Inclui todos os endpoints da API (pacientes, CNES, autenticação, etc).",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(increase(http_requests_total{municipality=\"$ibge\"}[1h])) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "fixedColor": "blue", "mode": "fixed" } } }
+    },
+    {
+      "title": "Requests / segundo",
+      "description": "Taxa atual de requests por segundo para este município. Média móvel de 5 minutos. Valores altos indicam pico de uso (ex: horário de atendimento).",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{municipality=\"$ibge\"}[5m])) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2, "color": { "fixedColor": "green", "mode": "fixed" } } }
+    },
+    {
+      "title": "Error Rate %",
+      "description": "Percentual de requests que retornaram erro 5xx (erro interno do servidor) nos últimos 5 minutos. Acima de 1% merece investigação; acima de 5% é crítico.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{status=~\"5..\",municipality=\"$ibge\"}[5m])) / sum(rate(http_requests_total{municipality=\"$ibge\"}[5m])) * 100 or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } }
+    },
+    {
+      "title": "Latência p50",
+      "description": "Tempo de resposta mediano (50% dos requests são mais rápidos que isso). Valores abaixo de 100ms são excelentes; acima de 500ms indica lentidão.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le)) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "red", "value": 2 }] } } }
+    },
+    {
+      "title": "Latência p95",
+      "description": "Tempo de resposta do percentil 95 (95% dos requests são mais rápidos que isso). Representa a experiência dos usuários mais lentos. Idealmente abaixo de 1s.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le)) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] } } }
+    },
+    {
+      "title": "Latência p99",
+      "description": "Tempo de resposta do percentil 99 (o pior 1% dos requests). Se este valor estiver alto, pode indicar queries pesadas, banco lento ou endpoint problemático.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le)) or vector(0)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 2 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "type": "row",
+      "title": "Tráfego ao Longo do Tempo",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false
+    },
+    {
+      "title": "Requests / segundo por Status",
+      "description": "Taxa de requests ao longo do tempo, separada por código HTTP. Verde (2xx) = sucesso. Laranja (4xx) = erro do cliente (validação, auth). Vermelho (5xx) = erro do servidor.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_requests_total{municipality=\"$ibge\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "^.*5" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "^.*4" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "^.*2" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "title": "Latência ao Longo do Tempo",
+      "description": "Evolução da latência nos percentis 50, 95 e 99. Picos vermelhos (p99) indicam momentos de degradação. Use para identificar horários problemáticos.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      }
+    },
+    {
+      "type": "row",
+      "title": "Detalhamento de Endpoints",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "collapsed": false
+    },
+    {
+      "title": "Top 10 Endpoints Mais Usados (1h)",
+      "description": "Os 10 endpoints mais chamados por este município na última hora. Mostra quais funcionalidades são mais usadas (pacientes, CNES, relatórios, etc).",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "topk(10, sum by (path) (increase(http_requests_total{municipality=\"$ibge\"}[1h])))", "legendFormat": "{{path}}", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Requests", "path": "Endpoint" } } }
+      ],
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "title": "Top 10 Endpoints Mais Lentos (p95)",
+      "description": "Os 10 endpoints com maior latência (percentil 95) para este município. Candidatos a otimização — queries pesadas, dados grandes, ou processamento lento.",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "topk(10, histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{municipality=\"$ibge\"}[5m])) by (le, path)))", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 3 } },
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "le": true }, "renameByName": { "Value": "p95 (s)", "path": "Endpoint" } } }
+      ]
+    },
+    {
+      "title": "Distribuição por Status Code",
+      "description": "Proporção de respostas por status HTTP. 200/201 = sucesso. 400/401/403/422 = erro do cliente. 500 = erro do servidor. Uma fatia grande de 4xx pode indicar problemas de validação ou permissão.",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum by (status) (increase(http_requests_total{municipality=\"$ibge\"}[1h]))", "legendFormat": "{{status}}" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right" }, "pieType": "donut" }
+    },
+    {
+      "title": "Distribuição por Método HTTP",
+      "description": "Proporção de requests por método. GET = consultas. POST = criações. PATCH/PUT = atualizações. DELETE = remoções. Útil para entender o padrão de uso (leitura vs escrita).",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum by (method) (increase(http_requests_total{municipality=\"$ibge\"}[1h]))", "legendFormat": "{{method}}" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right" }, "pieType": "donut" }
+    },
+    {
+      "title": "Erros 5xx por Endpoint",
+      "description": "Lista de endpoints que retornaram erro 500 (Internal Server Error) neste município. Cada um destes erros aparece nos logs e precisa de investigação.",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum by (path, method) (increase(http_requests_total{municipality=\"$ibge\",status=~\"5..\"}[24h])) > 0", "format": "table", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Erros (24h)", "path": "Endpoint", "method": "Método" } } }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Logs do Município",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "collapsed": false
+    },
+    {
+      "title": "Logs Recentes — $municipio",
+      "description": "Logs em tempo real filtrados por este município. Cada linha mostra: timestamp, nível (info/warning/error), evento, e contexto (request_id, user). Clique em uma linha para expandir detalhes.",
+      "type": "logs",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 33 },
+      "datasource": { "type": "loki" },
+      "targets": [
+        { "expr": "{service=\"app\", municipality_ibge=\"$ibge\"} |= ``" }
+      ],
+      "options": { "showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": true, "enableLogDetails": true, "sortOrder": "Descending", "dedupStrategy": "none" }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["zsaude", "municipio", "analise"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "zSaude - Análise por Município",
+  "uid": "zsaude-municipio"
+}

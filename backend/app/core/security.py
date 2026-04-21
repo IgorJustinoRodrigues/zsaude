@@ -98,6 +98,8 @@ def create_context_token(
     facility_id: str,
     role: str,
     modules: list[str],
+    *,
+    binding_id: str | None = None,
 ) -> str:
     now = _now_utc()
     payload = {
@@ -112,6 +114,11 @@ def create_context_token(
         "role": role,
         "mods": modules,
     }
+    if binding_id:
+        # Vínculo CBO ativo — o papel efetivo e as abilities clínicas
+        # derivam dele quando presente (binding.role_id sobrescreve
+        # access.role_id; binding.cbo_id carrega as abilities).
+        payload["bnd"] = binding_id
     return jwt.encode(payload, settings.read_jwt_private_key(), algorithm=settings.jwt_algorithm)
 
 

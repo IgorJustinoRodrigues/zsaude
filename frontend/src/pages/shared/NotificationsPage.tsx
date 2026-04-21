@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bell, BellOff, AlertCircle, AlertTriangle, CheckCircle, Info, Check } from 'lucide-react'
 import { useNotificationStore } from '../../store/notificationStore'
 import { cn } from '../../lib/utils'
-import type { NotificationType } from '../../types'
+import type { NotificationType } from '../../api/notifications'
+import { NotificationDetailModal } from '../../components/ui/NotificationDetailModal'
 
 const TYPE_META: Record<NotificationType, { icon: React.ReactNode; label: string; color: string; bg: string }> = {
   error:   { icon: <AlertCircle size={15} />,   label: 'Erro',    color: '#ef4444', bg: '#fef2f2' },
@@ -34,9 +35,13 @@ function formatDateTime(iso: string): string {
 }
 
 export function NotificationsPage() {
-  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
+  const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotificationStore()
   const [tab, setTab]         = useState<'all' | 'unread' | 'read'>('all')
   const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all')
+  const [selected, setSelected] = useState<string | null>(null)
+
+  // Pega a lista fresh ao abrir a página.
+  useEffect(() => { void refresh() }, [refresh])
 
   const filtered = notifications.filter(n => {
     const matchTab  = tab === 'all' ? true : tab === 'unread' ? !n.read : n.read
@@ -142,7 +147,7 @@ export function NotificationsPage() {
               return (
                 <div
                   key={n.id}
-                  onClick={() => markRead(n.id)}
+                  onClick={() => setSelected(n.id)}
                   className={cn(
                     'flex gap-4 px-4 py-4 cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 group',
                     !n.read && 'bg-sky-50/40 dark:bg-sky-950/20',
@@ -197,6 +202,11 @@ export function NotificationsPage() {
           </div>
         )}
       </div>
+
+      <NotificationDetailModal
+        notificationId={selected}
+        onClose={() => setSelected(null)}
+      />
     </div>
   )
 }

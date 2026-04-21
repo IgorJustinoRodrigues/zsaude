@@ -1,48 +1,75 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound } from 'lucide-react'
+import { Bell, Users, ChevronDown, Check, Sun, Moon, LogOut, User, Building2, Shield, ArrowRight, Menu, AlertCircle, AlertTriangle, CheckCircle, Info, MapPin, LayoutGrid, KeyRound, Cake, Stethoscope } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationStore } from '../../store/notificationStore'
 import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
 import { SYSTEMS } from '../../mock/users'
 import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { initials, formatDateTime } from '../../lib/utils'
 import { cn } from '../../lib/utils'
+import { AccessibilityMenu } from '../ui/AccessibilityMenu'
+import { NotificationDetailModal } from '../ui/NotificationDetailModal'
+import { UserAvatar } from '../shared/UserAvatar'
 import type { SystemId } from '../../types'
 
 const MODULE_COLORS: Record<SystemId, string> = {
   cln: '#0ea5e9', dgn: '#8b5cf6', hsp: '#f59e0b',
   pln: '#10b981', fsc: '#f97316', ops: '#6b7280',
+  ind: '#ec4899', rec: '#14b8a6', esu: '#6366f1',
 }
 
-interface Props { module: SystemId | null }
+interface Props {
+  module: SystemId | null
+  /** Quando ``true``, mostra o ícone de bolo pra reabrir o modal de aniversário. */
+  birthday?: boolean
+  onBirthdayClick?: () => void
+}
 
-export function TopBar({ module }: Props) {
+export function TopBar({ module, birthday, onBirthdayClick }: Props) {
   const { user, context, contextOptions, logout } = useAuthStore()
   const can = useAuthStore(s => s.can)
   const canManageRoles = can('roles.role.view')
-  const { notifications, unreadCount, markRead, markAllRead } = useNotificationStore()
-  const { darkMode, toggleDarkMode, openMobileSidebar } = useUIStore()
+  const { notifications, unreadCount, markRead, markAllRead, refresh, refreshCount } = useNotificationStore()
+
+  // Polling: lista completa no mount, e só o count em seguida pra ficar leve.
+  // Cadência 30s (inbox é menos "ao vivo" que presença).
+  useEffect(() => {
+    void refresh()
+    const id = setInterval(() => { void refreshCount() }, 30_000)
+    return () => clearInterval(id)
+  }, [refresh, refreshCount])
+  const { openMobileSidebar } = useUIStore()
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [notifOpen, setNotifOpen]     = useState(false)
+  const [selectedNotif, setSelectedNotif] = useState<string | null>(null)
   const [usersOpen, setUsersOpen]     = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
   const [onlineUsers, setOnlineUsers] = useState<PresenceItem[]>([])
 
+  // Quando o usuário está dentro de um contexto (módulo numa unidade),
+  // o widget mostra presença daquele município. Fora de contexto (shell
+  // /sys), mostra o total do escopo do ator. Mantém consistência com o
+  // filtro default da UsersPage.
+  const munFilterForPresence = context?.municipality.id ?? null
+
   useEffect(() => {
     let alive = true
     const load = async () => {
       try {
-        const list = await sessionsApi.presence('actor')
+        const list = await sessionsApi.presence('actor', munFilterForPresence)
         if (alive) setOnlineUsers(list)
       } catch { /* silencioso — presença não quebra topbar */ }
     }
     void load()
     const id = setInterval(load, 15_000)
     return () => { alive = false; clearInterval(id) }
-  }, [])
+  }, [munFilterForPresence])
 
   const goToUsers = () => {
     setUsersOpen(false)
@@ -55,9 +82,15 @@ export function TopBar({ module }: Props) {
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
   const canSwitchModule = available.length > 1
-  const totalFacilities =
-    contextOptions?.municipalities.reduce((s, m) => s + m.facilities.length, 0) ?? 0
-  const canSwitchUnit = totalFacilities > 1
+  // "Trocar contexto" vale pra qualquer mudança de (município, unidade,
+  // vínculo CBO). Aparece quando há mais de uma linha selecionável —
+  // cada binding conta como uma linha distinta na tela de seleção.
+  const totalContextRows = (contextOptions?.municipalities ?? []).reduce(
+    (s, m) => s + m.facilities.reduce(
+      (ss, f) => ss + Math.max(1, f.cnesBindings.length), 0,
+    ), 0,
+  )
+  const canSwitchContext = totalContextRows > 1
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -171,10 +204,30 @@ export function TopBar({ module }: Props) {
           )}
         </div>
 
+        {/* Aniversário — só aparece no dia */}
+        {birthday && (
+          <button
+            type="button"
+            onClick={onBirthdayClick}
+            title="Hoje é seu aniversário! 🎉"
+            aria-label="Abrir mensagem de aniversário"
+            className="relative flex items-center justify-center w-8 h-8 rounded-lg text-pink-500 hover:text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-950/40 transition-colors"
+          >
+            <Cake size={16} />
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+          </button>
+        )}
+
+        {/* Acessibilidade */}
+        <AccessibilityMenu />
+
         {/* Notifications */}
         <div className="relative z-50">
           <button
-            onClick={() => { setNotifOpen(v => !v); setUsersOpen(false) }}
+            onClick={() => {
+              setNotifOpen(v => { if (!v) void refresh(); return !v })
+              setUsersOpen(false)
+            }}
             className="relative flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <Bell size={16} />
@@ -228,7 +281,7 @@ export function TopBar({ module }: Props) {
                   return (
                     <button
                       key={n.id}
-                      onClick={() => { markRead(n.id); setNotifOpen(false); navigate('/notificacoes') }}
+                      onClick={() => { setSelectedNotif(n.id); setNotifOpen(false) }}
                       className={cn(
                         'w-full flex gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors',
                         !n.read && 'bg-sky-50/40 dark:bg-sky-950/20'
@@ -288,9 +341,15 @@ export function TopBar({ module }: Props) {
                 : 'hover:bg-slate-100 dark:hover:bg-slate-800'
             )}
           >
-            <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
-              {user ? initials(user.name) : 'U'}
-            </div>
+            {user
+              ? <UserAvatar
+                  userId={user.id}
+                  userName={user.name}
+                  photoId={user.currentPhotoId}
+                  className="w-7 h-7"
+                  initialsClassName="text-xs"
+                />
+              : <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">U</div>}
             <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
               {user?.name?.split(' ')[0]}
             </span>
@@ -302,9 +361,15 @@ export function TopBar({ module }: Props) {
               {/* User header */}
               <div className="p-4 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                    {user ? initials(user.name) : 'U'}
-                  </div>
+                  {user
+                    ? <UserAvatar
+                        userId={user.id}
+                        userName={user.name}
+                        photoId={user.currentPhotoId}
+                        className="w-11 h-11"
+                        initialsClassName="text-sm"
+                      />
+                    : <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">U</div>}
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{user?.email}</p>
@@ -366,6 +431,13 @@ export function TopBar({ module }: Props) {
 
               {/* Ações */}
               <div className="p-2 space-y-0.5">
+                <button
+                  onClick={() => { setUserMenuOpen(false); navigate('/minha-conta') }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <User size={14} />
+                  Minha conta
+                </button>
                 {canSwitchModule && (
                   <button
                     onClick={() => { setUserMenuOpen(false); navigate('/selecionar-sistema') }}
@@ -375,13 +447,13 @@ export function TopBar({ module }: Props) {
                     Trocar módulo
                   </button>
                 )}
-                {canSwitchUnit && (
+                {canSwitchContext && (
                   <button
                     onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <MapPin size={14} />
-                    Trocar unidade
+                    Trocar contexto
                   </button>
                 )}
                 {canManageRoles && (
@@ -405,6 +477,11 @@ export function TopBar({ module }: Props) {
           )}
         </div>
       </header>
+
+      <NotificationDetailModal
+        notificationId={selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+      />
     </>
   )
 }

@@ -48,6 +48,51 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 DB = Annotated[AsyncSession, Depends(get_db)]
 
 
+# ─── Tenant DB (multi-database) ─────────────────────────────────────────
+
+
+async def get_tenant_db(
+    user: "CurrentUserDep",
+    x_work_context: Annotated[str | None, Header(alias="X-Work-Context")] = None,
+) -> AsyncIterator[AsyncSession]:
+    """Sessão conectada ao banco do município ativo.
+
+    Usa o engine override se configurado, senão o engine principal.
+    O search_path/current_schema é configurado automaticamente.
+    """
+    from app.db.engine_registry import get_registry
+    from app.db.dialect import adapter_for_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker as asm
+
+    # Precisamos do ibge do contexto — decodifica o token sem validação completa
+    # (a validação full é feita pelo current_context quando necessário).
+    ibge: str | None = None
+    if x_work_context:
+        try:
+            payload = decode_token(x_work_context)
+            ibge = str(payload.get("ibge", ""))
+        except Exception:
+            pass
+
+    registry = get_registry()
+    eng = registry.tenant_engine(ibge) if ibge else registry.app_engine
+    adapter = adapter_for_engine(eng)
+
+    async with asm(bind=eng, expire_on_commit=False)() as session:
+        if ibge:
+            conn = await session.connection()
+            await adapter.set_search_path(conn, ibge)
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+TenantDB = Annotated[AsyncSession, Depends(get_tenant_db)]
+
+
 # ─── Valkey ───────────────────────────────────────────────────────────────
 
 
@@ -69,18 +114,30 @@ Valkey = Annotated[redis.Redis, Depends(get_valkey)]
 class CurrentUser:
     """Usuário extraído do access token."""
 
-    __slots__ = ("id", "login", "name", "token_version")
+    __slots__ = ("id", "login", "name", "token_version", "session_id")
 
-    def __init__(self, *, id: UUID, login: str, name: str, token_version: int) -> None:
+    def __init__(
+        self,
+        *,
+        id: UUID,
+        login: str,
+        name: str,
+        token_version: int,
+        session_id: UUID | None = None,
+    ) -> None:
         self.id = id
         self.login = login
         self.name = name
         self.token_version = token_version
+        # ``session_id`` == ``family_id`` do refresh; vem do claim ``sid``
+        # do access token. Usado para atualizar presença da sessão.
+        self.session_id = session_id
 
 
 async def current_user(
     db: DB,
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    x_work_context: Annotated[str | None, Header(alias="X-Work-Context")] = None,
 ) -> CurrentUser:
     if creds is None or creds.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token ausente.")
@@ -105,18 +162,50 @@ async def current_user(
 
     update_audit_context(user_id=user.id, user_name=user.name)
 
-    # Presença: toca last_seen_at da sessão (throttled a 30s). Só funciona
-    # para tokens emitidos após a feature de sessões existir (que carregam sid).
+    import structlog
+    structlog.contextvars.bind_contextvars(user=user.login)
+
+    # Presença: toca last_seen_at da sessão (throttled a 30s). Se o
+    # request carrega ``X-Work-Context``, também atualiza
+    # ``active_municipality_id`` / ``active_facility_id`` — precisamos
+    # disso aqui (e não só no ``current_context``) pra endpoints que
+    # dependem apenas de ``current_user`` também marcarem a presença
+    # corretamente. Só funciona para tokens emitidos após a feature de
+    # sessões existir (que carregam ``sid``).
     sid = payload.get("sid")
     if sid:
         try:
             from app.modules.sessions.service import SessionService
 
-            await SessionService(db).touch(UUID(sid), user_id=user.id)
+            ctx_mun: UUID | None = None
+            ctx_fac: UUID | None = None
+            if x_work_context:
+                try:
+                    ctx_payload = decode_token(x_work_context)
+                    if ctx_payload.get("typ") == "context":
+                        mun_raw = ctx_payload.get("mun")
+                        fac_raw = ctx_payload.get("fac")
+                        if mun_raw: ctx_mun = UUID(str(mun_raw))
+                        if fac_raw: ctx_fac = UUID(str(fac_raw))
+                except Exception:  # noqa: BLE001
+                    pass  # context inválido/expirado — segue sem active_*
+
+            await SessionService(db).touch(
+                UUID(sid),
+                user_id=user.id,
+                municipality_id=ctx_mun,
+                facility_id=ctx_fac,
+            )
         except Exception:  # noqa: BLE001
             pass  # presença nunca pode quebrar o request
 
-    return CurrentUser(id=user.id, login=user.login, name=user.name, token_version=user.token_version)
+    sid_claim = payload.get("sid")
+    session_id = UUID(str(sid_claim)) if sid_claim else None
+    return CurrentUser(
+        id=user.id, login=user.login, name=user.name,
+        token_version=user.token_version,
+        session_id=session_id,
+    )
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(current_user)]
@@ -179,30 +268,71 @@ async def current_context(
 
     facility_id = UUID(payload["fac"])
 
+    # Resolve o binding ativo a partir do claim ``bnd`` (quando presente).
+    # Binding → role_id_override + cbo_id → reflete o papel e abilities
+    # daquele vínculo CBO nas permissões efetivas do request.
+    bnd_raw = payload.get("bnd")
+    role_override: UUID | None = None
+    active_cbo: str | None = None
+    if bnd_raw:
+        from app.modules.tenants.models import FacilityAccessCnesBinding
+        binding = await db.scalar(
+            select(FacilityAccessCnesBinding).where(
+                FacilityAccessCnesBinding.id == UUID(str(bnd_raw)),
+            )
+        )
+        if binding is not None:
+            active_cbo = binding.cbo_id
+            if binding.role_id is not None:
+                role_override = binding.role_id
+
     # Resolve acesso + permissões fresco a cada request. A fonte de verdade
     # é o banco, não o token — assim mudanças em role/override propagam sem
     # precisar renovar o X-Work-Context.
     from app.modules.permissions.service import PermissionService
 
     perm_svc = PermissionService(db, valkey)
-    access, permissions = await perm_svc.resolve_for_facility(user.id, facility_id)
-    if access is None:
+    access, permissions = await perm_svc.resolve_for_facility(
+        user.id, facility_id,
+        role_id_override=role_override,
+        cbo_id=active_cbo,
+    )
+    # MASTER (is_root) não precisa de FacilityAccess — token emitido pelo
+    # `select` já é legítimo. Para usuários comuns, ausência de access = acesso
+    # revogado após a emissão do token.
+    if access is None and not permissions.is_root:
         raise HTTPException(status_code=403, detail="Acesso à unidade revogado.")
 
-    # Módulos derivados das permissões (intersecção com módulos operacionais).
-    # MASTER sempre enxerga todos os operacionais, mesmo os que ainda não
-    # têm permissões registradas no catálogo.
+    # Módulos derivados: cascata ROLE ∩ MUNICIPALITY ∩ FACILITY. MASTER
+    # também respeita os dois níveis — não faz sentido oferecer HSP numa
+    # unidade cujo município desabilitou, nem numa unidade que
+    # explicitamente desmarcou o módulo.
+    from app.modules.tenants.models import Facility, Municipality
+    from app.modules.tenants.service import TenantService
+
+    mun_row = await db.scalar(
+        select(Municipality).where(Municipality.id == UUID(payload["mun"]))
+    )
+    fac_row = await db.scalar(
+        select(Facility).where(Facility.id == facility_id)
+    )
+    effective_modules: frozenset[str] = (
+        TenantService.effective_facility_modules(mun_row, fac_row)
+        if mun_row and fac_row
+        else _OPERATIONAL_MODULES
+    )
+
     if permissions.is_root:
-        derived_modules = sorted(_OPERATIONAL_MODULES)
+        derived_modules = sorted(effective_modules)
     else:
-        derived_modules = sorted(permissions.modules() & _OPERATIONAL_MODULES)
+        derived_modules = sorted(permissions.modules() & effective_modules)
 
     ctx = WorkContext(
         user_id=user.id,
         municipality_id=UUID(payload["mun"]),
         municipality_ibge=str(payload.get("ibge", "")),
         facility_id=facility_id,
-        facility_access_id=access.id,
+        facility_access_id=access.id if access is not None else None,
         role=str(payload.get("role", "")),
         modules=derived_modules,
         permissions=permissions,
@@ -215,6 +345,42 @@ async def current_context(
         role=ctx.role,
     )
 
+    # Injeta município no structlog para todos os logs da request
+    import structlog
+    structlog.contextvars.bind_contextvars(
+        municipality_ibge=ctx.municipality_ibge or "",
+    )
+
+    # Reemite search_path na conexão atual, já com o ibge resolvido.
+    # (O listener on-begin roda antes do `current_context` preencher o
+    # AuditContext, então a primeira transação começa apontando só para
+    # `app, public`. Forçamos o SET agora para que queries nas tabelas
+    # do schema mun_<ibge> sejam resolvidas.)
+    if ctx.municipality_ibge:
+        from app.db.dialect import adapter_for_engine
+        adapter = adapter_for_engine(db.bind)
+        conn = await db.connection()
+        await adapter.set_search_path(conn, ctx.municipality_ibge)
+
+    # Atualiza o contexto ATIVO da sessão (quem está operando neste
+    # município/unidade agora). Usado pela query de presence pra não
+    # marcar o user como online em cidade onde ele só tem acesso mas
+    # não está atuando. Best-effort — falhas não quebram o request.
+    #
+    # ``sid`` NÃO está no token de contexto (só no access token); pegamos
+    # direto do CurrentUser, que já extraiu o claim do bearer.
+    if user.session_id is not None:
+        try:
+            from app.modules.sessions.service import SessionService
+            await SessionService(db).touch(
+                user.session_id,
+                user_id=user.id,
+                municipality_id=ctx.municipality_id,
+                facility_id=ctx.facility_id,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     return ctx
 
 
@@ -224,7 +390,7 @@ CurrentContextDep = Annotated[WorkContext, Depends(current_context)]
 # Módulos "operacionais" — os que aparecem no switcher de módulo da UI.
 # Outros módulos (sys, users, roles, audit) existem no catálogo mas não são
 # selecionáveis como contexto de trabalho.
-_OPERATIONAL_MODULES: frozenset[str] = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
+from app.core.modules import OPERATIONAL_MODULES as _OPERATIONAL_MODULES  # noqa: E402
 
 
 # ─── Guards ──────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
 import {
   MapPin, Building2, ChevronRight, Sun, Moon, LogOut,
-  ChevronDown, Layers,
+  ChevronDown, Layers, Stethoscope,
 } from 'lucide-react'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
@@ -27,6 +27,8 @@ export function ContextSelectPage() {
   const { darkMode, toggleDarkMode } = useUIStore()
   const navigate = useNavigate()
   const [expandedMun, setExpandedMun] = useState<string | null>(null)
+  // Key = `${facilityId}:${bindingId ?? '-'}`. Cada binding é uma linha
+  // independente — não existe mais modal pra escolher CBO.
   const [selecting, setSelecting] = useState<string | null>(null)
 
   useEffect(() => {
@@ -37,13 +39,28 @@ export function ContextSelectPage() {
     }
   }, []) // eslint-disable-line
 
-  const accessible = contextOptions?.municipalities ?? []
+  // Esconde municípios sem unidade cadastrada — não há onde estabelecer
+  // contexto de trabalho. (Para MASTER o backend lista tudo; o admin panel
+  // continua mostrando esses municípios para gerenciá-los.)
+  const accessible = (contextOptions?.municipalities ?? []).filter(m => m.facilities.length > 0)
   const totalFacilities = accessible.reduce((s, m) => s + m.facilities.length, 0)
+  // Conta cada binding como uma linha independente; unidades sem binding
+  // contam como 1. É o número real de "opções" que o usuário tem.
+  const totalRows = accessible.reduce(
+    (s, m) => s + m.facilities.reduce(
+      (ss, f) => ss + Math.max(1, f.cnesBindings.length), 0,
+    ), 0,
+  )
 
-  const handleSelect = async (municipalityId: string, facilityId: string) => {
-    setSelecting(facilityId)
+  const handleSelect = async (
+    municipalityId: string,
+    facilityId: string,
+    cboBindingId: string | null = null,
+  ) => {
+    const key = `${facilityId}:${cboBindingId ?? '-'}`
+    setSelecting(key)
     try {
-      const modules = await selectContext(municipalityId, facilityId)
+      const modules = await selectContext(municipalityId, facilityId, { cboBindingId })
       const ctx = useAuthStore.getState().context
       if (ctx) {
         toast.success('Contexto selecionado', `${ctx.facility.shortName} · ${ctx.municipality.name}`)
@@ -107,10 +124,11 @@ export function ContextSelectPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950 text-sky-500 mb-4">
               <Layers size={22} />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione a unidade</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione o contexto</h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
-              Você tem acesso a <strong className="text-slate-700 dark:text-slate-300">{totalFacilities} unidade{totalFacilities !== 1 ? 's' : ''}</strong>{' '}
-              em <strong className="text-slate-700 dark:text-slate-300">{accessible.length} município{accessible.length !== 1 ? 's' : ''}</strong>
+              Você tem <strong className="text-slate-700 dark:text-slate-300">{totalRows} opç{totalRows !== 1 ? 'ões' : 'ão'}</strong>{' '}
+              em <strong className="text-slate-700 dark:text-slate-300">{totalFacilities} unidade{totalFacilities !== 1 ? 's' : ''}</strong>{' '}
+              de <strong className="text-slate-700 dark:text-slate-300">{accessible.length} município{accessible.length !== 1 ? 's' : ''}</strong>
             </p>
           </div>
 
@@ -153,51 +171,71 @@ export function ContextSelectPage() {
                     </div>
                   )}
 
-                  {/* Facilities */}
+                  {/* Facilities — cada binding é uma linha; unidades sem
+                      binding aparecem numa única linha com o role do acesso. */}
                   {isExpanded && (
                     <div className={cn('divide-y divide-slate-100 dark:divide-slate-800', accessible.length > 1 && 'border-t border-slate-100 dark:border-slate-800')}>
-                      {facilities.map(({ facility, role, modules }) => {
+                      {facilities.flatMap(({ facility, role, modules, cnesBindings }) => {
                         const color = FACILITY_TYPE_COLOR[facility.type] ?? '#6b7280'
-                        return (
-                          <button
-                            key={facility.id}
-                            onClick={() => handleSelect(municipality.id, facility.id)}
-                            disabled={selecting !== null}
-                            className="group w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-60"
-                          >
-                            {/* Type indicator */}
-                            <div
-                              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold transition-transform group-hover:scale-105"
-                              style={{ backgroundColor: color + '15', color }}
+                        // Zero binding → 1 linha só com o role do acesso.
+                        // N bindings → N linhas, cada uma mostrando o CBO.
+                        const rows = cnesBindings.length === 0
+                          ? [{ bindingId: null as string | null, binding: null as null | typeof cnesBindings[number] }]
+                          : cnesBindings.map(b => ({ bindingId: b.id, binding: b }))
+                        return rows.map(({ bindingId, binding }) => {
+                          const key = `${facility.id}:${bindingId ?? '-'}`
+                          // Role/módulos efetivos: quando há binding com
+                          // role próprio, usa o dele; senão herda do acesso.
+                          const effectiveRole = binding?.role || role
+                          const effectiveModules = binding?.modules ?? modules
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => handleSelect(municipality.id, facility.id, bindingId)}
+                              disabled={selecting !== null}
+                              className="group w-full flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-60"
                             >
-                              <Building2 size={16} />
-                            </div>
-
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate group-hover:text-slate-900 dark:group-hover:text-white">
-                                {facility.name}
-                              </p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span
-                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                                  style={{ backgroundColor: color + '15', color }}
-                                >
-                                  {facility.type}
-                                </span>
-                                <span className="text-[11px] text-slate-400">{role}</span>
+                              <div
+                                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold transition-transform group-hover:scale-105"
+                                style={{ backgroundColor: color + '15', color }}
+                              >
+                                <Building2 size={16} />
                               </div>
-                            </div>
-
-                            {/* Modules count */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[10px] text-slate-400">
-                                {modules.length} módulo{modules.length !== 1 ? 's' : ''}
-                              </span>
-                              <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
-                            </div>
-                          </button>
-                        )
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate group-hover:text-slate-900 dark:group-hover:text-white">
+                                  {facility.name}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                  <span
+                                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
+                                    style={{ backgroundColor: color + '15', color }}
+                                  >
+                                    {facility.type}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">{effectiveRole}</span>
+                                </div>
+                                {binding && (
+                                  <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                    <Stethoscope size={11} className="text-sky-500 shrink-0" />
+                                    <span className="font-medium truncate">
+                                      {binding.cnesSnapshotNome || 'Profissional'}
+                                    </span>
+                                    <span className="font-mono text-[10px] px-1 rounded bg-slate-100 dark:bg-slate-800 shrink-0">
+                                      CBO {binding.cboId}
+                                    </span>
+                                    <span className="truncate">· {binding.cboDescription || '—'}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-slate-400">
+                                  {effectiveModules.length} módulo{effectiveModules.length !== 1 ? 's' : ''}
+                                </span>
+                                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
+                              </div>
+                            </button>
+                          )
+                        })
                       })}
                     </div>
                   )}

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, ArrowRight, SearchCheck,
-  Briefcase, BriefcaseMedical, Stethoscope, Activity, ClipboardList,
+  Briefcase, Stethoscope, ClipboardList, ServerCog, Award, Link2, FolderTree,
 } from 'lucide-react'
 import { normalize } from '../../lib/utils'
 
@@ -21,69 +21,95 @@ interface SearchItem {
 
 const SEARCHES: SearchItem[] = [
   {
-    id: 'cbo',
-    title: 'CBO',
-    description: 'Classificação Brasileira de Ocupações.',
-    longDescription:
-      'Consulta de ocupações profissionais da saúde conforme a CBO, com código, título, descrição e famílias ocupacionais vinculadas.',
-    icon: <Briefcase size={22} />,
-    iconBg: 'bg-sky-50 dark:bg-sky-950/50',
-    iconColor: 'text-sky-500',
-    category: 'Profissional',
-    path: '/ops/pesquisas/cbo',
-    tags: ['cbo', 'ocupacao', 'profissional', 'emprego', 'cargo'],
-  },
-  {
-    id: 'cbo-procedimentos',
-    title: 'CBO × Procedimentos',
-    description: 'Procedimentos habilitados por ocupação profissional.',
-    longDescription:
-      'Cruzamento entre a CBO e a tabela SIGTAP — lista quais procedimentos cada ocupação está habilitada a executar conforme as regras ministeriais vigentes.',
-    icon: <BriefcaseMedical size={22} />,
-    iconBg: 'bg-violet-50 dark:bg-violet-950/50',
-    iconColor: 'text-violet-500',
-    category: 'Cruzamento',
-    path: '/ops/pesquisas/cbo-procedimentos',
-    tags: ['cbo', 'procedimento', 'sigtap', 'competencia', 'habilitacao'],
-  },
-  {
-    id: 'cid',
-    title: 'CID',
-    description: 'Classificação Internacional de Doenças (CID-10).',
-    longDescription:
-      'Consulta da CID-10 e CID-11 com código, descrição, capítulo, categoria e subcategorias relacionadas a cada doença ou agravo.',
-    icon: <Stethoscope size={22} />,
-    iconBg: 'bg-amber-50 dark:bg-amber-950/50',
-    iconColor: 'text-amber-500',
-    category: 'Clínico',
-    path: '/ops/pesquisas/cid',
-    tags: ['cid', 'doenca', 'diagnostico', 'cid10', 'cid11', 'agravo'],
-  },
-  {
-    id: 'cid-procedimentos',
-    title: 'CID × Procedimentos',
-    description: 'Procedimentos autorizados por diagnóstico.',
-    longDescription:
-      'Cruzamento entre a CID e a SIGTAP — relaciona quais procedimentos são compatíveis com cada diagnóstico e permite validar autorizações de atendimento.',
-    icon: <Activity size={22} />,
-    iconBg: 'bg-red-50 dark:bg-red-950/50',
-    iconColor: 'text-red-500',
-    category: 'Cruzamento',
-    path: '/ops/pesquisas/cid-procedimentos',
-    tags: ['cid', 'procedimento', 'sigtap', 'autorizacao', 'compatibilidade'],
-  },
-  {
     id: 'procedimentos',
-    title: 'Procedimentos',
-    description: 'Tabela SIGTAP de procedimentos e OPM.',
+    title: 'Procedimentos SIGTAP',
+    description: 'Catálogo nacional de procedimentos SUS.',
     longDescription:
-      'Consulta da tabela SIGTAP com código, descrição, tipo (ambulatorial/hospitalar), complexidade, valor, CBOs compatíveis e instrumentos registrados.',
+      'Consulta completa da tabela SIGTAP com código, descrição, complexidade, valores (SH/SA/SP), financiamento e detalhes de cada procedimento.',
     icon: <ClipboardList size={22} />,
     iconBg: 'bg-emerald-50 dark:bg-emerald-950/50',
     iconColor: 'text-emerald-500',
     category: 'Tabela',
     path: '/ops/pesquisas/procedimentos',
-    tags: ['procedimento', 'sigtap', 'opm', 'ambulatorial', 'hospitalar', 'tabela'],
+    tags: ['procedimento', 'sigtap', 'opm', 'ambulatorial', 'hospitalar', 'tabela', 'valor'],
+  },
+  {
+    id: 'cbo',
+    title: 'CBO × Procedimentos',
+    description: 'Ocupações e seus procedimentos habilitados.',
+    longDescription:
+      'Pesquise uma ocupação profissional (CBO) e veja quais procedimentos SIGTAP ela está habilitada a executar conforme as regras ministeriais vigentes.',
+    icon: <Briefcase size={22} />,
+    iconBg: 'bg-sky-50 dark:bg-sky-950/50',
+    iconColor: 'text-sky-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/cbo',
+    tags: ['cbo', 'ocupacao', 'profissional', 'procedimento', 'habilitacao'],
+  },
+  {
+    id: 'cid',
+    title: 'CID × Procedimentos',
+    description: 'Diagnósticos e seus procedimentos compatíveis.',
+    longDescription:
+      'Pesquise um diagnóstico (CID-10) e veja quais procedimentos SIGTAP são compatíveis — útil para validar autorizações de atendimento.',
+    icon: <Stethoscope size={22} />,
+    iconBg: 'bg-amber-50 dark:bg-amber-950/50',
+    iconColor: 'text-amber-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/cid',
+    tags: ['cid', 'doenca', 'diagnostico', 'procedimento', 'autorizacao', 'compatibilidade'],
+  },
+  {
+    id: 'servicos',
+    title: 'Serviços × Procedimentos',
+    description: 'Serviços de saúde e procedimentos disponíveis.',
+    longDescription:
+      'Pesquise um serviço e sua classificação para ver quais procedimentos podem ser realizados — essencial para faturamento.',
+    icon: <ServerCog size={22} />,
+    iconBg: 'bg-teal-50 dark:bg-teal-950/50',
+    iconColor: 'text-teal-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/servicos',
+    tags: ['servico', 'classificacao', 'faturamento', 'procedimento'],
+  },
+  {
+    id: 'habilitacoes',
+    title: 'Habilitações × Procedimentos',
+    description: 'Habilitações SIGTAP e o que permitem faturar.',
+    longDescription:
+      'Pesquise uma habilitação e veja quais procedimentos ela autoriza — útil para validar o que a unidade pode faturar.',
+    icon: <Award size={22} />,
+    iconBg: 'bg-indigo-50 dark:bg-indigo-950/50',
+    iconColor: 'text-indigo-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/habilitacoes',
+    tags: ['habilitacao', 'faturamento', 'procedimento', 'autorizacao'],
+  },
+  {
+    id: 'compatibilidades',
+    title: 'Compatibilidades',
+    description: 'Procedimentos que podem ser cobrados juntos.',
+    longDescription:
+      'Pesquise um procedimento e veja com quais outros ele é compatível — crítico para autorização AIH/APAC e regras do SUS.',
+    icon: <Link2 size={22} />,
+    iconBg: 'bg-orange-50 dark:bg-orange-950/50',
+    iconColor: 'text-orange-500',
+    category: 'Cruzamento',
+    path: '/ops/pesquisas/compatibilidades',
+    tags: ['compatibilidade', 'aih', 'apac', 'autorizacao', 'procedimento'],
+  },
+  {
+    id: 'formas-organizacao',
+    title: 'Formas de Organização',
+    description: 'Estrutura Grupo / Subgrupo / Forma da SIGTAP.',
+    longDescription:
+      'Consulta da hierarquia de organização dos procedimentos SIGTAP — grupo, subgrupo e forma de organização.',
+    icon: <FolderTree size={22} />,
+    iconBg: 'bg-slate-100 dark:bg-slate-800',
+    iconColor: 'text-slate-500',
+    category: 'Tabela',
+    path: '/ops/pesquisas/formas-organizacao',
+    tags: ['forma', 'organizacao', 'grupo', 'subgrupo', 'hierarquia'],
   },
 ]
 
@@ -121,7 +147,7 @@ export function OpsSearchesPage() {
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">Pesquisas</h1>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {SEARCHES.length} bases disponíveis · selecione uma para consultar
+            Consulte procedimentos, ocupações e diagnósticos do SIGTAP
           </p>
         </div>
       </div>

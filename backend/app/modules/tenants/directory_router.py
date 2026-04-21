@@ -54,10 +54,19 @@ async def list_facilities(
     user: CurrentUserDep,
     municipality_id: Annotated[UUID | None, Query(alias="municipalityId")] = None,
     scope: Annotated[Literal["all", "actor"] | None, Query()] = None,
+    include_archived: Annotated[bool, Query(alias="includeArchived")] = False,
 ) -> list[FacilityRead]:
+    """Listagem read-only de unidades para selects/dropdowns.
+
+    Por padrão retorna só unidades **ativas** (``archived=False``) — selects
+    não devem oferecer unidades arquivadas. Passe ``includeArchived=true``
+    quando precisar de todas (ex.: tela de administração de unidades).
+    """
     stmt = select(Facility).order_by(Facility.name)
     if municipality_id is not None:
         stmt = stmt.where(Facility.municipality_id == municipality_id)
+    if not include_archived:
+        stmt = stmt.where(Facility.archived.is_(False))
     if scope == "actor":
         actor_scope = await _actor_scope(db, user.id)
         if actor_scope is not None:

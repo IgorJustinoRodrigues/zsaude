@@ -4,7 +4,11 @@ import { sessionsApi, type PresenceItem } from '../../api/sessions'
 import { userApi, type UserListItem } from '../../api/users'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
+import { useAuthStore } from '../../store/authStore'
 import { initials, normalize, cn } from '../../lib/utils'
+import { ExportMenuButton } from '../../components/ui/ExportMenuButton'
+import { useBranding } from '../../hooks/useBranding'
+import type { ExportBranding, ExportOptions } from '../../lib/export'
 
 function formatRelativeTime(iso: string): string {
   const diffMins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
@@ -36,12 +40,17 @@ export function UsersPage() {
   const [presence, setPresence] = useState<PresenceItem[]>([])
   const [users,    setUsers]    = useState<UserListItem[]>([])
   const [loading,  setLoading]  = useState(true)
+  // A lista SEMPRE respeita o município do contexto ativo. Sem contexto
+  // (ex.: /sys), não filtra e devolve o escopo amplo do ator.
+  const context = useAuthStore(s => s.context)
+  const munFilter = context?.municipality.id ?? null
+  const branding = useBranding()
 
   const load = useCallback(async () => {
     try {
       const [p, u] = await Promise.all([
-        sessionsApi.presence('actor'),
-        userApi.list({ pageSize: 100 }),
+        sessionsApi.presence('actor', munFilter),
+        userApi.list({ pageSize: 100, municipalityId: munFilter ?? undefined }),
       ])
       setPresence(p)
       setUsers(u.items)
@@ -49,7 +58,7 @@ export function UsersPage() {
       // permissão negada pra listar usuários se não for admin? lista presença só
       if (e instanceof HttpError && e.status === 403) {
         try {
-          const p = await sessionsApi.presence('actor')
+          const p = await sessionsApi.presence('actor', munFilter)
           setPresence(p)
         } catch {
           toast.error('Falha ao carregar presença')
@@ -60,7 +69,7 @@ export function UsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [munFilter])
 
   useEffect(() => { void load() }, [load])
 
@@ -155,6 +164,18 @@ export function UsersPage() {
             className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:border-sky-400 transition-colors text-slate-800 dark:text-slate-200 placeholder-slate-400"
           />
         </div>
+        <ExportMenuButton<Row>
+          options={buildExportOptions(filtered, {
+            contextLabel: context
+              ? `${context.municipality.name}/${context.municipality.state} · ${context.facility.shortName}`
+              : null,
+            counts: { online: online.length, offline: offline.length, total: rows.length },
+            branding,
+          })}
+          label="Relatório"
+          pdfOrientation="landscape"
+          className="self-start"
+        />
         <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg self-start">
           {([['all', 'Todos'], ['online', 'Online'], ['offline', 'Offline']] as const).map(([key, label]) => (
             <button
@@ -298,4 +319,47 @@ function UserRow({ row }: { row: Row }) {
       )}
     </div>
   )
+}
+
+// ─── Export do relatório de presença ──────────────────────────────────────────
+
+function buildExportOptions(
+  rows: Row[],
+  opts: {
+    contextLabel: string | null
+    counts: { online: number; offline: number; total: number }
+    branding?: ExportBranding
+  },
+): ExportOptions<Row> {
+  const { counts } = opts
+  const scopeSuffix = opts.contextLabel || 'Escopo do usuário'
+  return {
+    title: 'Relatório de usuários online',
+    subtitle: `${counts.online} online · ${counts.offline} offline · ${counts.total} total`,
+    context: scopeSuffix,
+    filename: `usuarios-online-${new Date().toISOString().slice(0, 10)}`,
+    rows,
+    columns: [
+      { header: 'Usuário',    get: r => r.name, bold: true },
+      { header: 'E-mail',     get: r => r.email || '—' },
+      { header: 'Perfil',     get: r => r.role || '—' },
+      {
+        header: 'Status',
+        get: r => r.online ? 'Online' : 'Offline',
+        align: 'center', width: 70,
+      },
+      {
+        header: 'Desde',
+        get: r => r.since || '—',
+        align: 'center', width: 65,
+      },
+      {
+        header: 'Última atividade',
+        get: r => r.lastSeenIso ? formatRelativeTime(r.lastSeenIso) : 'nunca logou',
+        align: 'right', width: 110,
+      },
+    ],
+    rowHighlight: r => r.online ? 'green' : null,
+    branding: opts.branding,
+  }
 }

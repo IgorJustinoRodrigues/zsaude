@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
 import { SYSTEMS } from '../../mock/users'
 import {
   Stethoscope, FlaskConical, BedDouble, ShieldCheck,
   ClipboardCheck, Truck, LogOut, ChevronRight, Sun, Moon,
   HelpCircle, ChevronDown, User, Building2, Shield, LayoutGrid,
+  TrendingUp, BellRing, Link2, ArrowLeft, AlertCircle,
 } from 'lucide-react'
 import { initials } from '../../lib/utils'
 import { cn } from '../../lib/utils'
@@ -20,6 +21,9 @@ const ICONS: Record<SystemId, React.ReactNode> = {
   pln: <ShieldCheck size={22} />,
   fsc: <ClipboardCheck size={22} />,
   ops: <Truck size={22} />,
+  ind: <TrendingUp size={22} />,
+  rec: <BellRing size={22} />,
+  esu: <Link2 size={22} />,
 }
 
 const ICON_SM: Record<SystemId, React.ReactNode> = {
@@ -29,11 +33,15 @@ const ICON_SM: Record<SystemId, React.ReactNode> = {
   pln: <ShieldCheck size={12} />,
   fsc: <ClipboardCheck size={12} />,
   ops: <Truck size={12} />,
+  ind: <TrendingUp size={12} />,
+  rec: <BellRing size={12} />,
+  esu: <Link2 size={12} />,
 }
 
 export function SystemSelectPage() {
   const { user, context, selectSystem, logout } = useAuthStore()
-  const { darkMode, toggleDarkMode } = useUIStore()
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -43,17 +51,22 @@ export function SystemSelectPage() {
     navigate(`/${id}`)
   }
 
-  const available = context?.modules?.length
+  // Se há contexto, filtra pelos módulos que ele autoriza — mesmo que a
+  // lista esteja vazia (= usuário sem acesso a nada daquela unidade).
+  // Sem contexto, cai pra todos (tela de fallback pra MASTER ou boot).
+  const available = context
     ? SYSTEMS.filter(s => context.modules.includes(s.id))
     : SYSTEMS
 
-  // Auto-select if only one module available
+  // Auto-select só se o user tem exatamente 1 módulo e NÃO é MASTER.
+  // MASTER sempre vê a tela para poder escolher entre módulos ou
+  // o painel da plataforma.
   useEffect(() => {
-    if (available.length === 1) {
+    if (user?.level !== 'master' && available.length === 1) {
       selectSystem(available[0].id)
       navigate(`/${available[0].id}`, { replace: true })
     }
-  }, [available.length]) // eslint-disable-line
+  }, [available.length, user?.level]) // eslint-disable-line
 
   // Close on outside click
   useEffect(() => {
@@ -198,10 +211,75 @@ export function SystemSelectPage() {
 
       {/* Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
+        {/* Contexto atual + botão voltar */}
+        {context && (
+          <div className="w-full max-w-2xl mb-6 flex items-center justify-between gap-3">
+            <button
+              onClick={() => navigate('/selecionar-contexto')}
+              className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+            >
+              <ArrowLeft size={14} />
+              Trocar município / unidade
+            </button>
+            <div className="text-right text-xs text-slate-500 dark:text-slate-400">
+              <p className="font-medium text-slate-700 dark:text-slate-300">
+                {context.municipality.name} · {context.municipality.state}
+              </p>
+              <p className="text-[11px] text-slate-400">{context.facility.shortName}</p>
+            </div>
+          </div>
+        )}
+
         <div className="text-center mb-12">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione o módulo</h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">Escolha onde deseja trabalhar hoje</p>
         </div>
+
+        {/* Atalho para o painel da plataforma (só MASTER) */}
+        {user?.level === 'master' && (
+          <button
+            onClick={() => navigate('/sys')}
+            className="group w-full max-w-2xl mb-6 bg-gradient-to-r from-violet-950 to-slate-900 hover:from-violet-900 hover:to-slate-800 border border-violet-800/60 rounded-2xl px-5 py-4 text-left transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-4"
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-violet-500/20 text-violet-200 shrink-0 group-hover:scale-110 transition-transform">
+              <Shield size={22} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold tracking-widest text-violet-300 uppercase mb-0.5">
+                Plataforma
+              </p>
+              <p className="text-sm font-semibold text-white">
+                Painel MASTER
+              </p>
+              <p className="text-xs text-violet-300/80 mt-0.5">
+                Municípios, unidades, usuários administrativos, perfis e configurações globais
+              </p>
+            </div>
+            <ChevronRight size={16} className="text-violet-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+          </button>
+        )}
+
+        {available.length === 0 && user?.level !== 'master' && (
+          <div className="w-full max-w-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-6 text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mb-3">
+              <AlertCircle size={22} className="text-amber-600 dark:text-amber-400" />
+            </div>
+            <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
+              Nenhum módulo disponível nesta unidade
+            </h2>
+            <p className="text-sm text-amber-800/80 dark:text-amber-300/80 mt-1.5">
+              Seu perfil nesta unidade não tem acesso a nenhum módulo operacional.
+              Tente outra unidade ou peça ao administrador para liberar um perfil com acesso.
+            </p>
+            <button
+              onClick={() => navigate('/selecionar-contexto')}
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition-colors"
+            >
+              <ArrowLeft size={14} />
+              Escolher outra unidade
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-2xl">
           {available.map(sys => (

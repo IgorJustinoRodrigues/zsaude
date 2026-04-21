@@ -1,9 +1,28 @@
 // Endpoints MASTER: municípios, unidades, configs, audit logs.
 
 import { api } from './client'
+import type { SystemId } from '../types'
 import type { PageResponse } from './users'
 
 // ─── Municípios ───────────────────────────────────────────────────────────────
+
+export interface NeighborhoodInput {
+  id?: string
+  name: string
+  population?: number | null
+  latitude?: number | null
+  longitude?: number | null
+  territory?: [number, number][] | null
+}
+
+export interface NeighborhoodOut {
+  id: string
+  name: string
+  population: number | null
+  latitude: number | null
+  longitude: number | null
+  territory: [number, number][] | null
+}
 
 export interface MunicipalityAdminDetail {
   id: string
@@ -14,17 +33,43 @@ export interface MunicipalityAdminDetail {
   schemaName: string
   facilityCount: number
   userCount: number
+  population: number | null
+  centerLatitude: number | null
+  centerLongitude: number | null
+  territory: [number, number][] | null
+  neighborhoods: NeighborhoodOut[]
+  enabledModules: SystemId[]
+  cadsusUser: string
+  cadsusPasswordSet: boolean
+  timezone: string
 }
 
 export interface MunicipalityCreateInput {
   name: string
   state: string
   ibge: string
+  population?: number | null
+  centerLatitude?: number | null
+  centerLongitude?: number | null
+  territory?: [number, number][] | null
+  neighborhoods?: NeighborhoodInput[]
+  enabledModules?: SystemId[]
+  timezone?: string
 }
 
 export interface MunicipalityUpdateInput {
   name?: string
   state?: string
+  population?: number | null
+  centerLatitude?: number | null
+  centerLongitude?: number | null
+  territory?: [number, number][] | null
+  neighborhoods?: NeighborhoodInput[]
+  enabledModules?: SystemId[]
+  cadsusUser?: string
+  /** Passar `null` pra limpar, ou string nova pra trocar. Omitir = não mexe. */
+  cadsusPassword?: string | null
+  timezone?: string
 }
 
 // ─── Unidades ────────────────────────────────────────────────────────────────
@@ -36,6 +81,8 @@ export interface FacilityAdmin {
   type: string
   cnes: string | null
   municipalityId: string
+  /** ``null`` = herda os módulos do município; array = personalização. */
+  enabledModules: SystemId[] | null
 }
 
 export interface FacilityCreateInput {
@@ -44,6 +91,7 @@ export interface FacilityCreateInput {
   shortName: string
   type: string
   cnes?: string | null
+  enabledModules?: SystemId[] | null
 }
 
 export interface FacilityUpdateInput {
@@ -51,6 +99,8 @@ export interface FacilityUpdateInput {
   shortName?: string
   type?: string
   cnes?: string | null
+  /** Passar ``null`` explicitamente = voltar a herdar. Omitir = não mexe. */
+  enabledModules?: SystemId[] | null
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

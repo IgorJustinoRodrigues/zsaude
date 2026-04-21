@@ -27,6 +27,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         finally:
-            structlog.contextvars.unbind_contextvars("request_id")
+            structlog.contextvars.unbind_contextvars(
+                "request_id", "user", "municipality_ibge",
+            )
         response.headers[HEADER] = req_id
         return response

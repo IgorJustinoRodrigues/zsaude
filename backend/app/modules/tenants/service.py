@@ -9,11 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.modules import OPERATIONAL_MODULES
 from app.core.security import create_context_token
 from app.db.tenant_schemas import ensure_municipality_schema, schema_for_municipality
-from app.modules.tenants.models import Facility, FacilityAccess, FacilityType, Municipality, MunicipalityAccess
+from app.modules.tenants.models import (
+    Facility,
+    FacilityAccess,
+    FacilityType,
+    Municipality,
+    MunicipalityAccess,
+    Neighborhood,
+)
 from app.modules.tenants.repository import TenantRepository
 from app.modules.tenants.schemas import (
+    CnesBindingRead,
     FacilityCreate,
     FacilityRead,
     FacilityUpdate,
@@ -23,6 +32,8 @@ from app.modules.tenants.schemas import (
     MunicipalityRead,
     MunicipalityUpdate,
     MunicipalityWithFacilities,
+    NeighborhoodInput,
+    NeighborhoodOut,
     WorkContextCurrent,
     WorkContextIssued,
     WorkContextOptions,
@@ -35,14 +46,39 @@ class TenantService:
         self.session = session
         self.repo = TenantRepository(session)
 
+    # ── Helpers internos ──────────────────────────────────────────────
+
+    @staticmethod
+    def _enabled_modules_set(mun: Municipality) -> frozenset[str]:
+        """Conjunto de módulos habilitados, com default "todos" para
+        municípios legados sem configuração."""
+        if not mun.enabled_modules:
+            return OPERATIONAL_MODULES
+        return frozenset(m for m in mun.enabled_modules if m in OPERATIONAL_MODULES)
+
+    async def _is_master(self, user_id: UUID) -> bool:
+        from app.modules.users.models import User, UserLevel
+        level = await self.session.scalar(select(User.level).where(User.id == user_id))
+        return level == UserLevel.MASTER
+
     async def options_for(self, user_id: UUID) -> WorkContextOptions:
         from app.modules.permissions.models import Role
         from app.modules.permissions.service import PermissionService
 
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
         perm_svc = PermissionService(self.session)
 
-        muns = await self.repo.list_municipalities_for_user(user_id)
+        is_master = await self._is_master(user_id)
+
+        if is_master:
+            # MASTER enxerga todos os municípios + todas as unidades,
+            # independentemente de MunicipalityAccess/FacilityAccess.
+            muns = list((await self.session.scalars(
+                select(Municipality)
+                .where(Municipality.archived== False)
+                .order_by(Municipality.name)
+            )).all())
+        else:
+            muns = await self.repo.list_municipalities_for_user(user_id)
         out: list[MunicipalityWithFacilities] = []
 
         # Cache roles por id (options costuma ter vários acessos ao mesmo role).
@@ -57,20 +93,66 @@ class TenantService:
             return r.name if r else ""
 
         for mun in muns:
-            rows = await self.repo.list_facilities_for_user(user_id, mun.id)
             facilities: list[FacilityWithAccess] = []
-            for fac, access in rows:
-                resolved = await perm_svc.resolve(user_id, access.id)
-                mods = sorted(
-                    _OPERATIONAL if resolved.is_root else resolved.modules() & _OPERATIONAL
-                )
-                facilities.append(
-                    FacilityWithAccess(
-                        facility=FacilityRead.model_validate(fac),
-                        role=await role_name(access.role_id),
-                        modules=mods,
+
+            if is_master:
+                # MASTER vê todas as unidades do município. Role sintético.
+                fac_rows = list((await self.session.scalars(
+                    select(Facility)
+                    .where(Facility.municipality_id == mun.id, Facility.archived== False)
+                    .order_by(Facility.name)
+                )).all())
+                for fac in fac_rows:
+                    mods = sorted(self.effective_facility_modules(mun, fac))
+                    facilities.append(
+                        FacilityWithAccess(
+                            facility=FacilityRead.model_validate(fac),
+                            role="MASTER",
+                            modules=mods,
+                        )
                     )
-                )
+            else:
+                rows = await self.repo.list_facilities_for_user(user_id, mun.id)
+                for fac, access in rows:
+                    resolved = await perm_svc.resolve(user_id, access.id)
+                    effective = self.effective_facility_modules(mun, fac)
+                    available = effective if resolved.is_root else resolved.modules() & effective
+                    # Cada binding pode ter role_id próprio → role/módulos
+                    # efetivos diferentes quando ele for o ativo. Se não
+                    # tiver, herda os do FacilityAccess pai.
+                    bindings: list[CnesBindingRead] = []
+                    for b in (access.cnes_bindings or []):
+                        if b.role_id and b.role_id != access.role_id:
+                            b_resolved = await perm_svc.resolve(
+                                user_id, access.id, role_id_override=b.role_id,
+                            )
+                            b_available = (
+                                effective if b_resolved.is_root
+                                else b_resolved.modules() & effective
+                            )
+                            b_role_name = await role_name(b.role_id)
+                        else:
+                            b_available = available
+                            b_role_name = await role_name(access.role_id)
+                        bindings.append(CnesBindingRead(
+                            id=b.id,
+                            cbo_id=b.cbo_id,
+                            cbo_description=b.cbo_description,
+                            cnes_professional_id=b.cnes_professional_id,
+                            cnes_snapshot_cpf=b.cnes_snapshot_cpf,
+                            cnes_snapshot_nome=b.cnes_snapshot_nome,
+                            role=b_role_name,
+                            modules=sorted(b_available),
+                        ))
+                    facilities.append(
+                        FacilityWithAccess(
+                            facility=FacilityRead.model_validate(fac),
+                            role=await role_name(access.role_id),
+                            modules=sorted(available),
+                            cnes_bindings=bindings,
+                        )
+                    )
+
             out.append(
                 MunicipalityWithFacilities(
                     municipality=MunicipalityRead.model_validate(mun),
@@ -80,28 +162,78 @@ class TenantService:
         return WorkContextOptions(municipalities=out)
 
     async def select(self, user_id: UUID, payload: WorkContextSelect) -> WorkContextIssued:
-        from app.modules.permissions.service import PermissionService
+        from app.modules.permissions.service import PermissionService, ResolvedPermissions
+        from app.modules.tenants.models import FacilityAccessCnesBinding
 
         mun = await self.repo.get_municipality(payload.municipality_id)
         if mun is None:
             raise NotFoundError("Município não encontrado.")
 
-        row = await self.repo.get_facility_access(user_id, payload.facility_id)
-        if row is None:
-            raise ForbiddenError("Você não tem acesso a esta unidade.")
+        is_master = await self._is_master(user_id)
 
-        facility, access = row
-        if facility.municipality_id != mun.id:
-            raise ForbiddenError("Unidade não pertence ao município informado.")
+        chosen_binding: FacilityAccessCnesBinding | None = None
 
-        # Resolve permissões (fonte única). Módulos derivam das permissões.
-        resolved = await PermissionService(self.session).resolve(user_id, access.id)
-
-        _OPERATIONAL = frozenset({"cln", "dgn", "hsp", "pln", "fsc", "ops"})
-        if resolved.is_root:
-            modules = sorted(_OPERATIONAL)
+        if is_master:
+            facility = await self.session.scalar(
+                select(Facility).where(Facility.id == payload.facility_id)
+            )
+            if facility is None:
+                raise NotFoundError("Unidade não encontrada.")
+            if facility.municipality_id != mun.id:
+                raise ForbiddenError("Unidade não pertence ao município informado.")
+            # MASTER: permissões root, role sintético.
+            resolved = ResolvedPermissions(codes=frozenset(), is_root=True)
+            role_name = "MASTER"
         else:
-            modules = sorted(resolved.modules() & _OPERATIONAL)
+            row = await self.repo.get_facility_access(user_id, payload.facility_id)
+            if row is None:
+                raise ForbiddenError("Você não tem acesso a esta unidade.")
+            facility, access = row
+            if facility.municipality_id != mun.id:
+                raise ForbiddenError("Unidade não pertence ao município informado.")
+
+            # Resolve o vínculo CBO ativo:
+            #  - se o cliente mandou ``cbo_binding_id``, valida que pertence
+            #    a esse acesso;
+            #  - se não mandou e só existe 1 binding, usa esse automaticamente;
+            #  - se não mandou e existem 0 ou 2+, segue sem binding ativo.
+            bindings = list(access.cnes_bindings or [])
+            if payload.cbo_binding_id:
+                match = next((b for b in bindings if b.id == payload.cbo_binding_id), None)
+                if match is None:
+                    raise ForbiddenError("Vínculo CBO inválido para esse acesso.")
+                chosen_binding = match
+            elif len(bindings) == 1:
+                chosen_binding = bindings[0]
+
+            # Papel efetivo: binding.role_id tem precedência sobre
+            # access.role_id quando o binding está ativo e define um role
+            # próprio. Assim, o mesmo usuário pode atuar com perfis
+            # distintos em CBOs diferentes da mesma unidade.
+            effective_role_id = (
+                chosen_binding.role_id
+                if chosen_binding is not None and chosen_binding.role_id is not None
+                else access.role_id
+            )
+            # CBO do binding ativo → abilities clínicas (prescrever, etc.).
+            effective_cbo_id = (
+                chosen_binding.cbo_id if chosen_binding is not None else None
+            )
+            resolved = await PermissionService(self.session).resolve(
+                user_id, access.id,
+                role_id_override=effective_role_id,
+                cbo_id=effective_cbo_id,
+            )
+            from app.modules.permissions.models import Role
+            role = await self.session.get(Role, effective_role_id) if effective_role_id else None
+            role_name = role.name if role else ""
+
+        # Cascata: município ∩ unidade ∩ role (se não-master).
+        effective = self.effective_facility_modules(mun, facility)
+        if resolved.is_root:
+            modules = sorted(effective)
+        else:
+            modules = sorted(resolved.modules() & effective)
 
         if payload.module:
             if payload.module not in modules:
@@ -110,12 +242,6 @@ class TenantService:
                 )
             modules = [payload.module]
 
-        # Nome do perfil (derivado do role).
-        from app.modules.permissions.models import Role
-
-        role = await self.session.get(Role, access.role_id)
-        role_name = role.name if role else ""
-
         token = create_context_token(
             user_id=str(user_id),
             municipality_id=str(mun.id),
@@ -123,7 +249,60 @@ class TenantService:
             facility_id=str(facility.id),
             role=role_name,
             modules=modules,
+            binding_id=str(chosen_binding.id) if chosen_binding else None,
         )
+
+        # Audit com nomes (não só IDs) — assim os logs ficam legíveis sem
+        # precisar resolver UUIDs posteriormente.
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
+        from app.modules.audit.writer import write_audit
+
+        fac_type = facility.type.value if hasattr(facility.type, "value") else str(facility.type)
+        actor = get_audit_context().user_name
+        extra = f"{mun.name}/{mun.state}" + (f" · módulo {payload.module.upper()}" if payload.module else "")
+        await write_audit(
+            self.session,
+            module="auth",
+            action="select_context",
+            severity="info",
+            resource="WorkContext",
+            resource_id=str(facility.id),
+            description=describe_change(
+                actor=actor, verb="entrou em",
+                target_kind="unidade",
+                target_name=f"{facility.name} ({fac_type})",
+                extra=extra,
+            ),
+            user_id=user_id,
+            municipality_id=mun.id,
+            facility_id=facility.id,
+            role=role_name,
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+                "facilityId": str(facility.id),
+                "facilityName": facility.name,
+                "facilityShortName": facility.short_name,
+                "facilityType": fac_type,
+                "role": role_name,
+                "modules": modules,
+                "selectedModule": payload.module,
+            },
+        )
+
+        binding_read: CnesBindingRead | None = None
+        if chosen_binding is not None:
+            binding_read = CnesBindingRead(
+                id=chosen_binding.id,
+                cbo_id=chosen_binding.cbo_id,
+                cbo_description=chosen_binding.cbo_description,
+                cnes_professional_id=chosen_binding.cnes_professional_id,
+                cnes_snapshot_cpf=chosen_binding.cnes_snapshot_cpf,
+                cnes_snapshot_nome=chosen_binding.cnes_snapshot_nome,
+            )
 
         return WorkContextIssued(
             context_token=token,
@@ -133,6 +312,7 @@ class TenantService:
             modules=modules,
             permissions=resolved.to_list(),
             expires_in=settings.work_context_ttl_minutes * 60,
+            cbo_binding=binding_read,
         )
 
     async def current(
@@ -145,10 +325,19 @@ class TenantService:
         permissions: list[str],
     ) -> WorkContextCurrent:
         mun = await self.repo.get_municipality(municipality_id)
-        row = await self.repo.get_facility_access(user_id, facility_id)
-        if mun is None or row is None:
+        if mun is None:
             raise NotFoundError("Contexto não encontrado.")
-        facility, _ = row
+
+        if await self._is_master(user_id):
+            facility = await self.session.scalar(
+                select(Facility).where(Facility.id == facility_id)
+            )
+        else:
+            row = await self.repo.get_facility_access(user_id, facility_id)
+            facility = row[0] if row else None
+        if facility is None:
+            raise NotFoundError("Contexto não encontrado.")
+
         return WorkContextCurrent(
             municipality=MunicipalityRead.model_validate(mun),
             facility=FacilityRead.model_validate(facility),
@@ -162,7 +351,7 @@ class TenantService:
     async def _municipality_detail(self, mun: Municipality) -> MunicipalityDetail:
         fac_count = await self.session.scalar(
             select(func.count()).select_from(Facility).where(
-                Facility.municipality_id == mun.id, Facility.archived.is_(False)
+                Facility.municipality_id == mun.id, Facility.archived== False
             )
         ) or 0
         user_count = await self.session.scalar(
@@ -170,6 +359,11 @@ class TenantService:
                 MunicipalityAccess.municipality_id == mun.id
             )
         ) or 0
+        hoods = list((await self.session.scalars(
+            select(Neighborhood)
+            .where(Neighborhood.municipality_id == mun.id)
+            .order_by(Neighborhood.name)
+        )).all())
         return MunicipalityDetail(
             id=mun.id,
             name=mun.name,
@@ -179,16 +373,74 @@ class TenantService:
             schema_name=schema_for_municipality(mun.ibge),
             facility_count=int(fac_count),
             user_count=int(user_count),
+            population=mun.population,
+            center_latitude=float(mun.center_latitude) if mun.center_latitude is not None else None,
+            center_longitude=float(mun.center_longitude) if mun.center_longitude is not None else None,
+            territory=mun.territory,
+            enabled_modules=sorted(self._enabled_modules_set(mun)),
+            cadsus_user=mun.cadsus_user or "",
+            cadsus_password_set=bool(mun.cadsus_password),
+            timezone=mun.timezone,
+            neighborhoods=[
+                NeighborhoodOut(
+                    id=n.id,
+                    name=n.name,
+                    population=n.population,
+                    latitude=float(n.latitude) if n.latitude is not None else None,
+                    longitude=float(n.longitude) if n.longitude is not None else None,
+                    territory=n.territory,
+                )
+                for n in hoods
+            ],
         )
 
     async def create_municipality(self, payload: MunicipalityCreate) -> MunicipalityDetail:
+        from app.core.crypto import encrypt_secret
+
         if await self.session.scalar(select(Municipality).where(Municipality.ibge == payload.ibge)):
             raise ConflictError("IBGE já cadastrado.")
-        mun = Municipality(name=payload.name, state=payload.state.upper(), ibge=payload.ibge)
+        requested = payload.enabled_modules
+        enabled = (
+            sorted(set(requested) & OPERATIONAL_MODULES)
+            if requested is not None
+            else sorted(OPERATIONAL_MODULES)
+        )
+        mun = Municipality(
+            name=payload.name,
+            state=payload.state.upper(),
+            ibge=payload.ibge,
+            population=payload.population,
+            center_latitude=payload.center_latitude,
+            center_longitude=payload.center_longitude,
+            territory=payload.territory,
+            enabled_modules=enabled,
+            timezone=payload.timezone,
+            cadsus_user=(payload.cadsus_user or "").strip(),
+            cadsus_password=(
+                encrypt_secret(payload.cadsus_password) if payload.cadsus_password else ""
+            ),
+        )
         self.session.add(mun)
         await self.session.flush()
         # provisiona schema mun_<ibge> no mesmo commit
         await ensure_municipality_schema(self.session, mun.ibge)
+
+        # Cria a SMS default — toda cidade tem Secretaria Municipal de Saúde.
+        # Evita o ciclo "cadastrei município mas não consigo importar CNES
+        # porque ainda não tem nenhuma unidade". MASTER pode arquivar depois.
+        self.session.add(Facility(
+            municipality_id=mun.id,
+            name=f"Secretaria Municipal de Saúde — {mun.name}",
+            short_name="SMS",
+            type=FacilityType.SMS,
+            cnes=None,
+        ))
+
+        # bairros iniciais
+        if payload.neighborhoods:
+            await self._replace_neighborhoods(mun.id, payload.neighborhoods)
+
+        await self.session.flush()
         return await self._municipality_detail(mun)
 
     async def update_municipality(self, municipality_id: UUID, payload: MunicipalityUpdate) -> MunicipalityDetail:
@@ -197,6 +449,8 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
 
         changes: dict[str, dict] = {}
+        fields = payload.model_fields_set
+
         if payload.name is not None and payload.name != mun.name:
             changes["name"] = {"from": mun.name, "to": payload.name}
             mun.name = payload.name
@@ -205,21 +459,99 @@ class TenantService:
             if new_state != mun.state:
                 changes["state"] = {"from": mun.state, "to": new_state}
                 mun.state = new_state
+        if "population" in fields and payload.population != mun.population:
+            changes["population"] = {"from": mun.population, "to": payload.population}
+            mun.population = payload.population
+        if "center_latitude" in fields and payload.center_latitude != (float(mun.center_latitude) if mun.center_latitude is not None else None):
+            changes["centerLatitude"] = {"from": float(mun.center_latitude) if mun.center_latitude is not None else None, "to": payload.center_latitude}
+            mun.center_latitude = payload.center_latitude
+        if "center_longitude" in fields and payload.center_longitude != (float(mun.center_longitude) if mun.center_longitude is not None else None):
+            changes["centerLongitude"] = {"from": float(mun.center_longitude) if mun.center_longitude is not None else None, "to": payload.center_longitude}
+            mun.center_longitude = payload.center_longitude
+        if "territory" in fields and payload.territory != mun.territory:
+            changes["territory"] = {"from": "desenhado" if mun.territory else None, "to": "desenhado" if payload.territory else None}
+            mun.territory = payload.territory
+        if "enabled_modules" in fields:
+            new_mods = sorted(set(payload.enabled_modules or []) & OPERATIONAL_MODULES)
+            current_mods = sorted(self._enabled_modules_set(mun))
+            if new_mods != current_mods:
+                changes["enabledModules"] = {"from": current_mods, "to": new_mods}
+                mun.enabled_modules = new_mods
+
+        if "timezone" in fields and payload.timezone and payload.timezone != mun.timezone:
+            changes["timezone"] = {"from": mun.timezone, "to": payload.timezone}
+            mun.timezone = payload.timezone
+
+        if "cadsus_user" in fields and payload.cadsus_user != mun.cadsus_user:
+            changes["cadsusUser"] = {"from": mun.cadsus_user or "", "to": payload.cadsus_user or ""}
+            mun.cadsus_user = payload.cadsus_user or ""
+        if "cadsus_password" in fields and payload.cadsus_password is not None:
+            # Não logamos o valor da senha — só indica que foi alterada.
+            # Armazenada cifrada via Fernet (ver app/core/crypto.py).
+            from app.core.crypto import encrypt_secret
+
+            had = bool(mun.cadsus_password)
+            mun.cadsus_password = encrypt_secret(payload.cadsus_password) or ""
+            if had != bool(payload.cadsus_password):
+                changes["cadsusPassword"] = {
+                    "from": "(definida)" if had else "(vazia)",
+                    "to": "(definida)" if payload.cadsus_password else "(vazia)",
+                }
+
         await self.session.flush()
 
+        # Bairros: se vier no payload, substitui tudo.
+        if payload.neighborhoods is not None:
+            await self._replace_neighborhoods(mun.id, payload.neighborhoods)
+            changes["neighborhoods"] = {"from": None, "to": f"{len(payload.neighborhoods)} item(ns)"}
+
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
+
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="sys",
+                action="municipality_update",
                 severity="info",
                 resource="Municipality",
                 resource_id=str(mun.id),
-                description=f"Editou município {mun.name}",
+                description=describe_change(
+                    actor=actor, verb="editou",
+                    target_kind="município", target_name=mun.name,
+                    changed_fields=field_labels,
+                ),
                 details={"municipalityId": str(mun.id), "changes": changes},
             )
         return await self._municipality_detail(mun)
+
+    async def _replace_neighborhoods(
+        self, municipality_id: UUID, payload_hoods: list[NeighborhoodInput]
+    ) -> None:
+        """Replace-all: remove todos os bairros do município e re-insere."""
+        from sqlalchemy import delete as sql_delete
+
+        await self.session.execute(
+            sql_delete(Neighborhood).where(Neighborhood.municipality_id == municipality_id)
+        )
+        seen_names: set[str] = set()
+        for h in payload_hoods:
+            name = h.name.strip()
+            if not name or name.lower() in seen_names:
+                continue
+            seen_names.add(name.lower())
+            self.session.add(Neighborhood(
+                municipality_id=municipality_id,
+                name=name,
+                population=h.population,
+                latitude=h.latitude,
+                longitude=h.longitude,
+                territory=h.territory,
+            ))
+        await self.session.flush()
 
     async def archive_municipality(self, municipality_id: UUID) -> MunicipalityDetail:
         mun = await self.repo.get_municipality(municipality_id)
@@ -227,12 +559,42 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
         mun.archived = True
         # arquiva também todas as unidades do município
+        fac_count = await self.session.scalar(
+            select(func.count()).select_from(Facility).where(Facility.municipality_id == mun.id)
+        ) or 0
         await self.session.execute(
             Facility.__table__.update()
             .where(Facility.municipality_id == mun.id)
             .values(archived=True)
         )
         await self.session.flush()
+
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
+        from app.modules.audit.writer import write_audit
+
+        actor = get_audit_context().user_name
+        await write_audit(
+            self.session,
+            module="sys",
+            action="municipality_archive",
+            severity="warning",
+            resource="Municipality",
+            resource_id=str(mun.id),
+            description=describe_change(
+                actor=actor, verb="arquivou",
+                target_kind="município",
+                target_name=f"{mun.name}/{mun.state}",
+                extra=f"IBGE {mun.ibge} · {int(fac_count)} unidade(s) arquivada(s) junto",
+            ),
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+                "facilitiesArchived": int(fac_count),
+            },
+        )
         return await self._municipality_detail(mun)
 
     async def unarchive_municipality(self, municipality_id: UUID) -> MunicipalityDetail:
@@ -241,6 +603,31 @@ class TenantService:
             raise NotFoundError("Município não encontrado.")
         mun.archived = False
         await self.session.flush()
+
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
+        from app.modules.audit.writer import write_audit
+
+        actor = get_audit_context().user_name
+        await write_audit(
+            self.session,
+            module="sys",
+            action="municipality_unarchive",
+            severity="info",
+            resource="Municipality",
+            resource_id=str(mun.id),
+            description=describe_change(
+                actor=actor, verb="reativou",
+                target_kind="município",
+                target_name=f"{mun.name}/{mun.state}",
+            ),
+            details={
+                "municipalityId": str(mun.id),
+                "municipalityName": mun.name,
+                "municipalityState": mun.state,
+                "municipalityIbge": mun.ibge,
+            },
+        )
         return await self._municipality_detail(mun)
 
     # ─── Facilities ────────────────────────────────────────────────────
@@ -253,16 +640,57 @@ class TenantService:
             ftype = FacilityType(payload.type)
         except ValueError:
             raise ForbiddenError(f"Tipo de unidade inválido: {payload.type}") from None
+        mods = self._sanitize_facility_modules(mun, payload.enabled_modules)
         fac = Facility(
             municipality_id=mun.id,
             name=payload.name,
             short_name=payload.short_name,
             type=ftype,
             cnes=payload.cnes,
+            enabled_modules=mods,
         )
         self.session.add(fac)
         await self.session.flush()
         return fac
+
+    def _sanitize_facility_modules(
+        self, mun: Municipality, requested: list[str] | None,
+    ) -> list[str] | None:
+        """Intersecta o requested com o que o município permite.
+
+        ``None`` explícito = herda (retorna None). Lista = intersecta
+        com ``Municipality.enabled_modules`` (ou com OPERATIONAL_MODULES
+        se o município ainda não restringiu).
+        """
+        if requested is None:
+            return None
+        mun_allowed = self._enabled_modules_set(mun)
+        return sorted(set(requested) & mun_allowed & OPERATIONAL_MODULES)
+
+    @staticmethod
+    def effective_facility_modules(
+        mun: Municipality, fac: Facility,
+    ) -> frozenset[str]:
+        """Conjunto efetivo de módulos da unidade.
+
+        Regra final aplicada na resolução de contexto:
+
+            role.modules()
+            ∩ Municipality.enabled_modules (fallback OPERATIONAL_MODULES)
+            ∩ Facility.enabled_modules     (quando não None)
+
+        Este helper só faz os 2 últimos — a interseção com o role é
+        feita pelo chamador.
+        """
+        # Município permitido
+        if mun.enabled_modules:
+            mun_set = frozenset(mun.enabled_modules) & OPERATIONAL_MODULES
+        else:
+            mun_set = OPERATIONAL_MODULES
+        # Unidade restringe mais, se configurou
+        if fac.enabled_modules is not None:
+            return frozenset(fac.enabled_modules) & mun_set
+        return mun_set
 
     async def update_facility(self, facility_id: UUID, payload: FacilityUpdate) -> Facility:
         fac = await self.session.scalar(select(Facility).where(Facility.id == facility_id))
@@ -292,21 +720,52 @@ class TenantService:
             if new_cnes != fac.cnes:
                 changes["cnes"] = {"from": fac.cnes, "to": new_cnes}
                 fac.cnes = new_cnes
+        if "enabled_modules" in payload.model_fields_set:
+            mun = await self.repo.get_municipality(fac.municipality_id)
+            new_mods = self._sanitize_facility_modules(mun, payload.enabled_modules)
+            current = list(fac.enabled_modules) if fac.enabled_modules else None
+            if new_mods != current:
+                changes["enabledModules"] = {
+                    "from": current if current is not None else "herdado",
+                    "to": new_mods if new_mods is not None else "herdado",
+                }
+                fac.enabled_modules = new_mods
         await self.session.flush()
 
         if changes:
+            from app.core.audit import get_audit_context
+            from app.modules.audit.helpers import describe_change, humanize_field
             from app.modules.audit.writer import write_audit
+
+            actor = get_audit_context().user_name
+            field_labels = [humanize_field(k) for k in changes]
             await write_audit(
                 self.session,
-                module="SYS",
-                action="edit",
+                module="sys",
+                action="facility_update",
                 severity="info",
                 resource="Facility",
                 resource_id=str(fac.id),
-                description=f"Editou unidade {fac.name}",
+                description=describe_change(
+                    actor=actor, verb="editou",
+                    target_kind="unidade", target_name=fac.name,
+                    changed_fields=field_labels,
+                ),
                 details={"facilityId": str(fac.id), "changes": changes},
             )
         return fac
+
+    async def _facility_audit_common(self, fac: Facility) -> dict:
+        mun = await self.repo.get_municipality(fac.municipality_id)
+        return {
+            "facilityId": str(fac.id),
+            "facilityName": fac.name,
+            "facilityShortName": fac.short_name,
+            "facilityType": fac.type.value if hasattr(fac.type, "value") else str(fac.type),
+            "municipalityId": str(fac.municipality_id),
+            "municipalityName": mun.name if mun else "",
+            "municipalityState": mun.state if mun else "",
+        }
 
     async def archive_facility(self, facility_id: UUID) -> Facility:
         fac = await self.session.scalar(select(Facility).where(Facility.id == facility_id))
@@ -314,6 +773,27 @@ class TenantService:
             raise NotFoundError("Unidade não encontrada.")
         fac.archived = True
         await self.session.flush()
+
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
+        from app.modules.audit.writer import write_audit
+
+        details = await self._facility_audit_common(fac)
+        actor = get_audit_context().user_name
+        await write_audit(
+            self.session,
+            module="sys",
+            action="facility_archive",
+            severity="warning",
+            resource="Facility",
+            resource_id=str(fac.id),
+            description=describe_change(
+                actor=actor, verb="arquivou",
+                target_kind="unidade", target_name=fac.name,
+                extra=f"{details['municipalityName']}/{details['municipalityState']}",
+            ),
+            details=details,
+        )
         return fac
 
     async def unarchive_facility(self, facility_id: UUID) -> Facility:
@@ -322,6 +802,27 @@ class TenantService:
             raise NotFoundError("Unidade não encontrada.")
         fac.archived = False
         await self.session.flush()
+
+        from app.core.audit import get_audit_context
+        from app.modules.audit.helpers import describe_change
+        from app.modules.audit.writer import write_audit
+
+        details = await self._facility_audit_common(fac)
+        actor = get_audit_context().user_name
+        await write_audit(
+            self.session,
+            module="sys",
+            action="facility_unarchive",
+            severity="info",
+            resource="Facility",
+            resource_id=str(fac.id),
+            description=describe_change(
+                actor=actor, verb="reativou",
+                target_kind="unidade", target_name=fac.name,
+                extra=f"{details['municipalityName']}/{details['municipalityState']}",
+            ),
+            details=details,
+        )
         return fac
 
     # ─── Listas admin (inclui archived opcional) ──────────────────────
@@ -329,7 +830,7 @@ class TenantService:
     async def list_all_municipalities(self, *, include_archived: bool = False) -> list[MunicipalityDetail]:
         stmt = select(Municipality).order_by(Municipality.name)
         if not include_archived:
-            stmt = stmt.where(Municipality.archived.is_(False))
+            stmt = stmt.where(Municipality.archived== False)
         rows = list((await self.session.scalars(stmt)).all())
         return [await self._municipality_detail(m) for m in rows]
 

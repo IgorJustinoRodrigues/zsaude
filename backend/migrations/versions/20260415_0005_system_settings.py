@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
+from app.db.types import JSONType, UUIDType
 revision: str = "0005_system_settings"
 down_revision: str | None = "0004_archived_flags"
 branch_labels: str | Sequence[str] | None = None
@@ -21,12 +22,12 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "system_settings",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", UUIDType(), primary_key=True),
         sa.Column("key", sa.String(80), nullable=False),
-        sa.Column("value", postgresql.JSONB(), nullable=False),
-        sa.Column("description", sa.String(300), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("value", JSONType(), nullable=False),
+        sa.Column("description", sa.String(300), nullable=False, server_default=" "),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("key", name="uq_system_settings_key"),
         schema="app",
     )
