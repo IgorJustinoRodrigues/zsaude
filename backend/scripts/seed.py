@@ -1,21 +1,33 @@
-"""Popula o banco com os dados que espelham os mocks do frontend.
+"""Popula/atualiza o banco com um baseline de teste em Goianésia.
 
-Idempotente: rodar várias vezes não duplica.
+Idempotente — upserts por **chave natural** (IBGE, CNES/short_name,
+login). Roda em cima de um banco limpo OU com dados já existentes sem
+duplicar nem sobrescrever o que o usuário criou.
 
 Executar:
     docker compose exec app uv run python -m scripts.seed
+
+Reset total:
+    docker compose down -v
+    docker compose up -d
+    alembic upgrade head
+    scripts.seed
+
+Senha padrão pra todos os usuários: ``Admin@123``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, select
 
 from app.core.security import hash_password
 from app.db.session import dispose_engine, sessionmaker
 from app.db.tenant_schemas import ensure_municipality_schema
+from app.modules.permissions.models import Role
 from app.modules.tenants.models import (
     Facility,
     FacilityAccess,
@@ -25,269 +37,392 @@ from app.modules.tenants.models import (
 )
 from app.modules.users.models import User, UserLevel, UserStatus
 
-# Namespace fixo para gerar UUIDv5 a partir dos IDs do frontend
-NS = uuid.UUID("12345678-1234-5678-1234-567812345678")
+# Namespace pra gerar UUIDv5 determinísticos (novas entidades).
+_NS = uuid.UUID("12345678-1234-5678-1234-567812345678")
+
+
+def _fid(key: str) -> uuid.UUID:
+    return uuid.uuid5(_NS, key)
+
 
 DEFAULT_PASSWORD = "Admin@123"
 
 
-def fid(key: str) -> uuid.UUID:
-    """UUIDv5 determinístico a partir do ID textual do mock (ex: 'usr1')."""
-    return uuid.uuid5(NS, key)
-
-
 # ─── Dados ────────────────────────────────────────────────────────────────────
 
-MUNICIPALITIES = [
-    # ``enabled_modules`` define quais módulos operacionais aparecem na
-    # seleção de sistema. None = "todos habilitados" (fallback). Aqui
-    # configuramos cenários distintos pra demonstrar a filtragem:
-    # - Goiânia: cidade grande, tudo ligado.
-    # - Aparecida: perfil clínico-hospitalar.
-    # - Anápolis: só clínica + recepção + indicadores.
-    {"key": "mun1", "name": "Goiânia",              "state": "GO", "ibge": "5208707",
-     "enabled_modules": ["cln", "dgn", "hsp", "pln", "fsc", "ops", "ind", "rec", "esu"]},
-    {"key": "mun2", "name": "Aparecida de Goiânia", "state": "GO", "ibge": "5201405",
-     "enabled_modules": ["cln", "dgn", "hsp", "ind", "rec"]},
-    {"key": "mun3", "name": "Anápolis",             "state": "GO", "ibge": "5201108",
-     "enabled_modules": ["cln", "rec", "ind"]},
-    {"key": "mun4", "name": "Goianésia",            "state": "GO", "ibge": "520860",
-     "enabled_modules": ["cln", "dgn", "hsp", "ops", "ind", "rec"]},
-]
-
-FACILITIES = [
-    {"key": "fac1",  "mun": "mun1", "name": "Secretaria Municipal de Saúde", "short": "SMS Central",     "type": FacilityType.SMS},
-    {"key": "fac2",  "mun": "mun1", "name": "UBS Centro",                    "short": "UBS Centro",      "type": FacilityType.UBS},
-    {"key": "fac3",  "mun": "mun1", "name": "UPA Norte",                     "short": "UPA Norte",       "type": FacilityType.UPA},
-    {"key": "fac4",  "mun": "mun1", "name": "Laboratório Municipal",          "short": "Lab. Municipal",  "type": FacilityType.LAB},
-    {"key": "fac5",  "mun": "mun1", "name": "VISA Municipal",                 "short": "VISA Municipal",  "type": FacilityType.VISA},
-    {"key": "fac6",  "mun": "mun1", "name": "Setor de Transportes",           "short": "Transportes",     "type": FacilityType.TRANSPORTES},
-    {"key": "fac7",  "mun": "mun2", "name": "Secretaria Municipal de Saúde", "short": "SMS Aparecida",    "type": FacilityType.SMS},
-    {"key": "fac8",  "mun": "mun2", "name": "UBS Jardim Tiradentes",         "short": "UBS Jardim",       "type": FacilityType.UBS},
-    {"key": "fac9",  "mun": "mun2", "name": "UPA Sul",                       "short": "UPA Sul",          "type": FacilityType.UPA},
-    {"key": "fac10", "mun": "mun3", "name": "Secretaria Municipal de Saúde", "short": "SMS Anápolis",     "type": FacilityType.SMS},
-    {"key": "fac11", "mun": "mun3", "name": "HMU – Hospital Municipal",     "short": "HMU",              "type": FacilityType.HOSPITAL},
-    {"key": "fac12", "mun": "mun4", "name": "Secretaria Municipal de Saúde", "short": "SMS Goianésia",    "type": FacilityType.SMS},
-    {"key": "fac13", "mun": "mun4", "name": "UBS Central Goianésia",         "short": "UBS Central",      "type": FacilityType.UBS},
-    {"key": "fac14", "mun": "mun4", "name": "Hospital Municipal Goianésia",  "short": "HMG",              "type": FacilityType.HOSPITAL},
-]
-
-USERS = [
-    {"key": "usr1",  "login": "igor.santos",      "email": "igor@zsaude.gov.br",     "name": "Igor Santos",       "cpf": "02134567890", "phone": "(62) 99999-1234", "status": UserStatus.ATIVO,    "role": "Administrador do Sistema", "superuser": True, "level": "master"},
-    {"key": "usr2",  "login": "carla.mendonca",   "email": "carla@zsaude.gov.br",    "name": "Carla Mendonça",    "cpf": "13456789012", "phone": "(62) 98888-5678", "status": UserStatus.ATIVO,    "role": "Recepcionista"},
-    {"key": "usr3",  "login": "diego.figueiredo", "email": "diego@zsaude.gov.br",    "name": "Diego Figueiredo",  "cpf": "24567890123", "phone": "(62) 97777-9012", "status": UserStatus.ATIVO,    "role": "Técnico de Laboratório"},
-    {"key": "usr4",  "login": "renata.cabral",    "email": "renata@zsaude.gov.br",   "name": "Renata Cabral",     "cpf": "35678901234", "phone": "(62) 96666-3456", "status": UserStatus.ATIVO,    "role": "Fiscal Sanitário"},
-    {"key": "usr5",  "login": "thales.marques",   "email": "thales@zsaude.gov.br",   "name": "Thales Marques",    "cpf": "46789012345", "phone": "(62) 95555-7890", "status": UserStatus.INATIVO,  "role": "Gestor de Frota"},
-    {"key": "usr6",  "login": "simone.araujo",    "email": "simone@zsaude.gov.br",   "name": "Simone Araújo",     "cpf": "57890123456", "phone": "(62) 94444-1234", "status": UserStatus.ATIVO,    "role": "Enfermeira"},
-    {"key": "usr7",  "login": "rafael.campos",    "email": "rafael@zsaude.gov.br",   "name": "Rafael Campos",     "cpf": "68901234567", "phone": "(62) 93333-5678", "status": UserStatus.ATIVO,    "role": "Médico"},
-    {"key": "usr8",  "login": "fernanda.lima",    "email": "fernanda@zsaude.gov.br", "name": "Fernanda Lima",     "cpf": "79012345678", "phone": "(62) 92222-9012", "status": UserStatus.BLOQUEADO,"role": "Médica"},
-    {"key": "usr9",  "login": "paulo.henrique",   "email": "paulo@zsaude.gov.br",    "name": "Paulo Henrique",    "cpf": "80123456789", "phone": "(62) 91111-3456", "status": UserStatus.ATIVO,    "role": "Farmacêutico"},
-    {"key": "usr10", "login": "beatriz.nunes",    "email": "beatriz@zsaude.gov.br",  "name": "Beatriz Nunes",     "cpf": "91234567890", "phone": "(62) 90000-7890", "status": UserStatus.ATIVO,    "role": "Assistente Social"},
-    {"key": "usr11", "login": "marcos.vinicius",  "email": "marcos@zsaude.gov.br",   "name": "Marcos Vinicius",   "cpf": "02345678901", "phone": "(62) 98765-4321", "status": UserStatus.INATIVO,  "role": "Técnico de Enfermagem"},
-    {"key": "usr12", "login": "juliana.torres",   "email": "juliana@zsaude.gov.br",  "name": "Juliana Torres",    "cpf": "13456789023", "phone": "(62) 99876-5432", "status": UserStatus.ATIVO,    "role": "Recepcionista"},
-]
-
-# (user_key, municipality_key) + (user_key, facility_key, role, modules)
-MUN_ACCESS = [
-    ("usr1", "mun1"), ("usr1", "mun2"), ("usr1", "mun3"), ("usr1", "mun4"),
-    ("usr2", "mun1"),
-    ("usr3", "mun1"),
-    ("usr4", "mun1"),
-    ("usr5", "mun1"),
-    ("usr6", "mun1"),
-    ("usr7", "mun3"),
-    ("usr8", "mun2"),
-    ("usr9", "mun1"),
-    ("usr10", "mun2"), ("usr10", "mun3"),
-    ("usr11", "mun2"),
-    ("usr12", "mun1"),
-]
-
-FAC_ACCESS = [
-    ("usr1",  "fac1",  "Administrador do Sistema", ["cln", "dgn", "hsp", "pln", "fsc", "ops"]),
-    ("usr1",  "fac2",  "Supervisor Clínico",       ["cln", "dgn"]),
-    ("usr1",  "fac3",  "Supervisor UPA",           ["cln", "hsp"]),
-    ("usr1",  "fac7",  "Consultor Externo",        ["cln", "pln"]),
-    ("usr1",  "fac8",  "Analista",                 ["cln"]),
-    ("usr1",  "fac10", "Gestor Regional",          ["cln", "dgn", "hsp", "pln"]),
-    ("usr2",  "fac2",  "Recepcionista",            ["cln"]),
-    ("usr3",  "fac4",  "Técnico de Laboratório",   ["dgn"]),
-    ("usr4",  "fac5",  "Fiscal Sanitário",         ["fsc"]),
-    ("usr5",  "fac6",  "Gestor de Frota",          ["ops"]),
-    ("usr6",  "fac3",  "Enfermeira",               ["cln", "hsp"]),
-    ("usr7",  "fac11", "Médico",                   ["cln", "hsp"]),
-    ("usr8",  "fac9",  "Médica",                   ["cln"]),
-    ("usr9",  "fac2",  "Farmacêutico",             ["cln", "ops"]),
-    ("usr10", "fac8",  "Assistente Social",        ["cln", "pln"]),
-    ("usr10", "fac10", "Assistente Social",        ["cln"]),
-    ("usr11", "fac9",  "Técnico de Enfermagem",    ["hsp"]),
-    ("usr12", "fac2",  "Recepcionista",            ["cln"]),
-    ("usr12", "fac3",  "Recepcionista",            ["cln"]),
-    ("usr1",  "fac12", "Administrador do Sistema", ["cln", "dgn", "hsp", "ops"]),
-    ("usr1",  "fac13", "Supervisor Clínico",       ["cln"]),
-    ("usr1",  "fac14", "Gestor Hospitalar",        ["cln", "hsp"]),
-]
-
-
-# ─── Seeding ──────────────────────────────────────────────────────────────────
-
-
-async def upsert_municipalities(session) -> None:
-    for m in MUNICIPALITIES:
-        row = await session.scalar(select(Municipality).where(Municipality.id == fid(m["key"])))
-        if row is None:
-            session.add(Municipality(
-                id=fid(m["key"]),
-                name=m["name"],
-                state=m["state"],
-                ibge=m["ibge"],
-                enabled_modules=m.get("enabled_modules"),
-            ))
-        else:
-            # Re-sincroniza enabled_modules — se o seed foi ajustado e
-            # o município já existia, idempotência exige atualizar.
-            row.enabled_modules = m.get("enabled_modules")
-
-
-async def upsert_facilities(session) -> None:
-    for f in FACILITIES:
-        exists = await session.scalar(select(Facility).where(Facility.id == fid(f["key"])))
-        if exists is None:
-            session.add(
-                Facility(
-                    id=fid(f["key"]),
-                    municipality_id=fid(f["mun"]),
-                    name=f["name"],
-                    short_name=f["short"],
-                    type=f["type"],
-                )
-            )
-
-
-async def upsert_users(session) -> None:
-    pwd_hash = hash_password(DEFAULT_PASSWORD)
-    for u in USERS:
-        exists = await session.scalar(select(User).where(User.id == fid(u["key"])))
-        if exists is None:
-            session.add(
-                User(
-                    id=fid(u["key"]),
-                    login=u["login"],
-                    email=u["email"],
-                    name=u["name"],
-                    cpf=u["cpf"],
-                    phone=u["phone"],
-                    password_hash=pwd_hash,
-                    status=u["status"],
-                    is_active=u["status"] != UserStatus.BLOQUEADO,
-                    is_superuser=u.get("superuser", False),
-                    primary_role=u["role"],
-                    level=UserLevel(u.get("level", "user")),
-                )
-            )
-
-
-async def upsert_mun_access(session) -> None:
-    for user_key, mun_key in MUN_ACCESS:
-        exists = await session.scalar(
-            select(MunicipalityAccess).where(
-                MunicipalityAccess.user_id == fid(user_key),
-                MunicipalityAccess.municipality_id == fid(mun_key),
-            )
-        )
-        if exists is None:
-            session.add(
-                MunicipalityAccess(
-                    user_id=fid(user_key),
-                    municipality_id=fid(mun_key),
-                )
-            )
-
-
-# Mapeia a string de role da v1 para o `code` de um SYSTEM role base (v2).
-# Strings não mapeadas ficam com role_id=None (acesso sem permissão) até
-# o município configurar um role MUNICIPALITY customizado.
-_ROLE_STRING_TO_CODE: dict[str, str] = {
-    "Administrador do Sistema": "system_admin",
-    "Supervisor Clínico": "doctor_base",
-    "Supervisor UPA": "doctor_base",
-    "Consultor Externo": "manager_base",
-    "Analista": "manager_base",
-    "Gestor Regional": "manager_base",
-    "Recepcionista": "receptionist_base",
-    "Técnico de Laboratório": "lab_tech_base",
-    "Fiscal Sanitário": "visa_agent_base",
-    "Gestor de Frota": "manager_base",
-    "Enfermeira": "nurse_base",
-    "Médico": "doctor_base",
-    "Médica": "doctor_base",
-    "Farmacêutico": "nurse_base",
-    "Assistente Social": "nurse_base",
-    "Técnico de Enfermagem": "nurse_base",
+# ``rec_config`` padrão — totem/painel/atendimento ativos, modo senha,
+# pós-atendimento → triagem. Sobrescreve qualquer ``rec_config`` antigo
+# inválido no banco pra deixar o teste começando limpo.
+DEFAULT_REC_CONFIG: dict[str, Any] = {
+    "totem": {
+        "enabled": True,
+        "capture": {"cpf": True, "cns": True, "face": False, "manual_name": True},
+        "priority_prompt": True,
+    },
+    "painel": {"enabled": True, "mode": "senha", "announce_audio": True},
+    "recepcao": {"enabled": True, "after_attendance": "triagem"},
 }
 
 
-async def upsert_fac_access(session) -> None:
-    from app.modules.permissions.models import Role
+MUNICIPALITIES: list[dict[str, Any]] = [
+    {
+        "key": "goianesia",
+        "name": "Goianésia",
+        "state": "GO",
+        "ibge": "5208608",
+        "timezone": "America/Sao_Paulo",
+        "enabled_modules": None,  # None = todos os módulos habilitados
+        "rec_config": DEFAULT_REC_CONFIG,
+    },
+]
 
-    # Cache de role_id por code (SYSTEM roles).
-    role_ids: dict[str, uuid.UUID] = {}
-    rows = await session.scalars(select(Role).where(Role.municipality_id.is_(None)))
-    for r in rows.all():
-        role_ids[r.code] = r.id
 
-    # Fallback: se a string do mock não mapear pra SYSTEM role, usa recepcionista.
-    fallback_role_id = role_ids.get("receptionist_base")
+FACILITIES: list[dict[str, Any]] = [
+    # Unidade real — tem CNES importado vinculado.
+    {
+        "key": "cs_arturo", "mun": "goianesia",
+        "name": "Centro de Saúde Arturo Bermudez Mayorga",
+        "short": "CS Arturo", "type": FacilityType.UBS,
+        "cnes": "2381516",
+    },
+    # Unidades de teste (sem CNES — pra simular cenários).
+    {
+        "key": "sms", "mun": "goianesia",
+        "name": "Secretaria Municipal de Saúde",
+        "short": "SMS Goianésia", "type": FacilityType.SMS, "cnes": None,
+    },
+    {
+        "key": "ubs_central", "mun": "goianesia",
+        "name": "UBS Central",
+        "short": "UBS Central", "type": FacilityType.UBS, "cnes": None,
+    },
+    {
+        "key": "upa", "mun": "goianesia",
+        "name": "UPA Goianésia",
+        "short": "UPA Goianésia", "type": FacilityType.UPA, "cnes": None,
+    },
+    {
+        "key": "hospital", "mun": "goianesia",
+        "name": "Hospital Municipal de Goianésia",
+        "short": "HMG", "type": FacilityType.HOSPITAL, "cnes": None,
+    },
+]
 
-    for user_key, fac_key, role_string, _modules_legacy in FAC_ACCESS:
-        target_code = _ROLE_STRING_TO_CODE.get(role_string)
-        role_id = role_ids.get(target_code) if target_code else fallback_role_id
-        if role_id is None:
-            raise RuntimeError(
-                f"Role base não encontrado para {role_string!r}. "
-                "Rode `ensure_system_base_roles` antes."
+
+USERS: list[dict[str, Any]] = [
+    # ── Reais ────────────────────────────────────────────────────────
+    {
+        "key": "igor_master", "login": "igor@zsaude.gov.br",
+        "email": "igor@zsaude.gov.br", "name": "Igor Santos",
+        "cpf": None, "level": "master", "superuser": True,
+        "primary_role": "Administrador do Sistema",
+    },
+    {
+        "key": "igor_cpf", "login": "75696860125",
+        "email": "igor98rodrigues@gmail.com", "name": "Igor",
+        "cpf": "75696860125", "level": "user", "superuser": False,
+        "primary_role": "Operador",
+    },
+
+    # ── Teste ────────────────────────────────────────────────────────
+    {
+        "key": "carla", "login": "carla.recep",
+        "email": "carla.recep@test.gov.br", "name": "Carla Mendonça",
+        "cpf": "12345678901", "level": "user",
+        "primary_role": "Recepcionista",
+    },
+    {
+        "key": "rafael", "login": "rafael.medico",
+        "email": "rafael.medico@test.gov.br", "name": "Rafael Campos",
+        "cpf": "23456789012", "level": "user",
+        "primary_role": "Médico",
+    },
+    {
+        "key": "simone", "login": "simone.enf",
+        "email": "simone.enf@test.gov.br", "name": "Simone Araújo",
+        "cpf": "34567890123", "level": "user",
+        "primary_role": "Enfermeira",
+    },
+    {
+        "key": "juliana", "login": "juliana.coord",
+        "email": "juliana.coord@test.gov.br", "name": "Juliana Torres",
+        "cpf": "45678901234", "level": "user",
+        "primary_role": "Coordenadora de Unidade",
+    },
+    {
+        "key": "beatriz", "login": "beatriz.audit",
+        "email": "beatriz.audit@test.gov.br", "name": "Beatriz Nunes",
+        "cpf": "56789012345", "level": "user",
+        "primary_role": "Auditora",
+    },
+    {
+        "key": "maria", "login": "maria.visual",
+        "email": "maria.visual@test.gov.br", "name": "Maria Oliveira",
+        "cpf": "67890123456", "level": "user",
+        "primary_role": "Visualizadora",
+    },
+]
+
+
+# Município → usuários. Todos os não-MASTER entram em Goianésia.
+MUN_ACCESS: list[tuple[str, str]] = [
+    ("igor_cpf",  "goianesia"),
+    ("carla",     "goianesia"),
+    ("rafael",    "goianesia"),
+    ("simone",    "goianesia"),
+    ("juliana",   "goianesia"),
+    ("beatriz",   "goianesia"),
+    ("maria",     "goianesia"),
+]
+
+
+# Unidade → usuário → role SYSTEM. MASTER não precisa aqui.
+FAC_ACCESS: list[tuple[str, str, str]] = [
+    # Igor (real) — operador da CS Arturo.
+    ("igor_cpf",  "cs_arturo",    "operator_base"),
+
+    # Carla — recepção em 2 UBSs.
+    ("carla",     "cs_arturo",    "operator_base"),
+    ("carla",     "ubs_central",  "operator_base"),
+
+    # Rafael — médico na CS e no Hospital.
+    ("rafael",    "cs_arturo",    "operator_base"),
+    ("rafael",    "hospital",     "operator_base"),
+
+    # Simone — enfermagem na UPA.
+    ("simone",    "upa",          "operator_base"),
+
+    # Juliana — coordenadora no hospital.
+    ("juliana",   "hospital",     "coordinator_base"),
+
+    # Beatriz — auditora no SMS.
+    ("beatriz",   "sms",          "auditor_base"),
+
+    # Maria — visualizadora na UBS Central.
+    ("maria",     "ubs_central",  "viewer_base"),
+]
+
+
+# ─── Upserts ──────────────────────────────────────────────────────────────────
+
+async def upsert_municipalities(session) -> dict[str, uuid.UUID]:
+    """Retorna ``{key: id}`` pra uso nos próximos passos. Lookup por IBGE."""
+    out: dict[str, uuid.UUID] = {}
+    for m in MUNICIPALITIES:
+        row = await session.scalar(
+            select(Municipality).where(Municipality.ibge == m["ibge"])
+        )
+        if row is None:
+            row = Municipality(
+                id=_fid(f"mun:{m['key']}"),
+                name=m["name"],
+                state=m["state"],
+                ibge=m["ibge"],
+                timezone=m["timezone"],
+                enabled_modules=m.get("enabled_modules"),
+                rec_config=m.get("rec_config"),
             )
+            session.add(row)
+        else:
+            row.name = m["name"]
+            row.state = m["state"]
+            row.timezone = m["timezone"]
+            row.enabled_modules = m.get("enabled_modules")
+            row.rec_config = m.get("rec_config")
+        await session.flush()
+        out[m["key"]] = row.id
+    return out
 
+
+async def upsert_facilities(
+    session, mun_ids: dict[str, uuid.UUID],
+) -> dict[str, uuid.UUID]:
+    """Lookup por (municipality, CNES) se CNES informado; senão (municipality,
+    short_name). Retorna ``{key: id}``."""
+    out: dict[str, uuid.UUID] = {}
+    for f in FACILITIES:
+        mun_id = mun_ids[f["mun"]]
+        row: Facility | None = None
+        if f.get("cnes"):
+            row = await session.scalar(
+                select(Facility).where(
+                    and_(
+                        Facility.municipality_id == mun_id,
+                        Facility.cnes == f["cnes"],
+                    )
+                )
+            )
+        if row is None:
+            row = await session.scalar(
+                select(Facility).where(
+                    and_(
+                        Facility.municipality_id == mun_id,
+                        Facility.short_name == f["short"],
+                        Facility.archived == False,  # noqa: E712
+                    )
+                )
+            )
+        if row is None:
+            row = Facility(
+                id=_fid(f"fac:{f['key']}"),
+                municipality_id=mun_id,
+                name=f["name"],
+                short_name=f["short"],
+                type=f["type"],
+                cnes=f.get("cnes"),
+                archived=False,
+            )
+            session.add(row)
+        else:
+            row.name = f["name"]
+            row.short_name = f["short"]
+            row.type = f["type"]
+            if f.get("cnes"):
+                row.cnes = f["cnes"]
+            row.archived = False
+        await session.flush()
+        out[f["key"]] = row.id
+    return out
+
+
+async def upsert_users(session) -> dict[str, uuid.UUID]:
+    """Lookup por login (unique). Senha padrão sempre reaplicada pra
+    baseline previsível."""
+    pwd_hash = hash_password(DEFAULT_PASSWORD)
+    out: dict[str, uuid.UUID] = {}
+    for u in USERS:
+        row = await session.scalar(select(User).where(User.login == u["login"]))
+        if row is None:
+            row = User(
+                id=_fid(f"user:{u['key']}"),
+                login=u["login"],
+                email=u["email"],
+                name=u["name"],
+                cpf=u["cpf"],
+                phone=" ",
+                password_hash=pwd_hash,
+                status=UserStatus.ATIVO,
+                is_active=True,
+                is_superuser=u.get("superuser", False),
+                primary_role=u.get("primary_role", ""),
+                level=UserLevel(u["level"]),
+            )
+            session.add(row)
+        else:
+            row.email = u["email"]
+            row.name = u["name"]
+            row.cpf = u["cpf"]
+            row.password_hash = pwd_hash
+            row.status = UserStatus.ATIVO
+            row.is_active = True
+            row.is_superuser = u.get("superuser", False)
+            row.primary_role = u.get("primary_role", "")
+            row.level = UserLevel(u["level"])
+        await session.flush()
+        out[u["key"]] = row.id
+    return out
+
+
+async def upsert_mun_access(
+    session, user_ids: dict[str, uuid.UUID], mun_ids: dict[str, uuid.UUID],
+) -> None:
+    for user_key, mun_key in MUN_ACCESS:
+        uid, mid = user_ids[user_key], mun_ids[mun_key]
         exists = await session.scalar(
-            select(FacilityAccess).where(
-                FacilityAccess.user_id == fid(user_key),
-                FacilityAccess.facility_id == fid(fac_key),
+            select(MunicipalityAccess).where(
+                and_(
+                    MunicipalityAccess.user_id == uid,
+                    MunicipalityAccess.municipality_id == mid,
+                )
             )
         )
         if exists is None:
-            session.add(
-                FacilityAccess(
-                    user_id=fid(user_key),
-                    facility_id=fid(fac_key),
-                    role_id=role_id,
+            session.add(MunicipalityAccess(user_id=uid, municipality_id=mid))
+
+
+async def upsert_fac_access(
+    session, user_ids: dict[str, uuid.UUID], fac_ids: dict[str, uuid.UUID],
+) -> None:
+    role_rows = await session.scalars(
+        select(Role).where(and_(Role.municipality_id.is_(None), Role.archived == False))  # noqa: E712
+    )
+    role_by_code: dict[str, uuid.UUID] = {r.code: r.id for r in role_rows.all()}
+
+    missing: list[str] = []
+    for _user_key, _fac_key, code in FAC_ACCESS:
+        if code not in role_by_code:
+            missing.append(code)
+    if missing:
+        raise RuntimeError(
+            f"Roles SYSTEM não encontrados: {sorted(set(missing))}. "
+            f"Rode ``ensure_system_base_roles`` primeiro (acontece no startup do app)."
+        )
+
+    for user_key, fac_key, code in FAC_ACCESS:
+        uid = user_ids[user_key]
+        fid_ = fac_ids[fac_key]
+        role_id = role_by_code[code]
+        exists = await session.scalar(
+            select(FacilityAccess).where(
+                and_(
+                    FacilityAccess.user_id == uid,
+                    FacilityAccess.facility_id == fid_,
                 )
             )
+        )
+        if exists is None:
+            session.add(FacilityAccess(user_id=uid, facility_id=fid_, role_id=role_id))
         elif exists.role_id != role_id:
             exists.role_id = role_id
+            exists.version += 1
+
+
+async def cleanup_legacy_roles(session) -> int:
+    """Apaga roles SYSTEM arquivados que não têm nenhum facility_access
+    apontando pra eles — são os perfis legados (receptionist/nurse/doctor/
+    lab_tech/manager/visa_agent) trocados pelos enxutos. Seguro: o WHERE
+    NOT EXISTS garante zero FK violation."""
+    result = await session.execute(
+        delete(Role).where(
+            and_(
+                Role.municipality_id.is_(None),
+                Role.archived == True,  # noqa: E712
+                ~Role.id.in_(select(FacilityAccess.role_id).distinct()),
+            )
+        )
+    )
+    return result.rowcount or 0
 
 
 async def provision_schemas(session) -> None:
-    """Garante um schema `mun_<ibge>` (com tabelas per-tenant) para cada
-    município seed."""
     for m in MUNICIPALITIES:
         schema = await ensure_municipality_schema(session, m["ibge"])
-        print(f"  · {m['name']:<25} → {schema} (migrations aplicadas)")
+        print(f"  · {m['name']:<25} → {schema}")
 
 
 async def main() -> None:
     async with sessionmaker()() as session:
-        await upsert_municipalities(session)
-        await session.flush()
-        await upsert_facilities(session)
-        await session.flush()
-        await upsert_users(session)
-        await session.flush()
-        await upsert_mun_access(session)
-        await upsert_fac_access(session)
-        print("Provisionando schemas de municípios:")
+        print("→ municípios")
+        mun_ids = await upsert_municipalities(session)
+        print("→ unidades")
+        fac_ids = await upsert_facilities(session, mun_ids)
+        print("→ usuários")
+        user_ids = await upsert_users(session)
+        print("→ acessos (município + unidade)")
+        await upsert_mun_access(session, user_ids, mun_ids)
+        await upsert_fac_access(session, user_ids, fac_ids)
+        print("→ limpando perfis legados")
+        removed = await cleanup_legacy_roles(session)
+        if removed:
+            print(f"  · {removed} role(s) legado(s) removido(s)")
+        print("→ provisionando schemas de tenant")
         await provision_schemas(session)
         await session.commit()
-        print(f"Seed OK · senha padrão para todos: {DEFAULT_PASSWORD}")
+        print()
+        print(f"Seed OK · senha padrão pra todos: {DEFAULT_PASSWORD}")
+        print(f"  · MASTER:   igor@zsaude.gov.br")
+        print(f"  · Operador: 75696860125 (Igor)")
+        print(f"  · Teste:    carla.recep, rafael.medico, simone.enf, juliana.coord, beatriz.audit, maria.visual")
     await dispose_engine()
 
 
