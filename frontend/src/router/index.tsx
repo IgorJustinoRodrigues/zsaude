@@ -292,8 +292,8 @@ export const router = createBrowserRouter([
               {
                 element: <RequireModule moduleId="rec" />,
                 children: [
-                  { path: '/rec',        element: <RecHomePage /> },
-                  { path: '/rec/fila',   element: <RecQueuePage /> },
+                  { path: '/rec',            element: <RecHomePage /> },
+                  { path: '/rec/atendimento', element: <RecQueuePage /> },
                   { path: '/rec/totem',  element: <RecTotemPage /> },
                   { path: '/rec/painel', element: <RecPainelPage /> },
                 ],

@@ -38,7 +38,7 @@ const SHORTCUTS: Shortcut[] = [
     title: 'Fila de atendimento',
     subtitle: 'Console do guichê: ver fila e chamar senhas',
     icon: Users,
-    to: '/rec/fila',
+    to: '/rec/atendimento',
   },
   {
     title: 'Totem',

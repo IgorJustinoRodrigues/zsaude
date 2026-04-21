@@ -50,60 +50,53 @@ export function RecQueuePage() {
 
   return (
     <div>
-      <PageHeader title="Recepção" subtitle="Fila de espera e chamadas" />
+      <PageHeader title="Recepção" subtitle="Aguardando atendimento" />
 
-      {/* Hero: guichê ativo + chamada atual + CTA */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-6 flex flex-col lg:flex-row lg:items-center gap-5">
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Meu guichê</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {COUNTERS.map(c => (
-              <button
-                key={c}
-                onClick={() => setCounter(c)}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  counter === c
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/70',
-                )}
-              >
-                {c}
-              </button>
-            ))}
+      {/* Barra de ações compacta: guichê + chamada atual + CTA */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-1.5">
+          {COUNTERS.map(c => (
+            <button
+              key={c}
+              onClick={() => setCounter(c)}
+              className={cn(
+                'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                counter === c
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/70',
+              )}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {current && (
+          <div className="flex items-baseline gap-2 px-3 py-1.5 rounded-lg border border-border bg-card">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Chamando</span>
+            <span
+              className="text-sm font-bold tabular-nums"
+              style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+            >
+              {current.ticket}
+            </span>
+            <span className="text-xs text-muted-foreground truncate max-w-[16ch]">
+              {current.patientName ?? '—'}
+            </span>
           </div>
-        </div>
+        )}
 
-        <div className="hidden lg:block w-px h-12 bg-border" />
-
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] uppercase tracking-widest text-muted-foreground">Chamada atual</p>
-          {current ? (
-            <div className="mt-1 flex items-baseline gap-3">
-              <span
-                className="text-3xl font-black tabular-nums"
-                style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
-              >
-                {current.ticket}
-              </span>
-              <span className="text-sm text-foreground truncate">
-                {current.patientName ?? 'Sem nome informado'}
-              </span>
-            </div>
-          ) : (
-            <p className="mt-1 text-sm text-muted-foreground italic">Nenhuma chamada.</p>
-          )}
-        </div>
+        <div className="flex-1" />
 
         <button
           onClick={callNext}
           disabled={queue.length === 0}
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm shadow-teal-900/10 shrink-0"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold text-sm hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          <PhoneCall size={16} />
+          <PhoneCall size={15} />
           Chamar próximo
         </button>
-      </section>
+      </div>
 
       {/* Fila + ações rápidas */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6">
