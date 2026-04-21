@@ -1,6 +1,6 @@
 // API de dispositivos (totem/painel).
 
-import { api } from './client'
+import { api, apiFetch } from './client'
 
 export type DeviceType = 'totem' | 'painel'
 export type DeviceStatus = 'pending' | 'paired' | 'revoked' | 'stale'
@@ -34,6 +34,10 @@ export interface DeviceRead {
   lastSeenAt: string | null
   revokedAt: string | null
   createdAt: string
+  painelId: string | null
+  painelName: string | null
+  totemId: string | null
+  totemName: string | null
 }
 
 export interface DeviceListItem extends DeviceRead {
@@ -45,6 +49,42 @@ export interface DevicePairInput {
   facilityId: string
   name: string
   type: DeviceType
+  /** Vínculo opcional. Se omitido, device fica "aguardando configuração". */
+  painelId?: string | null
+  totemId?: string | null
+}
+
+export interface DeviceUpdateInput {
+  name?: string
+  /** ``null`` explícito desvincula. */
+  painelId?: string | null
+  totemId?: string | null
+}
+
+// ─── Config runtime (consumido pelo próprio device) ───────────────────────
+
+export interface DeviceConfigPainel {
+  id: string
+  name: string
+  mode: 'senha' | 'nome' | 'ambos'
+  announceAudio: boolean
+  sectorNames: string[]
+}
+
+export interface DeviceConfigTotem {
+  id: string
+  name: string
+  capture: { cpf: boolean; cns: boolean; face: boolean; manualName: boolean }
+  priorityPrompt: boolean
+}
+
+export interface DeviceConfigOutput {
+  deviceId: string
+  type: DeviceType
+  name: string | null
+  facilityId: string | null
+  painel: DeviceConfigPainel | null
+  totem: DeviceConfigTotem | null
 }
 
 export const devicesApi = {
@@ -62,6 +102,16 @@ export const devicesApi = {
   list: () =>
     api.get<DeviceListItem[]>('/api/v1/devices', { withContext: true }),
 
+  update: (id: string, payload: DeviceUpdateInput) =>
+    api.patch<DeviceRead>(`/api/v1/devices/${id}`, payload, { withContext: true }),
+
   revoke: (id: string) =>
     api.delete<void>(`/api/v1/devices/${id}`, { withContext: true }),
+
+  /** Config consumida pelo próprio device em runtime.
+   *  ``X-Device-Token`` via header — independente do auth de usuário. */
+  getConfig: (deviceToken: string) =>
+    apiFetch<DeviceConfigOutput>('/api/v1/public/devices/config', {
+      headers: { 'X-Device-Token': deviceToken },
+    }),
 }

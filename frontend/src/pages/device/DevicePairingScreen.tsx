@@ -4,7 +4,9 @@
 // - Quando paired: guarda o token no store (completePairing).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { BellRing, Loader2, MonitorSmartphone, RefreshCw } from 'lucide-react'
+import { HttpError } from '../../api/client'
 import { devicesApi, type DeviceType } from '../../api/devices'
 import { useDeviceStore } from '../../store/deviceStore'
 
@@ -37,9 +39,10 @@ export function DevicePairingScreen({ type }: Props) {
   }, [type, beginPairing])
 
   useEffect(() => {
-    // Se já tem deviceId e code não carregou ainda, faz polling com ele
-    // (talvez a tela foi recarregada no meio do pareamento).
-    if (!deviceId) void register()
+    // Sempre registra no mount — descarta deviceId antigo (pode ser de
+    // um device revogado/deletado; o código é ephemeral no backend e
+    // não persistimos no front, então não dá pra recuperar mesmo).
+    void register()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -62,8 +65,16 @@ export function DevicePairingScreen({ type }: Props) {
           void register()
           return
         }
-      } catch {
-        // ignora falhas temporárias — o próximo tick tenta de novo
+      } catch (e) {
+        // Device não existe mais no backend (404) — re-registra.
+        if (e instanceof HttpError && e.status === 404) {
+          reset()
+          setCode(null)
+          setExpiresAt(null)
+          void register()
+          return
+        }
+        // Outros erros: ignora — próximo tick tenta de novo.
       }
       pollingRef.current = window.setTimeout(tick, POLL_INTERVAL_MS)
     }
@@ -76,17 +87,20 @@ export function DevicePairingScreen({ type }: Props) {
   const Icon = type === 'totem' ? MonitorSmartphone : BellRing
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6 text-center">
-      <div className="max-w-md w-full">
-        <div className="w-16 h-16 rounded-2xl bg-teal-100 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300 flex items-center justify-center mx-auto mb-5">
-          <Icon size={28} />
+    <div className="fixed inset-0 flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+      <div className="max-w-3xl w-full">
+        {/* Cabeçalho */}
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-teal-100 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300 flex items-center justify-center mx-auto mb-3">
+            <Icon size={24} />
+          </div>
+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500 mb-1">
+            {type === 'totem' ? 'Totem' : 'Painel de chamadas'}
+          </p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Parear este dispositivo
+          </h1>
         </div>
-        <p className="text-xs uppercase tracking-[0.3em] text-slate-500 mb-2">
-          {type === 'totem' ? 'Totem' : 'Painel de chamadas'}
-        </p>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-          Parear este dispositivo
-        </h1>
 
         {loading && !code && (
           <div className="flex items-center justify-center gap-2 text-sm text-slate-500 py-12">
@@ -95,7 +109,7 @@ export function DevicePairingScreen({ type }: Props) {
         )}
 
         {error && (
-          <div className="mb-4">
+          <div className="max-w-sm mx-auto text-center">
             <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
             <button
               type="button"
@@ -109,24 +123,41 @@ export function DevicePairingScreen({ type }: Props) {
 
         {code && (
           <>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
-              No sistema, entre com um usuário da unidade e informe o código abaixo
-              em <span className="font-semibold">Dispositivos</span>.
-            </p>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-6 py-8 mb-5">
-              <p className="text-6xl sm:text-7xl font-black tracking-[0.15em] tabular-nums text-teal-600 dark:text-teal-300 select-all">
-                {code}
-              </p>
+            {/* Card único: QR grande à esquerda, código + instruções à direita */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row items-center gap-6 sm:gap-10">
+              <div className="bg-white p-3 rounded-xl shrink-0">
+                <QRCodeSVG
+                  value={`${window.location.origin}/dispositivos/parear?code=${code}&type=${type}`}
+                  size={220}
+                  level="M"
+                />
+              </div>
+              <div className="flex-1 min-w-0 text-center md:text-left">
+                <p className="text-[11px] uppercase tracking-widest text-slate-500 mb-1">
+                  Código
+                </p>
+                <p className="text-5xl sm:text-6xl font-black tracking-[0.15em] tabular-nums text-teal-600 dark:text-teal-300 select-all leading-none mb-5">
+                  {code}
+                </p>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Aponte o celular pro QR pra parear com um clique —
+                  ou digite o código no sistema em{' '}
+                  <span className="font-medium text-slate-800 dark:text-slate-200">
+                    Recepção → Dispositivos
+                  </span>.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-500 mt-5">
               <Loader2 size={12} className="animate-spin" />
               Aguardando pareamento…
+              {expiresAt && (
+                <span className="text-slate-400">
+                  · expira às {expiresAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </div>
-            {expiresAt && (
-              <p className="text-[11px] text-slate-400 mt-2">
-                Expira às {expiresAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-              </p>
-            )}
           </>
         )}
       </div>

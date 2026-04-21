@@ -33,9 +33,17 @@ from app.modules.rec.router import (
     admin_router as rec_admin_router,
     router as rec_router,
 )
+from app.modules.painels.router import (
+    admin_router as painels_admin_router,
+    router as painels_router,
+)
 from app.modules.sectors.router import (
     admin_router as sectors_admin_router,
     router as sectors_router,
+)
+from app.modules.totens.router import (
+    admin_router as totens_admin_router,
+    router as totens_router,
 )
 from app.modules.permissions.admin_router import (
     access_router as roles_admin_access_router,
@@ -88,3 +96,7 @@ api_v1.include_router(devices_public_router)
 api_v1.include_router(devices_router)
 api_v1.include_router(sectors_admin_router)
 api_v1.include_router(sectors_router)
+api_v1.include_router(painels_admin_router)
+api_v1.include_router(painels_router)
+api_v1.include_router(totens_admin_router)
+api_v1.include_router(totens_router)

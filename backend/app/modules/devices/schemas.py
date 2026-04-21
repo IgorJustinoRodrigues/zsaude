@@ -48,6 +48,20 @@ class DevicePairInput(CamelModel):
     # Tipo é validado contra o device (o que registrou). O admin informa
     # pra confirmar — erro 409 se diferente.
     type: DeviceType
+    # Vínculo opcional — pode-se parear sem escolher e decidir depois.
+    # Painel_id se type='painel'; totem_id se type='totem'. Ambos None
+    # = device fica "aguardando configuração".
+    painel_id: UUID | None = None
+    totem_id: UUID | None = None
+
+
+class DeviceUpdate(CamelModel):
+    """Trocar nome ou vínculo sem re-parear. Enviar ``painel_id: null``
+    (ou ``totem_id: null``) desvincula."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    painel_id: UUID | None = None
+    totem_id: UUID | None = None
 
 
 class DeviceRead(CamelModel):
@@ -62,9 +76,46 @@ class DeviceRead(CamelModel):
     revoked_at: datetime | None = None
     created_at: datetime
 
+    # Vínculo
+    painel_id: UUID | None = None
+    painel_name: str | None = None
+    totem_id: UUID | None = None
+    totem_name: str | None = None
+
 
 class DeviceListItem(DeviceRead):
     """Mesmo que ``DeviceRead`` mas com espaço pra nome do usuário que
     pareou (resolvido no service)."""
 
     paired_by_user_name: str | None = None
+
+
+# ─── Runtime do device: config efetiva ──────────────────────────────────────
+
+class DeviceConfigPainel(CamelModel):
+    id: UUID
+    name: str
+    mode: str
+    announce_audio: bool
+    sector_names: list[str]
+
+
+class DeviceConfigTotem(CamelModel):
+    id: UUID
+    name: str
+    capture: dict
+    priority_prompt: bool
+
+
+class DeviceConfigOutput(CamelModel):
+    """Config que o device consome em runtime. Se ``painel`` e ``totem``
+    são ambos ``None``, o device está pareado mas **aguardando
+    configuração** — o UI mostra uma tela "Aguardando config" até o
+    admin vincular um painel/totem."""
+
+    device_id: UUID
+    type: DeviceType
+    name: str | None = None
+    facility_id: UUID | None = None
+    painel: DeviceConfigPainel | None = None
+    totem: DeviceConfigTotem | None = None

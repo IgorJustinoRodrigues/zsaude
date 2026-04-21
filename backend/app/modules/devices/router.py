@@ -16,21 +16,24 @@ Endpoints autenticados (qualquer usuário com work-context):
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 
 from app.core.deps import DB, CurrentContextDep, CurrentUserDep, Valkey
 from app.db.session import get_session
 from app.modules.devices.hub import get_hub
 from app.modules.devices.schemas import (
+    DeviceConfigOutput,
     DeviceListItem,
     DevicePairInput,
     DeviceRead,
     DeviceRegisterInput,
     DeviceRegisterOutput,
     DeviceStatusOutput,
+    DeviceUpdate,
 )
 from app.modules.devices.service import DeviceService
 from app.modules.audit.writer import write_audit
@@ -49,6 +52,19 @@ async def register_device(payload: DeviceRegisterInput, db: DB) -> DeviceRegiste
 @public_router.get("/status/{device_id}", response_model=DeviceStatusOutput)
 async def device_status(device_id: UUID, db: DB, valkey: Valkey) -> DeviceStatusOutput:
     return await DeviceService(db, valkey).status(device_id)
+
+
+@public_router.get("/config", response_model=DeviceConfigOutput)
+async def device_config(
+    db: DB,
+    x_device_token: Annotated[str, Header(alias="X-Device-Token")],
+) -> DeviceConfigOutput:
+    """Config consumida pelo próprio device em runtime. Autentica via
+    header ``X-Device-Token``. Retorna ``painel``/``totem`` = None
+    quando o device está pareado mas sem vínculo (aguardando config)."""
+    svc = DeviceService(db)
+    device = await svc.authenticate_by_token(x_device_token)
+    return await svc.get_config(device)
 
 
 # ─── Autenticado: pareamento ────────────────────────────────────────────────
@@ -84,6 +100,25 @@ async def pair_device(
 @router.get("", response_model=list[DeviceListItem])
 async def list_devices(db: DB, ctx: CurrentContextDep) -> list[DeviceListItem]:
     return await DeviceService(db).list_for_facility(ctx.facility_id)
+
+
+@router.patch("/{device_id}", response_model=DeviceRead)
+async def update_device(
+    device_id: UUID, payload: DeviceUpdate, db: DB,
+    ctx: CurrentContextDep, _user: CurrentUserDep,
+) -> DeviceRead:
+    """Atualiza nome e/ou vínculo (painel/totem). Aceita ``null``
+    explícito pra desvincular. Facility do device é verificada."""
+    svc = DeviceService(db)
+    device = await svc._get_or_404(device_id)  # noqa: SLF001
+    if device.facility_id is not None and str(device.facility_id) != str(ctx.facility_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Só é possível editar dispositivos da unidade atual.",
+        )
+    return await svc.update(
+        device_id, payload, sent_fields=payload.model_fields_set,
+    )
 
 
 @router.delete("/{device_id}", status_code=204)

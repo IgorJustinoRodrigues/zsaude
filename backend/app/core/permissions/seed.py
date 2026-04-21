@@ -121,6 +121,11 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
             "hsp.patient_history.view",
             "hsp.patient_photo.view", "hsp.patient_photo.upload",
             "dgn.exam.view", "dgn.exam.request",
+            # Recepção — acesso ao módulo (totem, painel, balcão).
+            "rec.module.access",
+            # Operações — visão básica do próprio trabalho (sessões e
+            # relatórios). Mais granularidade vem com coordinator/auditor.
+            "ops.session.view",
         ],
     ),
     (

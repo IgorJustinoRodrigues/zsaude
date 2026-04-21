@@ -7,5 +7,8 @@ export default defineConfig({
   server: {
     port: 5179,
     strictPort: true,
+    // Escuta em todas as interfaces (0.0.0.0) pra permitir acesso da
+    // rede local — abre ``http://<ip-da-maquina>:5179`` no celular.
+    host: true,
   },
 })

@@ -85,6 +85,7 @@ import { RecQueuePage } from '../pages/rec/RecQueuePage'
 import { RecTotemPage } from '../pages/rec/RecTotemPage'
 import { RecPainelPage } from '../pages/rec/RecPainelPage'
 import { RecDevicesPage } from '../pages/rec/RecDevicesPage'
+import { RecDevicePairPage } from '../pages/rec/RecDevicePairPage'
 
 // SYS (MASTER)
 import { SysDashboardPage } from '../pages/sys/SysDashboardPage'
@@ -129,6 +130,14 @@ import {
   SysMunicipalityResourcesPage,
   SysFacilityResourcesPage,
 } from '../pages/sys/SysResourcesPages'
+import {
+  SysMunicipalityPainelsPage,
+  SysFacilityPainelsPage,
+} from '../pages/sys/SysPainelsPage'
+import {
+  SysMunicipalityTotensPage,
+  SysFacilityTotensPage,
+} from '../pages/sys/SysTotensPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -160,6 +169,11 @@ export const router = createBrowserRouter([
   { path: '/403', element: <ForbiddenPage /> },
   { path: '/404', element: <NotFoundPage /> },
 
+  // Pareamento por QR (celular escaneia e confirma). A própria página
+  // lida com os 3 estados: não logado, sem contexto, logado+contexto.
+  // Fica fora do RequireAuth pra dar uma mensagem customizada.
+  { path: '/dispositivos/parear', element: <RecDevicePairPage /> },
+
   // Dispositivos (totem/painel) — públicas. Gerenciam o próprio token
   // via deviceStore; não dependem de user auth.
   { path: '/dispositivo/totem',  element: <DeviceTotemPage /> },
@@ -189,6 +203,8 @@ export const router = createBrowserRouter([
               { path: '/sys/municipios/:id/modulos/rec/:section',         element: <SysMunicipalityRecSectionPage /> },
               { path: '/sys/municipios/:id/recursos',                     element: <SysMunicipalityResourcesPage /> },
               { path: '/sys/municipios/:id/recursos/setores',             element: <SysMunicipalitySectorsPage /> },
+              { path: '/sys/municipios/:id/recursos/paineis',             element: <SysMunicipalityPainelsPage /> },
+              { path: '/sys/municipios/:id/recursos/totens',              element: <SysMunicipalityTotensPage /> },
               { path: '/sys/unidades',                    element: <SysFacilityListPage /> },
               { path: '/sys/unidades/novo',               element: <SysFacilityFormPage /> },
               { path: '/sys/unidades/:id',                element: <SysFacilityFormPage /> },
@@ -198,6 +214,8 @@ export const router = createBrowserRouter([
               { path: '/sys/unidades/:id/modulos/rec/:section',           element: <SysFacilityRecSectionPage /> },
               { path: '/sys/unidades/:id/recursos',                       element: <SysFacilityResourcesPage /> },
               { path: '/sys/unidades/:id/recursos/setores',               element: <SysFacilitySectorsPage /> },
+              { path: '/sys/unidades/:id/recursos/paineis',               element: <SysFacilityPainelsPage /> },
+              { path: '/sys/unidades/:id/recursos/totens',                element: <SysFacilityTotensPage /> },
               { path: '/sys/profissionais',               element: <SysProfessionalsPage /> },
               { path: '/sys/usuarios',              element: <SysUserAdminPage /> },
               { path: '/sys/usuarios/novo',         element: <OpsUserFormPage /> },

@@ -6,7 +6,11 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+if False:  # TYPE_CHECKING — evita import cycle em runtime
+    from app.modules.painels.models import Painel
+    from app.modules.totens.models import Totem
 
 from app.db.base import Base, TimestampedMixin
 from app.db.types import UUIDType, new_uuid7
@@ -26,6 +30,10 @@ class Device(Base, TimestampedMixin):
         CheckConstraint(
             "type IN ('totem', 'painel')",
             name="ck_devices_type_valid",
+        ),
+        CheckConstraint(
+            "NOT (painel_id IS NOT NULL AND totem_id IS NOT NULL)",
+            name="ck_devices_link_xor",
         ),
     )
 
@@ -67,6 +75,22 @@ class Device(Base, TimestampedMixin):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # Vínculo com a config lógica (painel ou totem).
+    # Check constraint garante que só um dos dois está setado por vez.
+    painel_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(),
+        ForeignKey("painels.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    totem_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType(),
+        ForeignKey("totens.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    painel: Mapped["Painel | None"] = relationship("Painel", lazy="joined")
+    totem: Mapped["Totem | None"] = relationship("Totem", lazy="joined")
 
     @property
     def status(self) -> str:

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -10,7 +10,12 @@ import { useTheme } from '../../hooks/useTheme'
 export function LoginPage() {
   const { login, autoSelectContext, selectSystem } = useAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const { theme, toggle } = useTheme()
+  // Quando alguém chega aqui via deep link (ex.: QR de pareamento), a
+  // rota de origem passa ``returnTo`` em ``location.state`` pra gente
+  // mandar o user de volta pra lá após o login.
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo ?? null
   // Dev: pré-preenche com Igor Justino (MASTER) pra agilizar os testes.
   // Remover antes de ir pra produção.
   const [form, setForm] = useState({ login: '75696860125', password: 'Admin@123' })
@@ -46,14 +51,18 @@ export function LoginPage() {
 
     const me = useAuthStore.getState().user
     if (me?.level === 'master') {
-      navigate('/sys', { replace: true })
+      navigate(returnTo ?? '/sys', { replace: true })
       setLoading(false)
       return
     }
 
     try {
       const modules = await autoSelectContext()
-      if (modules) {
+      if (returnTo) {
+        // Destino específico vindo de deep-link (QR, etc). Se o user
+        // ainda não tem contexto, o próprio destino lida com isso.
+        navigate(returnTo, { replace: true })
+      } else if (modules) {
         if (modules.length === 1) {
           selectSystem(modules[0])
           navigate(`/${modules[0]}`, { replace: true })
@@ -64,7 +73,7 @@ export function LoginPage() {
         navigate('/selecionar-contexto', { replace: true })
       }
     } catch {
-      navigate('/selecionar-contexto', { replace: true })
+      navigate(returnTo ?? '/selecionar-contexto', { replace: true })
     } finally {
       setLoading(false)
     }

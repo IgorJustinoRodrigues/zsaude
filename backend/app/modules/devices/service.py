@@ -14,13 +14,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_opaque_token
 from app.modules.devices.models import Device
 from app.modules.devices.schemas import (
+    DeviceConfigOutput,
+    DeviceConfigPainel,
+    DeviceConfigTotem,
     DeviceListItem,
     DevicePairInput,
     DeviceRead,
     DeviceRegisterInput,
     DeviceRegisterOutput,
     DeviceStatusOutput,
+    DeviceUpdate,
 )
+from app.modules.painels.models import Painel
+from app.modules.painels.service import PainelService
+from app.modules.tenants.models import Facility
+from app.modules.totens.models import Totem
+from app.modules.totens.service import TotemService
 from app.modules.users.models import User
 
 # Janela em que o ``pairing_code`` é válido. Depois disso o device precisa
@@ -156,6 +165,12 @@ class DeviceService:
         if device.token_hash is not None:
             raise HTTPException(status_code=409, detail="Dispositivo já pareado.")
 
+        # Valida vínculo (painel/totem) se informado.
+        await self._resolve_link_or_400(
+            payload.type, payload.facility_id,
+            painel_id=payload.painel_id, totem_id=payload.totem_id,
+        )
+
         # Gera o token e guarda só o hash.
         plain = _gen_device_token()
         device.token_hash = hash_opaque_token(plain)
@@ -165,6 +180,8 @@ class DeviceService:
         device.paired_by_user_id = actor_user_id
         device.facility_id = payload.facility_id
         device.name = payload.name
+        device.painel_id = payload.painel_id if payload.type == "painel" else None
+        device.totem_id = payload.totem_id if payload.type == "totem" else None
 
         # Handoff do plaintext via Redis (TTL 2min). O device buscará no
         # próximo polling. Se o Valkey cair, o device fica sem token e
@@ -179,10 +196,77 @@ class DeviceService:
         await self.db.flush()
         return _to_read(device)
 
+    async def update(
+        self, device_id: UUID, payload: DeviceUpdate, sent_fields: set[str],
+    ) -> DeviceRead:
+        """Atualiza nome e/ou vínculo. ``sent_fields`` = model_fields_set
+        (distingue "não enviado" de "enviado como null pra desvincular")."""
+        device = await self._get_or_404(device_id)
+
+        if "name" in sent_fields and payload.name is not None:
+            device.name = payload.name
+
+        if device.type == "painel":
+            if "painel_id" in sent_fields:
+                if payload.painel_id is None:
+                    device.painel_id = None
+                else:
+                    await self._resolve_link_or_400(
+                        "painel", device.facility_id,
+                        painel_id=payload.painel_id, totem_id=None,
+                    )
+                    device.painel_id = payload.painel_id
+        elif device.type == "totem":
+            if "totem_id" in sent_fields:
+                if payload.totem_id is None:
+                    device.totem_id = None
+                else:
+                    await self._resolve_link_or_400(
+                        "totem", device.facility_id,
+                        painel_id=None, totem_id=payload.totem_id,
+                    )
+                    device.totem_id = payload.totem_id
+
+        await self.db.flush()
+        return _to_read(device)
+
+    # ── Config de runtime (usado pelo próprio device) ────────────────
+
+    async def get_config(self, device: Device) -> DeviceConfigOutput:
+        """Config que o device consome. ``painel``/``totem`` = None quando
+        não vinculado (UI mostra "aguardando configuração")."""
+        painel = None
+        if device.painel_id and device.painel:
+            painel = DeviceConfigPainel(
+                id=device.painel.id,
+                name=device.painel.name,
+                mode=device.painel.mode,
+                announce_audio=device.painel.announce_audio,
+                sector_names=list(device.painel.sector_names),
+            )
+        totem = None
+        if device.totem_id and device.totem:
+            totem = DeviceConfigTotem(
+                id=device.totem.id,
+                name=device.totem.name,
+                capture=dict(device.totem.capture),
+                priority_prompt=device.totem.priority_prompt,
+            )
+        return DeviceConfigOutput.model_validate({
+            "deviceId": device.id,
+            "type": device.type,
+            "name": device.name,
+            "facilityId": device.facility_id,
+            "painel": painel.model_dump(by_alias=True) if painel else None,
+            "totem": totem.model_dump(by_alias=True) if totem else None,
+        })
+
     async def list_for_facility(self, facility_id: UUID) -> list[DeviceListItem]:
         """Devices pareados ou pendentes desta unidade. Inclui revogados
         dos últimos 30 dias pra auditoria."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        # ``Device.painel`` e ``Device.totem`` são relationships lazy="joined"
+        # — carregam automaticamente. Basta fazer join pra o nome do user.
         result = await self.db.execute(
             select(Device, User.name)
             .join(User, User.id == Device.paired_by_user_id, isouter=True)
@@ -224,6 +308,37 @@ class DeviceService:
 
     # ── Internos ───────────────────────────────────────────────────────
 
+    async def _resolve_link_or_400(
+        self, device_type: str, facility_id: UUID | None,
+        painel_id: UUID | None, totem_id: UUID | None,
+    ) -> None:
+        """Valida que o painel/totem informado existe E está disponível
+        pra essa facility (próprio dela ou herdado do município).
+        Lança 400/404 se inválido."""
+        if painel_id is not None and device_type != "painel":
+            raise HTTPException(status_code=400, detail="painel_id só é válido pra devices do tipo 'painel'.")
+        if totem_id is not None and device_type != "totem":
+            raise HTTPException(status_code=400, detail="totem_id só é válido pra devices do tipo 'totem'.")
+        if painel_id is None and totem_id is None:
+            return  # Ok — device pareado sem vínculo (aguardando config).
+        if facility_id is None:
+            raise HTTPException(status_code=400, detail="Device ainda não tem unidade — impossível validar vínculo.")
+
+        if painel_id is not None:
+            available = await PainelService(self.db).available_for_facility(facility_id)
+            if not any(p.id == painel_id for p in available):
+                raise HTTPException(
+                    status_code=404,
+                    detail="Painel não disponível nesta unidade (ou arquivado).",
+                )
+        if totem_id is not None:
+            available = await TotemService(self.db).available_for_facility(facility_id)
+            if not any(t.id == totem_id for t in available):
+                raise HTTPException(
+                    status_code=404,
+                    detail="Totem não disponível nesta unidade (ou arquivado).",
+                )
+
     async def _get_or_404(self, device_id: UUID) -> Device:
         device = await self.db.get(Device, device_id)
         if device is None:
@@ -245,4 +360,8 @@ def _to_read(device: Device) -> DeviceRead:
         "lastSeenAt": device.last_seen_at,
         "revokedAt": device.revoked_at,
         "createdAt": device.created_at,
+        "painelId": device.painel_id,
+        "painelName": device.painel.name if device.painel else None,
+        "totemId": device.totem_id,
+        "totemName": device.totem.name if device.totem else None,
     })

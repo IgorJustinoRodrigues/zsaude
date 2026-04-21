@@ -8,7 +8,7 @@
 // Mesmo padrão pra /sys/unidades/:id/recursos/...
 
 import { useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, LayoutList, type LucideIcon } from 'lucide-react'
+import { BellRing, ChevronRight, LayoutList, MonitorSmartphone, type LucideIcon } from 'lucide-react'
 import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 import { cn } from '../../lib/utils'
 
@@ -30,6 +30,20 @@ const RESOURCES: Resource[] = [
     description: 'Catálogo usado pelos painéis e encaminhamentos internos',
     icon: LayoutList,
     accent: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300',
+  },
+  {
+    id: 'paineis',
+    label: 'Painéis de chamada',
+    description: 'Configurações nomeadas — vinculadas a um dispositivo TV',
+    icon: BellRing,
+    accent: 'bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300',
+  },
+  {
+    id: 'totens',
+    label: 'Totens',
+    description: 'Configurações do autoatendimento — vinculadas a um dispositivo totem',
+    icon: MonitorSmartphone,
+    accent: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300',
   },
 ]
 
