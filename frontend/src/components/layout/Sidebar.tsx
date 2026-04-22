@@ -5,7 +5,7 @@ import {
   ClipboardCheck, Truck, LayoutGrid, PanelLeftClose, PanelLeftOpen, X,
   LayoutDashboard, MapPin, Users, List, UserPlus, ChevronDown, ScrollText,
   BarChart2, SearchCheck, Upload, TrendingUp, BellRing, Link2,
-  MonitorSmartphone, Plug,
+  Plug,
 } from 'lucide-react'
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
@@ -50,9 +50,6 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
   rec: [
     { kind: 'section', label: 'Atendimento' },
     { kind: 'item', icon: <Users size={16} />, label: 'Recepção', path: '/rec/atendimento' },
-    { kind: 'section', label: 'Exibição' },
-    { kind: 'item', icon: <MonitorSmartphone size={16} />, label: 'Totem', path: '/rec/totem' },
-    { kind: 'item', icon: <BellRing size={16} />, label: 'Painel', path: '/rec/painel' },
     { kind: 'section', label: 'Administração' },
     { kind: 'item', icon: <Plug size={16} />, label: 'Dispositivos', path: '/rec/dispositivos' },
   ],
@@ -476,7 +473,7 @@ interface NavItemProps {
   onClick: () => void
 }
 
-/** Filtra itens do rec baseados na config efetiva: esconde Totem/Painel/Recepção
+/** Filtra itens do rec baseados na config efetiva: esconde Recepção
  *  quando a feature está desativada no escopo atual. Também tira seções vazias. */
 function filterRecNav(
   entries: NavEntry[],
@@ -484,8 +481,6 @@ function filterRecNav(
 ): NavEntry[] {
   const hiddenPaths = new Set<string>()
   if (!config.recepcao.enabled) hiddenPaths.add('/rec/atendimento')
-  if (!config.totem.enabled)    hiddenPaths.add('/rec/totem')
-  if (!config.painel.enabled)   hiddenPaths.add('/rec/painel')
 
   const kept = entries.filter(e => {
     if (e.kind === 'item')  return !hiddenPaths.has(e.path)

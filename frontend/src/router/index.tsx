@@ -83,6 +83,7 @@ import { OpsFormaOrgSearchPage } from '../pages/ops/OpsFormaOrgSearchPage'
 import { RecHomePage } from '../pages/rec/RecHomePage'
 import { RecQueuePage } from '../pages/rec/RecQueuePage'
 import { RecNewAttendancePage } from '../pages/rec/RecNewAttendancePage'
+import { RecAttendancePage } from '../pages/rec/RecAttendancePage'
 import { RecTotemPage } from '../pages/rec/RecTotemPage'
 import { RecPainelPage } from '../pages/rec/RecPainelPage'
 import { RecDevicesPage } from '../pages/rec/RecDevicesPage'
@@ -359,6 +360,12 @@ export const router = createBrowserRouter([
                     children: [
                       { path: '/rec/atendimento', element: <RecQueuePage /> },
                       { path: '/rec/atendimento/novo', element: <RecNewAttendancePage /> },
+                      // Tela de atendimento focada — wizard em 3 etapas
+                      // (identidade → dados rápidos → encaminhamento).
+                      { path: '/rec/atendimento/:id', element: <RecAttendancePage /> },
+                      // Escape hatch pra edição completa do cadastro
+                      // (documentos, condições, etc.) — mesma impl do hsp.
+                      { path: '/rec/atendimento/:id/ficha', element: <HspPatientFormPage /> },
                     ],
                   },
                   {

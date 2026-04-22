@@ -268,7 +268,13 @@ export function RecQueuePage() {
                 callCooldowns={callCooldowns}
                 onCall={doRecallInService}
                 onForward={t => setForwardModal(t)}
-                onOpenAttend={t => setAttendModal(t)}
+                onOpenAttend={t => {
+                  // Em "Em atendimento", abrir = ir pro wizard de atendimento
+                  // (identidade → dados → encaminhamento). Ticket manual
+                  // sem patientId cai no AttendModal.
+                  if (t.patientId) navigate(`/rec/atendimento/${t.patientId}`)
+                  else setAttendModal(t)
+                }}
               />
               <div className="mt-8" />
             </>
@@ -531,12 +537,13 @@ function QueueRow({
                 {callDisabled ? `Aguarde ${callDisabledSec}s` : 'Rechamar'}
               </button>
             )}
-            {onForward && (
+            {onOpenAttend && (
               <button
-                onClick={() => onForward(ticket)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
+                onClick={() => onOpenAttend(ticket)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                title="Abrir ficha do paciente pra continuar o atendimento"
               >
-                <ArrowRight size={13} /> Encaminhar
+                <CheckCircle2 size={13} /> Atender
               </button>
             )}
           </>

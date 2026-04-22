@@ -89,7 +89,10 @@ export function RecNewAttendancePage() {
     try {
       const out = await recApi.emitManualTicket(patientId, priority)
       toast.success('Atendimento iniciado', `${out.ticketNumber} · ${patientName}`)
-      navigate('/rec/atendimento')
+      // A ficha cadastral é a tela de atendimento — recepção revisa/atualiza
+      // os dados enquanto o paciente aguarda. Botão "Voltar" do form leva
+      // de volta pra fila quando terminar.
+      navigate(`/rec/atendimento/${patientId}`)
     } catch (err) {
       if (err instanceof HttpError) {
         if (err.status === 409 && typeof err.details?.existingTicket === 'string') {
@@ -97,6 +100,9 @@ export function RecNewAttendancePage() {
             'Paciente já na fila',
             `Senha existente: ${err.details.existingTicket}`,
           )
+          // Mesmo quando já tem senha, abre a ficha pra edição —
+          // atualização de dados cadastrais continua fazendo sentido.
+          navigate(`/rec/atendimento/${patientId}`)
         } else {
           toast.error('Falha', err.message)
         }
@@ -721,7 +727,8 @@ function FaceMatchConfirm({
                 setEnrolling(false)
               }
             }
-            navigate('/rec/atendimento')
+            // Abre a ficha pra revisão de dados — a senha já existe na fila.
+            navigate(`/hsp/pacientes/${top.patientId}/editar`)
           }}
           onReject={onReject}
           hasMore={hasMore}
@@ -886,7 +893,7 @@ function AlreadyInQueueCard({
         >
           {enrolling
             ? <><Loader2 size={18} className="animate-spin" /> Atualizando foto…</>
-            : <><ArrowRight size={18} /> Ver na fila</>}
+            : <><ArrowRight size={18} /> Abrir ficha</>}
         </button>
         <button
           onClick={onReject}

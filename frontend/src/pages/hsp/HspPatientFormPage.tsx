@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Save, Camera, Trash2, Loader2, AlertCircle, ScanFace } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
@@ -138,6 +138,10 @@ export function HspPatientFormPage() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const location = useLocation()
+  /** true quando a ficha está sendo aberta via URL do módulo recepção —
+   *  ajusta título/back pra o fluxo de atendimento. */
+  const inRecFlow = location.pathname.startsWith('/rec/')
 
   const [tab, setTab] = useState<Tab>('Identificação')
   const [loading, setLoading] = useState(isEdit)
@@ -322,7 +326,8 @@ export function HspPatientFormPage() {
         saved = await hspApi.create(payload)
       }
       toast.success(isEdit ? 'Paciente atualizado.' : 'Paciente cadastrado.')
-      navigate(`/hsp/pacientes/${saved.id}`)
+      // No fluxo do rec, após salvar volta pra fila. No hsp, vai pro detalhe.
+      navigate(inRecFlow ? '/rec/atendimento' : `/hsp/pacientes/${saved.id}`)
     } catch (err) {
       if (err instanceof HttpError) toast.error(err.message)
       else toast.error('Falha ao salvar.')
@@ -404,9 +409,15 @@ export function HspPatientFormPage() {
   return (
     <div>
       <PageHeader
-        title={isEdit ? 'Editar paciente' : 'Novo paciente'}
-        subtitle={isEdit ? `Prontuário ${patient?.prontuario ?? ''}` : 'Cadastro completo'}
-        back={isEdit ? `/hsp/pacientes/${id}` : '/hsp/pacientes/buscar'}
+        title={inRecFlow
+          ? 'Atendimento'
+          : isEdit ? 'Editar paciente' : 'Novo paciente'}
+        subtitle={inRecFlow
+          ? `${patient?.socialName || patient?.name || ''}${patient?.prontuario ? ` · Prontuário ${patient.prontuario}` : ''}`
+          : isEdit ? `Prontuário ${patient?.prontuario ?? ''}` : 'Cadastro completo'}
+        back={inRecFlow
+          ? '/rec/atendimento'
+          : isEdit ? `/hsp/pacientes/${id}` : '/hsp/pacientes/buscar'}
         actions={
           <div className="flex items-center gap-3">
             {submitTried && totalErrors > 0 && (
