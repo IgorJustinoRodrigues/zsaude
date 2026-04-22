@@ -229,6 +229,37 @@ export interface PatientListItem {
   updatedAt: string
 }
 
+export interface PatientAddressInput {
+  label: string
+  cep?: string
+  endereco?: string
+  numero?: string
+  complemento?: string
+  bairro?: string
+  municipioIbge?: string
+  uf?: string
+  pais?: string
+  observacao?: string
+}
+
+export interface PatientAddressOut {
+  id: string
+  patientId: string
+  label: string
+  cep: string
+  endereco: string
+  numero: string
+  complemento: string
+  bairro: string
+  municipioIbge: string
+  uf: string
+  pais: string
+  observacao: string
+  displayOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PatientPhotoMeta {
   id: string
   patientId: string
@@ -394,6 +425,29 @@ export const hspApi = {
     apiFetch<void>(`/api/v1/hsp/patients/${id}/identity-review/clear`, {
       method: 'POST', withContext: true,
     }),
+
+  // ── Endereços secundários ───────────────────────────
+  listAddresses: (patientId: string) =>
+    api.get<PatientAddressOut[]>(
+      `/api/v1/hsp/patients/${patientId}/addresses`, { withContext: true },
+    ),
+
+  createAddress: (patientId: string, payload: PatientAddressInput) =>
+    apiFetch<PatientAddressOut>(`/api/v1/hsp/patients/${patientId}/addresses`, {
+      method: 'POST', body: payload, withContext: true,
+    }),
+
+  updateAddress: (patientId: string, addressId: string, payload: PatientAddressInput) =>
+    apiFetch<PatientAddressOut>(
+      `/api/v1/hsp/patients/${patientId}/addresses/${addressId}`,
+      { method: 'PATCH', body: payload, withContext: true },
+    ),
+
+  deleteAddress: (patientId: string, addressId: string) =>
+    apiFetch<void>(
+      `/api/v1/hsp/patients/${patientId}/addresses/${addressId}`,
+      { method: 'DELETE', withContext: true },
+    ),
 
   // ── Histórico ─────────────────────────────────────
   listHistory: (id: string, params: { field?: string; page?: number; pageSize?: number } = {}) =>

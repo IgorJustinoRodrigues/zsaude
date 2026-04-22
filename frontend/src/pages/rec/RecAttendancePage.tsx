@@ -15,15 +15,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Clock, Edit3, Loader2,
-  MapPin, PhoneCall, Phone, ShieldAlert, Star, User, X,
+  ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Clock, Edit3, Home,
+  Loader2, MapPin, PhoneCall, Phone, Plus, ShieldAlert, Star, Trash2, User, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PatientPhotoImg } from '../hsp/components/PatientPhotoImg'
 import { FaceRecognitionModal } from '../hsp/components/FaceRecognitionModal'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
-import { hspApi, type PatientRead } from '../../api/hsp'
+import {
+  hspApi,
+  type PatientAddressInput,
+  type PatientAddressOut,
+  type PatientRead,
+} from '../../api/hsp'
 import { recApi, type AttendanceItem } from '../../api/rec'
 import { recConfigApi } from '../../api/recConfig'
 import { sectorsApi, type Sector } from '../../api/sectors'
@@ -75,6 +80,11 @@ export function RecAttendancePage() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
+  // Endereços secundários (trabalho, casa da mãe, etc.)
+  const [extraAddresses, setExtraAddresses] = useState<PatientAddressOut[]>([])
+  const [addrEditor, setAddrEditor] = useState<PatientAddressOut | 'new' | null>(null)
+  const [addrBusy, setAddrBusy] = useState(false)
+
   const [selectedSector, setSelectedSector] = useState<string | null>(null)
   const [forwarding, setForwarding] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -92,7 +102,8 @@ export function RecAttendancePage() {
       facilityId
         ? recConfigApi.effective({ facilityId }).catch(() => null)
         : Promise.resolve(null),
-    ]).then(([p, tickets, sectorsRes, cfg]) => {
+      hspApi.listAddresses(patientId).catch(() => [] as PatientAddressOut[]),
+    ]).then(([p, tickets, sectorsRes, cfg, addresses]) => {
       if (cancelled) return
       setPatient(p)
       setPhone(p.phone ?? '')
@@ -109,6 +120,7 @@ export function RecAttendancePage() {
         t.patientId === patientId && ACTIVE_STATUSES.has(t.status),
       ) ?? null
       setTicket(active)
+      setExtraAddresses(addresses)
       setSectors(sectorsRes.sectors)
       if (cfg) {
         setSuggestedSector(cfg.recepcao.afterAttendanceSector)
@@ -188,6 +200,46 @@ export function RecAttendancePage() {
       setSavingData(false)
     }
   }, [patient, phone, cellphone, cep, endereco, numero, complemento, bairro, uf, municipioIbge])
+
+  // ── Endereços extras ──────────────────────────────────────────
+  const saveExtraAddress = useCallback(async (payload: PatientAddressInput) => {
+    if (!patientId) return
+    setAddrBusy(true)
+    try {
+      if (addrEditor === 'new') {
+        const created = await hspApi.createAddress(patientId, payload)
+        setExtraAddresses(prev => [...prev, created])
+        toast.success('Endereço adicionado')
+      } else if (addrEditor) {
+        const updated = await hspApi.updateAddress(patientId, addrEditor.id, payload)
+        setExtraAddresses(prev => prev.map(a => a.id === updated.id ? updated : a))
+        toast.success('Endereço atualizado')
+      }
+      setAddrEditor(null)
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Endereço', err.message)
+    } finally {
+      setAddrBusy(false)
+    }
+  }, [patientId, addrEditor])
+
+  const deleteExtraAddress = useCallback(async (addr: PatientAddressOut) => {
+    if (!patientId) return
+    const ok = await confirmDialog({
+      title: 'Remover endereço?',
+      message: `"${addr.label}" será apagado.`,
+      confirmLabel: 'Remover',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await hspApi.deleteAddress(patientId, addr.id)
+      setExtraAddresses(prev => prev.filter(a => a.id !== addr.id))
+      toast.success('Endereço removido')
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Endereço', err.message)
+    }
+  }, [patientId])
 
   // ── Upload de foto (quando paciente não tem) ──────────────────
   const handlePhotoCaptured = useCallback(async (dataUrl: string) => {
@@ -361,12 +413,26 @@ export function RecAttendancePage() {
           uf={uf} setUf={setUf}
           municipioIbge={municipioIbge}
           municipioDisplay={municipioDisplay}
+          extraAddresses={extraAddresses}
+          onAddAddress={() => setAddrEditor('new')}
+          onEditAddress={a => setAddrEditor(a)}
+          onDeleteAddress={deleteExtraAddress}
           saving={savingData}
           onPrev={() => setStep(1)}
           onNext={async () => {
             const ok = await saveDataIfDirty()
             if (ok) setStep(3)
           }}
+        />
+      )}
+
+      {/* Modal de edição de endereço secundário */}
+      {addrEditor && (
+        <ExtraAddressModal
+          initial={addrEditor === 'new' ? null : addrEditor}
+          saving={addrBusy}
+          onCancel={() => setAddrEditor(null)}
+          onSubmit={saveExtraAddress}
         />
       )}
 
@@ -609,6 +675,7 @@ function StepQuickData({
   endereco, setEndereco, numero, setNumero,
   complemento, setComplemento, bairro, setBairro,
   uf, setUf, municipioIbge, municipioDisplay,
+  extraAddresses, onAddAddress, onEditAddress, onDeleteAddress,
   saving, onPrev, onNext,
 }: {
   phone: string; setPhone: (v: string) => void
@@ -621,6 +688,10 @@ function StepQuickData({
   uf: string; setUf: (v: string) => void
   municipioIbge: string
   municipioDisplay: string
+  extraAddresses: PatientAddressOut[]
+  onAddAddress: () => void
+  onEditAddress: (a: PatientAddressOut) => void
+  onDeleteAddress: (a: PatientAddressOut) => void
   saving: boolean
   onPrev: () => void
   onNext: () => void
@@ -660,7 +731,7 @@ function StepQuickData({
 
         <div>
           <h3 className="text-sm font-semibold flex items-center gap-2 mb-1">
-            <MapPin size={14} /> Endereço
+            <Home size={14} /> Endereço principal
           </h3>
           <p className="text-[11px] text-muted-foreground mb-3">
             Informe o CEP — o endereço é preenchido automaticamente e pode
@@ -743,6 +814,42 @@ function StepQuickData({
             </FormField>
           </div>
         </div>
+      </div>
+
+      {/* Endereços extras (trabalho, casa da mãe, etc.) */}
+      <div className="bg-card border border-border rounded-xl p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <MapPin size={14} /> Outros endereços
+          </h3>
+          <button
+            type="button"
+            onClick={onAddAddress}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-semibold"
+          >
+            <Plus size={13} /> Adicionar endereço
+          </button>
+        </div>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          Trabalho, casa da mãe, sítio — qualquer endereço secundário com uma
+          descrição livre pra identificar.
+        </p>
+        {extraAddresses.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Nenhum endereço extra cadastrado.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {extraAddresses.map(a => (
+              <ExtraAddressRow
+                key={a.id}
+                address={a}
+                onEdit={() => onEditAddress(a)}
+                onDelete={() => onDeleteAddress(a)}
+              />
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
@@ -867,6 +974,246 @@ function StepForward({
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
+
+function ExtraAddressRow({
+  address, onEdit, onDelete,
+}: {
+  address: PatientAddressOut
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const line = [
+    address.endereco,
+    address.numero,
+    address.complemento,
+  ].filter(Boolean).join(', ')
+  const cityLine = [
+    address.bairro,
+    [address.municipioIbge, address.uf].filter(Boolean).join('/'),
+  ].filter(Boolean).join(' · ')
+  return (
+    <li className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors">
+      <span className="w-8 h-8 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
+        <MapPin size={14} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold truncate">{address.label}</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {line || <span className="italic">Endereço sem dados</span>}
+        </p>
+        {cityLine && (
+          <p className="text-[11px] text-muted-foreground truncate">{cityLine}</p>
+        )}
+        {address.observacao && (
+          <p className="text-[11px] text-muted-foreground italic mt-0.5 truncate">
+            {address.observacao}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={onEdit}
+          title="Editar endereço"
+          className="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-muted"
+        >
+          <Edit3 size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          title="Remover endereço"
+          className="p-2 rounded-lg text-rose-500 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </li>
+  )
+}
+
+function ExtraAddressModal({
+  initial, saving, onCancel, onSubmit,
+}: {
+  initial: PatientAddressOut | null
+  saving: boolean
+  onCancel: () => void
+  onSubmit: (payload: PatientAddressInput) => void
+}) {
+  const [label, setLabel] = useState(initial?.label ?? '')
+  const [cep, setCep] = useState(initial?.cep ?? '')
+  const [endereco, setEndereco] = useState(initial?.endereco ?? '')
+  const [numero, setNumero] = useState(initial?.numero ?? '')
+  const [complemento, setComplemento] = useState(initial?.complemento ?? '')
+  const [bairro, setBairro] = useState(initial?.bairro ?? '')
+  const [uf, setUf] = useState(initial?.uf ?? '')
+  const [municipioIbge, setMunicipioIbge] = useState(initial?.municipioIbge ?? '')
+  const [municipioDisplay, setMunicipioDisplay] = useState('')
+  const [observacao, setObservacao] = useState(initial?.observacao ?? '')
+  const [cepLoading, setCepLoading] = useState(false)
+
+  const handleCep = async (v: string) => {
+    setCep(v)
+    const digits = v.replace(/\D/g, '')
+    if (digits.length !== 8) return
+    setCepLoading(true)
+    try {
+      const addr = await fetchCep(digits)
+      if (!addr) return
+      if (addr.logradouro) setEndereco(addr.logradouro)
+      if (addr.bairro) setBairro(addr.bairro)
+      if (addr.complemento) setComplemento(addr.complemento)
+      if (addr.uf) setUf(addr.uf)
+      if (addr.ibge) setMunicipioIbge(addr.ibge)
+      if (addr.localidade) setMunicipioDisplay(addr.localidade)
+    } finally {
+      setCepLoading(false)
+    }
+  }
+
+  const canSave = label.trim().length > 0
+  const cityLabel = municipioDisplay || (municipioIbge ? `IBGE ${municipioIbge}` : '')
+
+  return (
+    <div onClick={onCancel} className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-card rounded-xl shadow-2xl border border-border w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        <header className="px-5 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold">
+            {initial ? 'Editar endereço' : 'Novo endereço'}
+          </h3>
+          <button onClick={onCancel} className="p-1.5 rounded text-muted-foreground hover:bg-muted">
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          <FormField label="Descrição">
+            <input
+              type="text"
+              value={label}
+              onChange={e => setLabel(e.target.value.slice(0, 60))}
+              placeholder="Ex.: Trabalho, Casa da mãe, Sítio"
+              autoFocus
+              maxLength={60}
+              className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </FormField>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
+            <FormField label="CEP">
+              <div className="relative">
+                <MaskedInput
+                  mask={cepMask}
+                  value={cep}
+                  onChange={handleCep}
+                  placeholder="00000-000"
+                  className="w-full text-base px-4 py-3 pr-9"
+                />
+                {cepLoading && (
+                  <Loader2 size={14} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                )}
+              </div>
+            </FormField>
+            <FormField label="Cidade · UF">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={cityLabel}
+                  readOnly
+                  placeholder="Preenchido via CEP"
+                  className="flex-1 px-4 py-3 rounded-lg border border-border bg-muted/40 text-base text-muted-foreground"
+                />
+                <input
+                  type="text"
+                  value={uf}
+                  onChange={e => setUf(e.target.value.toUpperCase().slice(0, 2))}
+                  placeholder="UF"
+                  className="w-20 px-3 py-3 rounded-lg border border-border bg-background text-base text-center uppercase"
+                />
+              </div>
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3">
+            <FormField label="Logradouro">
+              <input
+                type="text"
+                value={endereco}
+                onChange={e => setEndereco(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base"
+              />
+            </FormField>
+            <FormField label="Número">
+              <input
+                type="text"
+                value={numero}
+                onChange={e => setNumero(e.target.value)}
+                placeholder="S/N"
+                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base"
+              />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormField label="Complemento">
+              <input
+                type="text"
+                value={complemento}
+                onChange={e => setComplemento(e.target.value)}
+                placeholder="Apto, bloco, ponto de referência"
+                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base"
+              />
+            </FormField>
+            <FormField label="Bairro">
+              <input
+                type="text"
+                value={bairro}
+                onChange={e => setBairro(e.target.value)}
+                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base"
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Observação">
+            <textarea
+              value={observacao}
+              onChange={e => setObservacao(e.target.value.slice(0, 500))}
+              placeholder="Detalhes adicionais — referência, horário, etc."
+              rows={2}
+              maxLength={500}
+              className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+            />
+          </FormField>
+        </div>
+
+        <footer className="px-5 py-3 border-t border-border flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-medium"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => canSave && onSubmit({
+              label: label.trim(),
+              cep, endereco, numero, complemento, bairro,
+              municipioIbge, uf,
+              observacao,
+            })}
+            disabled={!canSave || saving}
+            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {initial ? 'Salvar' : 'Adicionar'}
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}
 
 function Chip({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (

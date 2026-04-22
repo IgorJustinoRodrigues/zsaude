@@ -223,6 +223,38 @@ class PatientPhotoOut(CamelModel):
     face_duplicate_of: dict | None = None
 
 
+class PatientAddressInput(CamelModel):
+    """Payload de criação/edição de endereço secundário."""
+    label: str
+    cep: str = ""
+    endereco: str = ""
+    numero: str = ""
+    complemento: str = ""
+    bairro: str = ""
+    municipio_ibge: str = ""
+    uf: str = ""
+    pais: str = "BRA"
+    observacao: str = ""
+
+
+class PatientAddressOut(CamelModel):
+    id: UUID
+    patient_id: UUID
+    label: str
+    cep: str
+    endereco: str
+    numero: str
+    complemento: str
+    bairro: str
+    municipio_ibge: str
+    uf: str
+    pais: str
+    observacao: str
+    display_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class PatientFieldHistoryOut(CamelModel):
     id: UUID
     patient_id: UUID

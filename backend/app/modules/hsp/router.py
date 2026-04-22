@@ -19,6 +19,8 @@ from app.modules.hsp.cadsus import client as cadsus_client
 from app.modules.hsp.cadsus import mock as cadsus_mock
 from app.modules.hsp.cadsus.schemas import CadsusSearchResponse
 from app.modules.hsp.schemas import (
+    PatientAddressInput,
+    PatientAddressOut,
     PatientCreate,
     PatientFieldHistoryOut,
     PatientListItem,
@@ -515,6 +517,56 @@ async def set_photo_flag(
         raise HTTPException(status_code=404, detail="Foto não encontrada.")
     photo.flagged = flagged
     await db.flush()
+    return Response(status_code=204)
+
+
+# ── Endereços secundários ────────────────────────────────────────────────
+
+@router.get("/patients/{patient_id}/addresses", response_model=list[PatientAddressOut])
+async def list_patient_addresses(
+    patient_id: UUID,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient.view"),
+) -> list[PatientAddressOut]:
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    rows = await svc.list_addresses(patient_id)
+    return [PatientAddressOut.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.post("/patients/{patient_id}/addresses", response_model=PatientAddressOut, status_code=201)
+async def create_patient_address(
+    patient_id: UUID,
+    payload: PatientAddressInput,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient.edit"),
+) -> PatientAddressOut:
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    addr = await svc.create_address(patient_id, payload)
+    return PatientAddressOut.model_validate(addr, from_attributes=True)
+
+
+@router.patch("/patients/{patient_id}/addresses/{address_id}", response_model=PatientAddressOut)
+async def update_patient_address(
+    patient_id: UUID,
+    address_id: UUID,
+    payload: PatientAddressInput,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient.edit"),
+) -> PatientAddressOut:
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    addr = await svc.update_address(patient_id, address_id, payload)
+    return PatientAddressOut.model_validate(addr, from_attributes=True)
+
+
+@router.delete("/patients/{patient_id}/addresses/{address_id}", status_code=204)
+async def delete_patient_address(
+    patient_id: UUID,
+    address_id: UUID,
+    db: DB,
+    ctx: WorkContext = requires(permission="hsp.patient.edit"),
+) -> Response:
+    svc = PatientService(db, ctx, user_name=await _user_name(db, ctx))
+    await svc.delete_address(patient_id, address_id)
     return Response(status_code=204)
 
 

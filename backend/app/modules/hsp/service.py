@@ -31,6 +31,7 @@ from app.modules.hsp.schemas import DocumentInput, PatientCreate, PatientUpdate
 from app.services.storage import get_storage
 from app.tenant_models.patients import (
     Patient,
+    PatientAddress,
     PatientDocument,
     PatientFieldChangeType,
     PatientFieldHistory,
@@ -855,6 +856,73 @@ class PatientService:
                 ops += 1
 
         return ops
+
+    # ── Endereços secundários ──────────────────────────────────────
+    async def list_addresses(self, patient_id: UUID) -> list[PatientAddress]:
+        await self.get_patient(patient_id)
+        return list((await self.db.scalars(
+            select(PatientAddress)
+            .where(PatientAddress.patient_id == patient_id)
+            .order_by(PatientAddress.display_order, PatientAddress.created_at)
+        )).all())
+
+    async def create_address(
+        self, patient_id: UUID, payload,
+    ) -> PatientAddress:
+        await self.get_patient(patient_id)
+        if not payload.label or not payload.label.strip():
+            raise HTTPException(status_code=400, detail="Informe uma descrição (ex.: Trabalho, Casa da mãe).")
+        addr = PatientAddress(
+            patient_id=patient_id,
+            label=payload.label.strip()[:60],
+            cep=(payload.cep or "").strip(),
+            endereco=(payload.endereco or "").strip(),
+            numero=(payload.numero or "").strip(),
+            complemento=(payload.complemento or "").strip(),
+            bairro=(payload.bairro or "").strip(),
+            municipio_ibge=(payload.municipio_ibge or "").strip(),
+            uf=(payload.uf or "").strip().upper()[:2],
+            pais=(payload.pais or "BRA").strip().upper()[:3],
+            observacao=(payload.observacao or "").strip(),
+        )
+        self.db.add(addr)
+        await self.db.flush()
+        return addr
+
+    async def update_address(
+        self, patient_id: UUID, address_id: UUID, payload,
+    ) -> PatientAddress:
+        addr = await self.db.scalar(
+            select(PatientAddress).where(
+                and_(PatientAddress.id == address_id, PatientAddress.patient_id == patient_id)
+            )
+        )
+        if addr is None:
+            raise HTTPException(status_code=404, detail="Endereço não encontrado.")
+        if payload.label is not None and payload.label.strip():
+            addr.label = payload.label.strip()[:60]
+        addr.cep = (payload.cep or "").strip()
+        addr.endereco = (payload.endereco or "").strip()
+        addr.numero = (payload.numero or "").strip()
+        addr.complemento = (payload.complemento or "").strip()
+        addr.bairro = (payload.bairro or "").strip()
+        addr.municipio_ibge = (payload.municipio_ibge or "").strip()
+        addr.uf = (payload.uf or "").strip().upper()[:2]
+        addr.pais = (payload.pais or "BRA").strip().upper()[:3]
+        addr.observacao = (payload.observacao or "").strip()
+        await self.db.flush()
+        return addr
+
+    async def delete_address(self, patient_id: UUID, address_id: UUID) -> None:
+        addr = await self.db.scalar(
+            select(PatientAddress).where(
+                and_(PatientAddress.id == address_id, PatientAddress.patient_id == patient_id)
+            )
+        )
+        if addr is None:
+            raise HTTPException(status_code=404, detail="Endereço não encontrado.")
+        await self.db.delete(addr)
+        await self.db.flush()
 
     # ── Histórico ──────────────────────────────────────────────────
     async def list_history(

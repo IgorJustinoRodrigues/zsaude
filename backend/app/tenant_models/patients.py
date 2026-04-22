@@ -294,6 +294,46 @@ class PatientDocument(TenantBase):
     )
 
 
+class PatientAddress(TenantBase):
+    """Endereços secundários do paciente (trabalho, casa da mãe, etc.).
+
+    O endereço principal continua em ``patients`` (cep, endereco, etc.).
+    Esta tabela guarda só os extras — cada linha tem um rótulo livre em
+    ``label`` pra distinguir ("Trabalho", "Casa da mãe", "Sítio").
+    """
+
+    __tablename__ = "patient_addresses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
+    patient_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(),
+        ForeignKey("patients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    label: Mapped[str] = mapped_column(String(60), nullable=False)
+
+    cep: Mapped[str] = mapped_column(String(8), nullable=False, server_default=" ")
+    endereco: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
+    numero: Mapped[str] = mapped_column(String(20), nullable=False, server_default=" ")
+    complemento: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
+    bairro: Mapped[str] = mapped_column(String(100), nullable=False, server_default=" ")
+    municipio_ibge: Mapped[str] = mapped_column(String(7), nullable=False, server_default=" ")
+    uf: Mapped[str] = mapped_column(String(2), nullable=False, server_default=" ")
+    pais: Mapped[str] = mapped_column(String(3), nullable=False, server_default="BRA")  # ISO alpha-3
+
+    observacao: Mapped[str] = mapped_column(String(500), nullable=False, server_default=" ")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), onupdate=text("CURRENT_TIMESTAMP"),
+    )
+
+
 class PatientFieldHistory(TenantBase):
     """Histórico por campo do paciente.
 
