@@ -8,6 +8,7 @@ import { referenceApi, type RefKind } from '../../api/reference'
 import { ibgeApi } from '../../api/ibge'
 import { AddressMap } from './components/AddressMap'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
+import { PhotoGalleryModal } from './components/PhotoGalleryModal'
 import { friendlyFieldName, friendlyValue, type RefMap } from './lib/historyLabels'
 import { toast } from '../../store/toastStore'
 import { promptDialog } from '../../store/dialogStore'
@@ -27,6 +28,7 @@ export function HspPatientDetailPage() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyField, setHistoryField] = useState('')
   const [previewPhoto, setPreviewPhoto] = useState<{ patientId: string; photoId: string } | null>(null)
+  const [showGallery, setShowGallery] = useState(false)
   const [refs, setRefs] = useState<RefMap>({})
   const [municipioName, setMunicipioName] = useState<string>('')
   const [mapExpanded, setMapExpanded] = useState(false)
@@ -214,7 +216,13 @@ export function HspPatientDetailPage() {
               <span className="font-semibold">Identidade requer validação.</span>{' '}
               O totem detectou uma foto muito diferente das anteriores
               {patient.identityReviewAt && ` em ${formatDateTime(patient.identityReviewAt)}`}.
-              Confira o gallery de fotos abaixo e, se estiver tudo certo, confirme a identidade.
+              <button
+                onClick={() => setShowGallery(true)}
+                className="ml-2 underline font-medium hover:text-rose-700 dark:hover:text-rose-100"
+              >
+                Abrir galeria
+              </button>
+              {' '}pra revisar as fotos; se estiver tudo certo, confirme a identidade.
             </p>
           </div>
           <button
@@ -237,7 +245,11 @@ export function HspPatientDetailPage() {
 
       {/* Header card — só mostra blocos preenchidos */}
       <div className="bg-card rounded-xl border border-border p-5 mb-6 flex items-start gap-5">
-        <div className="w-20 h-20 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xl font-bold shrink-0 overflow-hidden">
+        <button
+          onClick={() => setShowGallery(true)}
+          title="Abrir galeria de fotos"
+          className="group w-20 h-20 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xl font-bold shrink-0 overflow-hidden relative hover:ring-2 hover:ring-primary/60 transition-all"
+        >
           {patient.hasPhoto ? (
             <PatientPhotoImg
               patientId={patient.id}
@@ -247,7 +259,10 @@ export function HspPatientDetailPage() {
               fallback={initials(patient.socialName || patient.name)}
             />
           ) : initials(patient.socialName || patient.name)}
-        </div>
+          <span className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-medium text-white tracking-wider">
+            GALERIA
+          </span>
+        </button>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-1">
           {nonEmpty([
             ['Nascimento', patient.birthDate
@@ -506,6 +521,15 @@ export function HspPatientDetailPage() {
           </div>
         )
       })()}
+
+      {showGallery && (
+        <PhotoGalleryModal
+          patientId={patient.id}
+          currentPhotoId={patient.currentPhotoId}
+          onClose={() => setShowGallery(false)}
+          onChanged={() => void reload()}
+        />
+      )}
 
       {previewPhoto && (
         <div

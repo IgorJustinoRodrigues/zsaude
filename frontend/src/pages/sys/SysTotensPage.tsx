@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Archive, ArchiveRestore, CreditCard, Edit3, IdCard, Loader2,
-  MonitorSmartphone, Plus, ScanFace, Trash2, User, X,
+  Archive, ArchiveRestore, ChevronDown, ChevronRight, CreditCard, Edit3,
+  IdCard, Loader2, MonitorSmartphone, Plus, ScanFace, Settings2, Trash2,
+  User, X,
 } from 'lucide-react'
 import {
   totensAdminApi,
   type Totem,
   type TotemCapture,
+  type TotemNumbering,
+  type ResetStrategy,
 } from '../../api/totens'
+import { sectorsAdminApi, type Sector } from '../../api/sectors'
 import { directoryApi, type FacilityDto } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { confirmDialog } from '../../store/dialogStore'
@@ -21,6 +25,20 @@ import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 type Scope = 'municipality' | 'facility'
 
 const DEFAULT_CAPTURE: TotemCapture = { cpf: true, cns: true, face: false, manualName: true }
+
+const DEFAULT_NUMBERING: TotemNumbering = {
+  ticketPrefixNormal: 'R',
+  ticketPrefixPriority: 'P',
+  resetStrategy: 'daily',
+  numberPadding: 3,
+}
+
+const RESET_LABELS: Record<ResetStrategy, string> = {
+  daily: 'Diário',
+  weekly: 'Semanal',
+  monthly: 'Mensal',
+  never: 'Nunca',
+}
 
 export function SysMunicipalityTotensPage() {
   return <TotensPage scope="municipality" />
@@ -41,6 +59,9 @@ function TotensPage({ scope }: { scope: Scope }) {
   const [editing, setEditing] = useState<Totem | null>(null)
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Setores disponíveis no escopo — usados no dropdown de "setor padrão".
+  // Carregados sob demanda quando o modal abre.
+  const [sectors, setSectors] = useState<Sector[]>([])
 
   const load = useCallback(async () => {
     if (!id) return
@@ -70,6 +91,17 @@ function TotensPage({ scope }: { scope: Scope }) {
   }, [id, scope])
 
   useEffect(() => { void load() }, [load])
+
+  // Carrega setores uma vez pra usar no modal (dropdown de setor padrão).
+  useEffect(() => {
+    if (!id) return
+    const fetch = scope === 'municipality'
+      ? sectorsAdminApi.listMunicipality(id)
+      : sectorsAdminApi.listFacility(id)
+    fetch
+      .then(list => setSectors(list.filter(s => !s.archived)))
+      .catch(() => { /* silencioso — campo fica em modo livre */ })
+  }, [id, scope])
 
   if (!id) return <div className="text-sm text-red-500">Identificador inválido.</div>
 
@@ -109,7 +141,13 @@ function TotensPage({ scope }: { scope: Scope }) {
 
   async function handleSave(
     existing: Totem | null,
-    data: { name: string; capture: TotemCapture; priorityPrompt: boolean },
+    data: {
+      name: string
+      capture: TotemCapture
+      priorityPrompt: boolean
+      numbering: TotemNumbering
+      defaultSectorName: string | null
+    },
   ) {
     if (existing) {
       const res = await doAction(() => totensAdminApi.update(existing.id, data))
@@ -248,6 +286,7 @@ function TotensPage({ scope }: { scope: Scope }) {
       {(creating || editing) && (
         <TotemModal
           totem={editing}
+          sectors={sectors}
           busy={busy}
           onClose={() => { setCreating(false); setEditing(null) }}
           onSave={data => handleSave(editing, data)}
@@ -272,10 +311,20 @@ function TotemRow({ totem, busy, onEdit, onArchive, onDelete }: RowProps) {
     <li className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2.5 flex items-center gap-3">
       <CaptureIcons capture={totem.capture} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{totem.name}</p>
+        <p className="text-sm font-medium truncate inline-flex items-center gap-2">
+          {totem.name}
+          {totem.defaultSectorName && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold uppercase tracking-wider">
+              {totem.defaultSectorName}
+            </span>
+          )}
+        </p>
         <p className="text-[11px] text-slate-500 mt-0.5">
           {summarizeCapture(totem.capture)}
           {totem.priorityPrompt && ' · pergunta prioridade'}
+          {' · '}
+          {totem.numbering.ticketPrefixNormal}/{totem.numbering.ticketPrefixPriority}
+          {' · reset '}{(RESET_LABELS[totem.numbering.resetStrategy] || totem.numbering.resetStrategy).toLowerCase()}
         </p>
       </div>
       <button type="button" onClick={onEdit} disabled={busy} className="p-1.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800" title="Editar">
@@ -331,28 +380,54 @@ function summarizeCapture(c: TotemCapture): string {
 
 interface ModalProps {
   totem: Totem | null
+  sectors: Sector[]
   busy: boolean
   onClose: () => void
-  onSave: (data: { name: string; capture: TotemCapture; priorityPrompt: boolean }) => void
+  onSave: (data: {
+    name: string
+    capture: TotemCapture
+    priorityPrompt: boolean
+    numbering: TotemNumbering
+    defaultSectorName: string | null
+  }) => void
 }
 
-function TotemModal({ totem, busy, onClose, onSave }: ModalProps) {
+function TotemModal({ totem, sectors, busy, onClose, onSave }: ModalProps) {
   const [name, setName] = useState(totem?.name ?? '')
   const [capture, setCapture] = useState<TotemCapture>(totem?.capture ?? DEFAULT_CAPTURE)
   const [priorityPrompt, setPriorityPrompt] = useState(totem?.priorityPrompt ?? true)
+  const [numbering, setNumbering] = useState<TotemNumbering>(totem?.numbering ?? DEFAULT_NUMBERING)
+  const [defaultSectorName, setDefaultSectorName] = useState<string | null>(
+    totem?.defaultSectorName ?? null,
+  )
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const hasAnyCapture = capture.cpf || capture.cns || capture.face || capture.manualName
-  const canSave = name.trim().length > 0 && hasAnyCapture && !busy
+  const prefixesOk = numbering.ticketPrefixNormal.trim().length > 0
+                     && numbering.ticketPrefixPriority.trim().length > 0
+  const paddingOk = numbering.numberPadding >= 1 && numbering.numberPadding <= 6
+  const canSave = name.trim().length > 0 && hasAnyCapture && prefixesOk && paddingOk && !busy
 
   function submit() {
     if (!canSave) return
-    onSave({ name: name.trim(), capture, priorityPrompt })
+    onSave({
+      name: name.trim(),
+      capture,
+      priorityPrompt,
+      numbering: {
+        ticketPrefixNormal: numbering.ticketPrefixNormal.trim().toUpperCase(),
+        ticketPrefixPriority: numbering.ticketPrefixPriority.trim().toUpperCase(),
+        resetStrategy: numbering.resetStrategy,
+        numberPadding: numbering.numberPadding,
+      },
+      defaultSectorName: defaultSectorName?.trim() || null,
+    })
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-sm font-semibold">{totem ? 'Editar totem' : 'Novo totem'}</h2>
           <button type="button" onClick={onClose} className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
             <X size={16} />
@@ -403,9 +478,107 @@ function TotemModal({ totem, busy, onClose, onSave }: ModalProps) {
               Perguntar prioridade (idoso, gestante, etc.)
             </label>
           </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+              Setor destino <span className="text-slate-400 font-normal">(opcional)</span>
+            </label>
+            <select
+              value={defaultSectorName ?? ''}
+              onChange={e => setDefaultSectorName(e.target.value || null)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="">Recepção (padrão)</option>
+              {sectors.map(s => (
+                <option key={s.id} value={s.name}>{s.name}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              Se definido, a senha vai direto pra fila deste setor e pula a
+              recepção. Útil pra totens que ficam dentro de um setor específico.
+            </p>
+          </div>
+
+          {/* Avançado (numeração) ---------------------------------- */}
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen(o => !o)}
+              className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Settings2 size={12} /> Numeração de senhas
+              </span>
+              {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {advancedOpen && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    Prefixo normal
+                  </label>
+                  <input
+                    type="text"
+                    value={numbering.ticketPrefixNormal}
+                    onChange={e => setNumbering({ ...numbering, ticketPrefixNormal: e.target.value.slice(0, 5) })}
+                    maxLength={5}
+                    placeholder="R"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    Prefixo prioridade
+                  </label>
+                  <input
+                    type="text"
+                    value={numbering.ticketPrefixPriority}
+                    onChange={e => setNumbering({ ...numbering, ticketPrefixPriority: e.target.value.slice(0, 5) })}
+                    maxLength={5}
+                    placeholder="P"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    Reset do contador
+                  </label>
+                  <select
+                    value={numbering.resetStrategy}
+                    onChange={e => setNumbering({ ...numbering, resetStrategy: e.target.value as ResetStrategy })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  >
+                    {(Object.keys(RESET_LABELS) as ResetStrategy[]).map(k => (
+                      <option key={k} value={k}>{RESET_LABELS[k]}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    Dígitos (1-6)
+                  </label>
+                  <input
+                    type="number"
+                    min={1} max={6}
+                    value={numbering.numberPadding}
+                    onChange={e => setNumbering({ ...numbering, numberPadding: Math.max(1, Math.min(6, Number(e.target.value) || 3)) })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[11px] text-slate-500">
+                    Exemplo: {numbering.ticketPrefixNormal.toUpperCase() || 'R'}-
+                    {'0'.repeat(Math.max(0, numbering.numberPadding - 1))}1 ·{' '}
+                    {numbering.ticketPrefixPriority.toUpperCase() || 'P'}-
+                    {'0'.repeat(Math.max(0, numbering.numberPadding - 1))}1
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="px-5 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+        <div className="sticky bottom-0 bg-white dark:bg-slate-900 px-5 py-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
