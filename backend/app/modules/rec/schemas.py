@@ -42,8 +42,16 @@ class TotemConfig(_TolerantCamelModel):
     enabled: bool = True
 
 
+PainelMode = Literal["senha", "nome", "ambos"]
+
+
 class PainelConfig(_TolerantCamelModel):
     enabled: bool = True
+    # Como a chamada aparece no painel:
+    # - "senha": só o número (padrão)
+    # - "nome":  só o nome do paciente (quando tem)
+    # - "ambos": número grande em cima, nome embaixo
+    mode: PainelMode = "senha"
 
 
 QueueOrderMode = Literal["fifo", "priority_fifo", "ai"]

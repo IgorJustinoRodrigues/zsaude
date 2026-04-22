@@ -61,5 +61,6 @@ export function DevicePainelPage() {
   if (!config?.painel) {
     return <DeviceWaitingConfigScreen type="painel" deviceName={config?.name ?? null} />
   }
-  return <RecPainelPage />
+  const mode = (config.painel.mode as 'senha' | 'nome' | 'ambos' | undefined) ?? 'senha'
+  return <RecPainelPage mode={mode} />
 }

@@ -12,8 +12,11 @@ export interface TotemConfig {
   enabled: boolean
 }
 
+export type PainelMode = 'senha' | 'nome' | 'ambos'
+
 export interface PainelConfig {
   enabled: boolean
+  mode: PainelMode
 }
 
 export type QueueOrderMode = 'fifo' | 'priority_fifo' | 'ai'

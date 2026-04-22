@@ -275,7 +275,10 @@ def _restrict_totem(child: TotemConfig, parent: TotemConfig) -> TotemConfig:
 
 
 def _restrict_painel(child: PainelConfig, parent: PainelConfig) -> PainelConfig:
-    return PainelConfig(enabled=child.enabled and parent.enabled)
+    return PainelConfig(
+        enabled=child.enabled and parent.enabled,
+        mode=child.mode,
+    )
 
 
 def _restrict_recepcao(child: RecepcaoConfig, parent: RecepcaoConfig) -> RecepcaoConfig:

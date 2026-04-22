@@ -8,8 +8,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.schema_base import CamelModel
 
 from app.core.deps import (
     DB,
@@ -300,6 +303,67 @@ async def get_patient_photo(
         content=data,
         media_type=photo.mime_type or "image/jpeg",
         headers={"Cache-Control": "private, max-age=60"},
+    )
+
+
+# ─── Lookup por doc (totem — device auth) ────────────────────────────────
+
+class _DocLookupInput(CamelModel):
+    doc_type: Annotated[str, Field(pattern="^(cpf|cns)$")]
+    doc_value: Annotated[str, Field(min_length=1, max_length=15)]
+
+
+@router.post("/doc-lookup", response_model=FaceCandidate | None)
+async def doc_lookup(
+    payload: _DocLookupInput,
+    db: DB,
+    tenant_db: TenantDBForDeviceDep,
+    device: CurrentDeviceDep,
+) -> FaceCandidate | None:
+    """Totem busca paciente pelo CPF/CNS digitado. Retorna dados
+    mascarados + info de atendimento ativo se houver. Reusa o mesmo
+    shape do face-match pra o frontend tratar ambos os fluxos igual."""
+    if device.type != "totem":
+        raise HTTPException(status_code=400, detail="Device não é do tipo totem.")
+
+    doc_value = payload.doc_value.strip()
+    if not doc_value:
+        return None
+
+    field = Patient.cpf if payload.doc_type == "cpf" else Patient.cns
+    patient = await tenant_db.scalar(
+        select(Patient).where(field == doc_value).limit(1)
+    )
+    if patient is None:
+        return None
+
+    # Atendimento ativo pra sugerir o "já está na fila" igual no face.
+    active_info: ActiveTicketInfo | None = None
+    active = await tenant_db.scalar(
+        select(Attendance)
+        .where(Attendance.patient_id == patient.id)
+        .where(Attendance.status.in_(Attendance.ACTIVE_STATUSES))
+        .order_by(Attendance.arrived_at.desc())
+        .limit(1)
+    )
+    if active is not None:
+        fac = await db.get(Facility, active.facility_id)
+        active_info = ActiveTicketInfo(
+            ticket_number=active.ticket_number,
+            status=active.status,  # type: ignore[arg-type]
+            facility_short_name=fac.short_name if fac else "—",
+            same_facility=(active.facility_id == device.facility_id),
+        )
+
+    return FaceCandidate(
+        patient_id=patient.id,
+        name=patient.name,
+        social_name=patient.social_name.strip() or None,
+        cpf_masked=_mask_cpf(patient.cpf),
+        cns_masked=_mask_cns(patient.cns),
+        similarity=1.0,   # doc bateu exato
+        has_photo=patient.current_photo_id is not None,
+        active_ticket=active_info,
     )
 
 

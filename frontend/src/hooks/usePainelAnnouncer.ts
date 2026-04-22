@@ -31,11 +31,16 @@ export function usePainelAnnouncer({ enabled, mode, call }: Options) {
 
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
 
+    // Nome "Anônimo" (paciente sem identificação) não é útil falar —
+    // usa só a senha mesmo quando o modo global é nome/ambos.
+    const n = (call.patientName ?? '').trim().toLowerCase()
+    const realName = !!n && n !== 'anônimo' && n !== 'anonimo'
+
     const parts: string[] = []
-    if (mode === 'nome' || mode === 'ambos') {
-      if (call.patientName) parts.push(call.patientName)
+    if ((mode === 'nome' || mode === 'ambos') && realName) {
+      parts.push(call.patientName!)
     }
-    if (mode === 'senha' || mode === 'ambos') {
+    if (mode === 'senha' || mode === 'ambos' || (mode === 'nome' && !realName)) {
       parts.push(`senha ${spellTicket(call.ticket)}`)
     }
     parts.push(call.counter)

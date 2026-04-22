@@ -15,6 +15,7 @@ import {
   recConfigApi,
   type EffectiveRecConfig,
   type PainelConfig,
+  type PainelMode,
   type QueueOrderMode,
   type RecSection,
   type RecepcaoConfig,
@@ -30,7 +31,7 @@ import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 type Scope = 'municipality' | 'facility'
 
 const DEFAULT_TOTEM: TotemConfig = { enabled: true }
-const DEFAULT_PAINEL: PainelConfig = { enabled: true }
+const DEFAULT_PAINEL: PainelConfig = { enabled: true, mode: 'senha' }
 const DEFAULT_RECEPCAO: RecepcaoConfig = {
   enabled: true,
   afterAttendanceSector: null,
@@ -345,13 +346,100 @@ function PainelForm({ initial, parent, saving, onSave }: FormProps<PainelConfig>
       )}
       <MasterToggle
         label="Painel ativo"
-        description="Desligar aqui desativa o painel de chamadas inteiro. Configurações por painel (modo, áudio, setores) ficam em Recursos → Painéis."
+        description="Desligar aqui desativa o painel de chamadas inteiro."
         checked={draft.enabled}
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
       />
+      <fieldset className={cn('space-y-3', !draft.enabled && 'opacity-50 pointer-events-none')}>
+        <div>
+          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
+            Exibição das chamadas
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 max-w-xl">
+            <ModeOption
+              mode="senha"
+              label="Senha"
+              description="Só o número da senha em destaque."
+              preview="R-047"
+              selected={draft.mode === 'senha'}
+              onSelect={() => setDraft({ ...draft, mode: 'senha' })}
+            />
+            <ModeOption
+              mode="nome"
+              label="Nome"
+              description="Só o nome do paciente."
+              preview="Ana Ferreira"
+              previewSmall
+              selected={draft.mode === 'nome'}
+              onSelect={() => setDraft({ ...draft, mode: 'nome' })}
+            />
+            <ModeOption
+              mode="ambos"
+              label="Senha + nome"
+              description="Nome em destaque, senha menor acima."
+              preview="Ana Ferreira"
+              previewSub="R-047"
+              subOnTop
+              selected={draft.mode === 'ambos'}
+              onSelect={() => setDraft({ ...draft, mode: 'ambos' })}
+            />
+          </div>
+        </div>
+      </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />
     </div>
+  )
+}
+
+function ModeOption({
+  label, description, preview, previewSub, previewSmall, subOnTop, selected, onSelect,
+}: {
+  mode: PainelMode
+  label: string
+  description: string
+  preview: string
+  previewSub?: string
+  previewSmall?: boolean
+  /** Quando true, o ``previewSub`` aparece acima do ``preview`` principal. */
+  subOnTop?: boolean
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'text-left rounded-xl border-2 p-3 transition-all',
+        selected
+          ? 'border-teal-400 dark:border-teal-600 bg-teal-50/60 dark:bg-teal-950/30 shadow-sm'
+          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900',
+      )}
+    >
+      <div className="bg-slate-900 dark:bg-slate-950 rounded-lg p-3 mb-2 text-center overflow-hidden">
+        {subOnTop && previewSub && (
+          <p className="text-[10px] font-bold tabular-nums text-teal-400 mb-1 truncate">
+            {previewSub}
+          </p>
+        )}
+        <p
+          className={cn(
+            'font-black tracking-tight text-white truncate',
+            previewSmall ? 'text-lg' : subOnTop ? 'text-lg' : 'text-3xl tabular-nums',
+          )}
+        >
+          {preview}
+        </p>
+        {!subOnTop && previewSub && (
+          <p className="text-[10px] text-white/70 mt-1 truncate">{previewSub}</p>
+        )}
+      </div>
+      <p className="text-sm font-semibold text-slate-900 dark:text-white">{label}</p>
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">
+        {description}
+      </p>
+    </button>
   )
 }
 

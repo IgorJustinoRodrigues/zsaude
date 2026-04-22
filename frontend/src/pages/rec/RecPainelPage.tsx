@@ -11,10 +11,17 @@ import { ArrowLeft, Maximize, VolumeX, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useLiveCallStore, SILENCE_DURATION_MS } from '../../store/liveCallStore'
 
+type PainelMode = 'senha' | 'nome' | 'ambos'
+
+interface Props {
+  /** Modo de exibição: só senha, só nome, ou ambos. Default "senha". */
+  mode?: PainelMode
+}
+
 const ADMIN_UNLOCK_TAPS = 5
 const ADMIN_UNLOCK_WINDOW_MS = 2_000
 
-export function RecPainelPage() {
+export function RecPainelPage({ mode = 'senha' }: Props = {}) {
   const navigate = useNavigate()
   const [fullscreen, setFullscreen] = useState(false)
   const [adminUnlocked, setAdminUnlocked] = useState(false)
@@ -96,23 +103,55 @@ export function RecPainelPage() {
             )}>
               {flash ? 'Chamando' : 'Última chamada'}
             </p>
-            <div
-              className={cn(
-                'text-[22vw] landscape:text-[16vw] font-black leading-none tracking-tight tabular-nums transition-transform',
-                flash && 'scale-[1.02]',
-              )}
-              style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
-            >
-              {current.ticket}
-            </div>
+
+            {/* Modo SENHA: só número gigante.
+                Modo NOME: nome gigante (fallback pro número se não tem).
+                Modo AMBOS: NOME como destaque principal + senha menor
+                acima como "etiqueta" da pessoa.
+                Nome "Anônimo" (paciente não identificado) não entra —
+                mostra só a senha. */}
+            {mode === 'ambos' && hasRealName(current.patientName) ? (
+              <>
+                <div
+                  className="text-3xl sm:text-5xl font-black tabular-nums opacity-80 mb-2"
+                  style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+                >
+                  {current.ticket}
+                </div>
+                <div
+                  className={cn(
+                    'text-[10vw] landscape:text-[7vw] font-black leading-tight tracking-tight text-center max-w-[90vw] text-slate-900 transition-transform',
+                    flash && 'scale-[1.02]',
+                  )}
+                >
+                  {current.patientName}
+                </div>
+              </>
+            ) : mode === 'nome' && hasRealName(current.patientName) ? (
+              <div
+                className={cn(
+                  'text-[12vw] landscape:text-[9vw] font-black leading-tight tracking-tight text-center max-w-[90vw] transition-transform',
+                  flash && 'scale-[1.02]',
+                )}
+                style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+              >
+                {current.patientName}
+              </div>
+            ) : (
+              <div
+                className={cn(
+                  'text-[22vw] landscape:text-[16vw] font-black leading-none tracking-tight tabular-nums transition-transform',
+                  flash && 'scale-[1.02]',
+                )}
+                style={{ color: current.priority ? '#dc2626' : '#0d9488' }}
+              >
+                {current.ticket}
+              </div>
+            )}
+
             {current.counter && (
               <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
                 {current.counter}
-              </p>
-            )}
-            {current.patientName && (
-              <p className="mt-2 text-xl sm:text-2xl text-slate-500">
-                {current.patientName}
               </p>
             )}
           </>
@@ -130,12 +169,28 @@ export function RecPainelPage() {
         ) : (
           history.map(h => (
             <div key={h.id} className="flex items-baseline gap-3 shrink-0">
-              <span
-                className="text-2xl sm:text-3xl font-black tabular-nums"
-                style={{ color: h.priority ? '#dc2626' : '#0d9488' }}
-              >
-                {h.ticket}
-              </span>
+              {mode === 'nome' && hasRealName(h.patientName) ? (
+                <span
+                  className="text-lg sm:text-xl font-bold truncate max-w-[28ch]"
+                  style={{ color: h.priority ? '#dc2626' : '#0d9488' }}
+                >
+                  {h.patientName}
+                </span>
+              ) : (
+                <>
+                  <span
+                    className="text-2xl sm:text-3xl font-black tabular-nums"
+                    style={{ color: h.priority ? '#dc2626' : '#0d9488' }}
+                  >
+                    {h.ticket}
+                  </span>
+                  {mode === 'ambos' && hasRealName(h.patientName) && (
+                    <span className="text-sm text-slate-600 truncate max-w-[24ch]">
+                      {h.patientName}
+                    </span>
+                  )}
+                </>
+              )}
               {h.counter && <span className="text-sm text-slate-500">{h.counter}</span>}
               <span className="text-xs text-slate-400">{timeAgo(h.at)}</span>
             </div>
@@ -241,6 +296,16 @@ function ClockBlock() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Paciente sem identificação entra no totem como "Anônimo" — e não
+ *  faz sentido anunciar pelo nome. Nesse caso voltamos pra exibir só a
+ *  senha, mesmo que o modo global seja ``nome``/``ambos``. */
+function hasRealName(name: string | null | undefined): boolean {
+  if (!name) return false
+  const n = name.trim().toLowerCase()
+  if (!n) return false
+  return n !== 'anônimo' && n !== 'anonimo'
+}
 
 function timeAgo(d: Date): string {
   const sec = Math.floor((Date.now() - d.getTime()) / 1000)

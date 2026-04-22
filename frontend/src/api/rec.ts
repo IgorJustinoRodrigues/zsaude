@@ -116,6 +116,15 @@ export const recApi = {
       anonymous: true,
     }),
 
+  /** Totem: busca paciente por CPF/CNS. Retorna mesmo shape do face match. */
+  docLookup: (deviceToken: string, docType: 'cpf' | 'cns', docValue: string) =>
+    apiFetch<FaceCandidate | null>('/api/v1/rec/doc-lookup', {
+      method: 'POST',
+      body: { docType, docValue },
+      headers: { 'X-Device-Token': deviceToken },
+      anonymous: true,
+    }),
+
   faceMatch: (deviceToken: string, photo: Blob) => {
     const fd = new FormData()
     fd.append('file', photo, 'capture.jpg')

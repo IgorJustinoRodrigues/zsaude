@@ -329,7 +329,37 @@ export function RecTotemPage() {
             type={docType}
             onChangeValue={setDocValue}
             onChangeType={setDocType}
-            onConfirm={() => setStep('name_input')}
+            onConfirm={async () => {
+              // Se encontrar paciente com esse doc, pula o pedido de
+              // nome e vai direto pra confirmação "você é X?".
+              const digits = docValue.replace(/\D/g, '')
+              if (!deviceToken || !digits) {
+                setStep('name_input')
+                return
+              }
+              try {
+                const cand = await recApi.docLookup(deviceToken, docType, digits)
+                if (cand) {
+                  setPatient({
+                    patientId: cand.patientId,
+                    name: cand.name,
+                    socialName: cand.socialName ?? undefined,
+                    cpfMasked: cand.cpfMasked,
+                    cnsMasked: cand.cnsMasked,
+                    activeTicket: cand.activeTicket ? {
+                      ticketNumber: cand.activeTicket.ticketNumber,
+                      sameFacility: cand.activeTicket.sameFacility,
+                      facilityShortName: cand.activeTicket.facilityShortName,
+                    } : undefined,
+                  })
+                  setStep('match_confirm')
+                } else {
+                  setStep('name_input')
+                }
+              } catch {
+                setStep('name_input')  // falha não bloqueia o fluxo
+              }
+            }}
             onBack={() => setStep('greeting')}
           />
         )}

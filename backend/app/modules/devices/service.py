@@ -237,10 +237,25 @@ class DeviceService:
         não vinculado (UI mostra "aguardando configuração")."""
         painel = None
         if device.painel_id and device.painel:
+            # ``mode`` vem do rec_config (município/unidade) pra admin
+            # conseguir mudar num só lugar. Per-painel continua salvo
+            # mas hoje é ignorado — serve só como override futuro.
+            mode = device.painel.mode
+            if device.facility_id:
+                try:
+                    from app.modules.rec.service import RecConfigService
+                    fac = await self.db.get(Facility, device.facility_id)
+                    if fac:
+                        eff = await RecConfigService(self.db).effective_for_facility(
+                            device.facility_id, fac.municipality_id,
+                        )
+                        mode = eff.painel.mode
+                except Exception:
+                    pass  # fallback pro per-painel se algo quebrar
             painel = DeviceConfigPainel(
                 id=device.painel.id,
                 name=device.painel.name,
-                mode=device.painel.mode,
+                mode=mode,
                 announce_audio=device.painel.announce_audio,
                 sector_names=list(device.painel.sector_names),
             )
