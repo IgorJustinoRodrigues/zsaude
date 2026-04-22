@@ -16,11 +16,17 @@ export interface PainelConfig {
   enabled: boolean
 }
 
-export type AfterAttendance = 'triagem' | 'consulta' | 'nenhum'
+export type QueueOrderMode = 'fifo' | 'priority_fifo' | 'ai'
 
 export interface RecepcaoConfig {
   enabled: boolean
-  afterAttendance: AfterAttendance
+  /** Setor pra onde encaminhar por padrão após o atendimento.
+   *  ``null`` = concluir na recepção (sem encaminhar). */
+  afterAttendanceSector: string | null
+  /** Lista de setores que aparecem no modal de encaminhamento.
+   *  ``null`` = mostra todos os setores do escopo. */
+  forwardSectorNames: string[] | null
+  queueOrderMode: QueueOrderMode
 }
 
 export interface RecConfig {

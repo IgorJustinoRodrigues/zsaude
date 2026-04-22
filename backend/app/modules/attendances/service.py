@@ -7,6 +7,7 @@ Quem chama passa as duas sessions.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -50,6 +51,157 @@ def _period_key(strategy: str, now_local: datetime) -> str:
 
 def _format_ticket(prefix: str, n: int, padding: int) -> str:
     return f"{prefix}-{str(n).zfill(padding)}"
+
+
+# Proporção 2:1 (prioritário:normal) pro modo ``priority_fifo``. Escolha
+# razoável de default — garante que normais não fiquem travados mesmo
+# com muita prioridade, mas ainda respeita a fila legal.
+PRIORITY_RATIO_P = 2
+PRIORITY_RATIO_N = 1
+
+
+# ─── Pesos do modo "ai" (scoring ponderado) ─────────────────────────────────
+#
+# Valores-base. Futuramente: salvar no rec_config pra admin ajustar.
+# Cada sinal é normalizado em [0,1] e multiplicado pelo peso abaixo.
+AI_W_PRIORITY = 0.50
+AI_W_WAIT = 0.30
+AI_WAIT_NORMALIZE_MIN = 30      # atinge peso total após 30min de espera
+AI_W_OVERSHOOT = 0.25
+AI_OVERSHOOT_THRESHOLD_MIN = 45  # começa a acelerar após 45min
+AI_OVERSHOOT_CAP_MIN = 30        # teto do acelerador (30min a mais)
+AI_W_FAIRNESS_CAP = -0.15
+AI_FAIRNESS_CAP_LAST_N = 3       # damping se os últimos N foram prioridade
+AI_W_HANDOVER = 0.10
+
+
+@dataclass
+class _ScoreReason:
+    tag: str
+    contrib: float
+    note: str | None = None
+
+
+def _apply_queue_order(
+    rows: list[Attendance], mode: str,
+) -> tuple[list[Attendance], dict[UUID, list[_ScoreReason]]]:
+    """Aplica o modo de ordenação escolhido e devolve ``(ordered, reasons)``.
+
+    ``reasons`` vem preenchido só no modo ``ai`` — mapeia cada ticket
+    aguardando → lista de contribuições no score (pra o frontend exibir
+    "por que esse antes daquele"). Em ``fifo`` e ``priority_fifo`` volta
+    vazio.
+
+    Atendimentos em andamento/chamados ficam no topo (ordem interna
+    preservada) independentemente do modo — a ordenação "smart" só vale
+    pros que estão aguardando.
+    """
+    in_flight_statuses = ("reception_attending", "reception_called")
+    in_flight = [r for r in rows if r.status in in_flight_statuses]
+    waiting = [r for r in rows if r.status not in in_flight_statuses]
+    reasons: dict[UUID, list[_ScoreReason]] = {}
+
+    if mode == "fifo":
+        waiting_sorted = sorted(waiting, key=lambda r: r.arrived_at)
+    elif mode == "ai":
+        waiting_sorted = _order_by_score(waiting, in_flight, reasons)
+    else:
+        # priority_fifo (default)
+        priorities = sorted(
+            [r for r in waiting if r.priority], key=lambda r: r.arrived_at,
+        )
+        normals = sorted(
+            [r for r in waiting if not r.priority], key=lambda r: r.arrived_at,
+        )
+        waiting_sorted = _interleave(priorities, normals, PRIORITY_RATIO_P, PRIORITY_RATIO_N)
+
+    return in_flight + waiting_sorted, reasons
+
+
+def _order_by_score(
+    waiting: list[Attendance],
+    in_flight: list[Attendance],
+    reasons_out: dict[UUID, list[_ScoreReason]],
+) -> list[Attendance]:
+    """Ordena os aguardando pelo score ponderado. Popula ``reasons_out``
+    com as contribuições pra o frontend poder mostrar ao atendente."""
+    now = datetime.now(UTC)
+    # Proxy de "últimos chamados" — usamos os tickets que estão em voo
+    # como sinal de "o que foi chamado recentemente". Não é exato, mas
+    # reflete o padrão recente sem precisar de outra query.
+    recent_priority_count = sum(1 for r in in_flight if r.priority)
+    damp_priority = recent_priority_count >= AI_FAIRNESS_CAP_LAST_N
+
+    scored: list[tuple[float, Attendance]] = []
+    for att in waiting:
+        score, reasons = _score_ticket(att, now, damp_priority)
+        reasons_out[att.id] = reasons
+        scored.append((score, att))
+
+    # Ordena por score desc; empate → chegada mais antiga primeiro.
+    scored.sort(key=lambda x: (-x[0], x[1].arrived_at))
+    return [att for _, att in scored]
+
+
+def _score_ticket(
+    att: Attendance, now: datetime, damp_priority: bool,
+) -> tuple[float, list[_ScoreReason]]:
+    """Score ponderado de um único ticket. Retorna (score, reasons)."""
+    reasons: list[_ScoreReason] = []
+    score = 0.0
+
+    # ── Prioridade legal ──
+    if att.priority:
+        contrib = AI_W_PRIORITY
+        note: str | None = None
+        if damp_priority:
+            # Aplicou damping por excesso de prioridade recente.
+            contrib += AI_W_FAIRNESS_CAP  # negativo
+            note = f"últimos {AI_FAIRNESS_CAP_LAST_N}+ chamados foram prioridade"
+        reasons.append(_ScoreReason("prioridade_legal", contrib, note))
+        score += contrib
+
+    # ── Espera ──
+    wait_min = max(0.0, (now - att.arrived_at).total_seconds() / 60.0)
+    if wait_min > 0:
+        wait_contrib = min(wait_min / AI_WAIT_NORMALIZE_MIN, 1.0) * AI_W_WAIT
+        reasons.append(
+            _ScoreReason(f"esperando_{int(wait_min)}min", round(wait_contrib, 4))
+        )
+        score += wait_contrib
+
+    # ── Overshoot (anti-starvation) ──
+    if wait_min > AI_OVERSHOOT_THRESHOLD_MIN:
+        over_min = wait_min - AI_OVERSHOOT_THRESHOLD_MIN
+        over_contrib = min(over_min / AI_OVERSHOOT_CAP_MIN, 1.0) * AI_W_OVERSHOOT
+        reasons.append(
+            _ScoreReason("espera_prolongada", round(over_contrib, 4))
+        )
+        score += over_contrib
+
+    # ── Handover pendente ──
+    if att.needs_handover_from_attendance_id is not None:
+        reasons.append(_ScoreReason("handover_pendente", AI_W_HANDOVER))
+        score += AI_W_HANDOVER
+
+    return score, reasons
+
+
+def _interleave(
+    a: list[Attendance], b: list[Attendance], take_a: int, take_b: int,
+) -> list[Attendance]:
+    """Intercala duas listas na proporção ``take_a:take_b``. Quando uma
+    esgota, a outra continua em ordem."""
+    out: list[Attendance] = []
+    i = j = 0
+    while i < len(a) or j < len(b):
+        for _ in range(take_a):
+            if i < len(a):
+                out.append(a[i]); i += 1
+        for _ in range(take_b):
+            if j < len(b):
+                out.append(b[j]); j += 1
+    return out
 
 
 # ─── Service ─────────────────────────────────────────────────────────────────
@@ -332,19 +484,36 @@ class AttendanceService:
     # ── Listagem pra recepção ─────────────────────────────────────────
 
     async def list_for_facility(
-        self, facility_id: UUID, include_closed: bool = False,
-    ) -> list[tuple[Attendance, HandoverInfo | None]]:
+        self,
+        facility_id: UUID,
+        include_closed: bool = False,
+        order_mode: str = "priority_fifo",
+    ) -> tuple[
+        list[tuple[Attendance, HandoverInfo | None]],
+        dict[UUID, list["_ScoreReason"]],
+    ]:
         """Retorna atendimentos ativos da unidade + (quando há handover
         pendente) info do atendimento antigo em outra unidade, pra UI
-        exibir o badge."""
-        stmt = (
-            select(Attendance)
-            .where(Attendance.facility_id == facility_id)
-            .order_by(Attendance.priority.desc(), Attendance.arrived_at)
-        )
+        exibir o badge.
+
+        Ordenação aplicada em Python (pós-fetch) porque os modos exigem
+        intercalação, que não dá pra expressar direto em SQL:
+
+        - ``fifo``: pura ordem de chegada, ignora prioridade.
+        - ``priority_fifo``: intercala 2 prioritários : 1 normal,
+          respeitando ordem de chegada dentro de cada grupo.
+        - ``ai``: placeholder — por ora cai em ``priority_fifo``.
+
+        Atendimentos em andamento/chamados aparecem antes dos
+        aguardando, pra a recepção não perder de vista o que já tocou.
+        """
+        stmt = select(Attendance).where(Attendance.facility_id == facility_id)
         if not include_closed:
             stmt = stmt.where(Attendance.status.in_(Attendance.ACTIVE_STATUSES))
+        stmt = stmt.order_by(Attendance.arrived_at)
         rows = list((await self.tenant_db.scalars(stmt)).all())
+
+        rows, order_reasons = _apply_queue_order(rows, order_mode)
 
         # Coleta ids de handover em lote
         handover_ids = [
@@ -376,7 +545,7 @@ class AttendanceService:
             h = handovers.get(r.needs_handover_from_attendance_id) \
                 if r.needs_handover_from_attendance_id else None
             out.append((r, h))
-        return out
+        return out, order_reasons
 
     # ── Face (reconhecimento + learning) ─────────────────────────────
 

@@ -30,7 +30,8 @@ export interface FaceMatchOutput {
 
 export interface CallInput {
   ticket: string
-  counter: string
+  /** Guichê opcional — muitas unidades têm só 1 ponto de atendimento. */
+  counter?: string | null
   patientName?: string | null
   priority?: boolean
 }
@@ -68,6 +69,12 @@ export interface EmitTicketOutput {
 
 // ─── Recepção (user auth via X-Work-Context) ─────────────────────────────
 
+export interface OrderReason {
+  tag: string
+  contrib: number
+  note: string | null
+}
+
 export interface AttendanceItem {
   id: string
   facilityId: string
@@ -87,6 +94,8 @@ export interface AttendanceItem {
   cancellationReason: string | null
   needsHandoverFromAttendanceId: string | null
   handover: HandoverInfo | null
+  /** Preenchido só no modo "ai" — contribuições que levaram ao score */
+  orderReasons: OrderReason[]
 }
 
 export const recApi = {

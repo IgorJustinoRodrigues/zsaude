@@ -7,28 +7,62 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, Clock, PhoneCall, ShieldAlert,
-  Sparkles, UserCheck, X,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock, Info, PhoneCall, Settings2,
+  ShieldAlert, Star, UserCheck, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
-import { recApi, type AttendanceItem } from '../../api/rec'
+import { recApi, type AttendanceItem, type OrderReason } from '../../api/rec'
+import { recConfigApi } from '../../api/recConfig'
 import { sectorsApi, type Sector } from '../../api/sectors'
+import { useAuthStore } from '../../store/authStore'
 import { PatientPhotoImg } from '../hsp/components/PatientPhotoImg'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
-const COUNTERS = ['Guichê 1', 'Guichê 2', 'Guichê 3'] as const
 const POLL_MS = 5_000
 
+interface CounterConfig {
+  number: string
+  priority: boolean
+}
+
+const COUNTER_STORAGE_KEY = 'rec.counter-config'
+
+function loadCounter(): CounterConfig | null {
+  try {
+    const raw = localStorage.getItem(COUNTER_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.number !== 'string') return null
+    return { number: parsed.number, priority: !!parsed.priority }
+  } catch { return null }
+}
+
+function saveCounter(cfg: CounterConfig) {
+  try { localStorage.setItem(COUNTER_STORAGE_KEY, JSON.stringify(cfg)) }
+  catch { /* storage cheio/bloqueado — ignora */ }
+}
+
+function counterLabel(cfg: CounterConfig | null): string {
+  return cfg?.number ?? '—'
+}
+
 export function RecQueuePage() {
-  const [counter, setCounter] = useState<string>(COUNTERS[0])
+  const [counter, setCounter] = useState<CounterConfig | null>(() => loadCounter())
+  const [counterModal, setCounterModal] = useState(false)
   const [tickets, setTickets] = useState<AttendanceItem[]>([])
   const [loading, setLoading] = useState(true)
   const [sectors, setSectors] = useState<Sector[]>([])
+  // Setor sugerido pelo admin (config do município/unidade) — usado
+  // pra pré-selecionar no ForwardModal.
+  const [suggestedSector, setSuggestedSector] = useState<string | null>(null)
+  // Lista de setores permitidos pelo admin no encaminhamento.
+  // ``null`` = todos. Carregado da rec_config efetiva.
+  const [allowedSectorNames, setAllowedSectorNames] = useState<string[] | null>(null)
   const [attendModal, setAttendModal] = useState<AttendanceItem | null>(null)
   const [forwardModal, setForwardModal] = useState<AttendanceItem | null>(null)
-  const [cancelModal, setCancelModal] = useState<AttendanceItem | null>(null)
+  const counterName = counterLabel(counter)
 
   const reload = useCallback(async () => {
     try {
@@ -41,35 +75,57 @@ export function RecQueuePage() {
     }
   }, [])
 
+  const facilityId = useAuthStore(s => s.context?.facility.id)
+
   useEffect(() => {
     void reload()
     void sectorsApi.effective().then(r => setSectors(r.sectors)).catch(() => {})
+    // Config efetiva — passa o facilityId explicitamente (o endpoint
+    // aceita esse fallback sem precisar decodificar X-Work-Context).
+    if (facilityId) {
+      void recConfigApi.effective({ facilityId })
+        .then(cfg => {
+          setSuggestedSector(cfg.recepcao.afterAttendanceSector)
+          setAllowedSectorNames(cfg.recepcao.forwardSectorNames)
+        })
+        .catch(() => { /* sem sugestão — modal abre no default */ })
+    }
     const id = window.setInterval(reload, POLL_MS)
     return () => window.clearInterval(id)
-  }, [reload])
+  }, [reload, facilityId])
 
-  // Separa em grupos: aguardando, em atendimento, outros (triagem/sector).
-  const { waiting, inService, rest } = useMemo(() => {
-    const w: AttendanceItem[] = []
+  // Em atendimento fica no topo; aguardando no meio; encaminhados no fim.
+  // O backend já retorna ordenado por (priority DESC, arrived_at ASC),
+  // então prioritários aparecem primeiro naturalmente — tanto em guichês
+  // normais quanto prioritários. A diferença do "guichê prioritário" é
+  // apenas visual (badge), pra a atendente ter em mente que deve chamar
+  // os prioritários primeiro.
+  const { inService, waiting, rest } = useMemo(() => {
     const s: AttendanceItem[] = []
+    const w: AttendanceItem[] = []
     const r: AttendanceItem[] = []
     for (const t of tickets) {
-      if (t.status === 'reception_waiting' || t.status === 'reception_called') w.push(t)
-      else if (t.status === 'reception_attending') s.push(t)
+      if (t.status === 'reception_attending') s.push(t)
+      else if (t.status === 'reception_waiting' || t.status === 'reception_called') w.push(t)
       else r.push(t)
     }
-    return { waiting: w, inService: s, rest: r }
+    return { inService: s, waiting: w, rest: r }
   }, [tickets])
 
   async function doCall(t: AttendanceItem) {
     try {
       await recApi.callTicket(t.id)
-      // Publica no painel — o backend também já faz isso, mas o publishCall
-      // respeita o guichê escolhido pela atendente (que o backend não sabe).
+      // Publica no painel — guichê só vai junto quando a atendente
+      // configurou. Unidades com 1 ponto de atendimento pulam essa info.
       await recApi.publishCall({
-        ticket: t.ticketNumber, counter,
-        patientName: t.patientName, priority: t.priority,
+        ticket: t.ticketNumber,
+        counter: counter ? counterName : null,
+        patientName: t.patientName,
+        priority: t.priority,
       }).catch(() => {})
+      const who = t.patientName ? ` · ${t.patientName}` : ''
+      const where = counter ? ` · ${counterName}` : ''
+      toast.success('Chamado', `${t.ticketNumber}${who}${where}`)
       void reload()
     } catch (err) {
       if (err instanceof HttpError) toast.error('Chamar', err.message)
@@ -99,15 +155,6 @@ export function RecQueuePage() {
     }
   }
 
-  async function doCancel(t: AttendanceItem, reason: string) {
-    try {
-      await recApi.cancelTicket(t.id, reason)
-      void reload()
-    } catch (err) {
-      if (err instanceof HttpError) toast.error('Cancelar', err.message)
-    }
-  }
-
   async function doAssumeHandover(t: AttendanceItem) {
     try {
       await recApi.assumeHandover(t.id)
@@ -118,125 +165,76 @@ export function RecQueuePage() {
     }
   }
 
-  function testCall() {
-    const priority = Math.random() < 0.25
-    const ticket = `${priority ? 'P' : 'R'}-${String(Math.floor(Math.random() * 900) + 100)}`
-    recApi.publishCall({
-      ticket, counter, patientName: 'Teste', priority,
-    }).then(
-      () => toast.success('Chamada enviada', ticket),
-      () => toast.error('Painel', 'Falha ao enviar chamada.'),
-    )
-  }
-
   return (
     <div>
       <PageHeader title="Recepção" subtitle="Senhas ativas da unidade" />
 
-      {/* Barra de ações */}
+      {/* Barra de ações — configuração do guichê (opcional) */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex items-center gap-1.5">
-          {COUNTERS.map(c => (
-            <button
-              key={c}
-              onClick={() => setCounter(c)}
-              className={cn(
-                'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                counter === c
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:bg-muted/70',
-              )}
-            >{c}</button>
-          ))}
-        </div>
-
-        <div className="flex-1" />
-
         <button
-          onClick={testCall}
-          title="Envia uma chamada aleatória pro painel"
-          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-violet-300 dark:border-violet-700 text-violet-600 dark:text-violet-300 font-medium text-xs hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+          onClick={() => setCounterModal(true)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border border-border bg-card hover:bg-muted text-foreground transition-colors"
+          title={counter
+            ? 'Guichê configurado — clique pra editar'
+            : 'Opcional: útil em unidades com mais de um guichê'}
         >
-          <Sparkles size={14} /> Testar chamada
+          <Settings2 size={14} />
+          <span>{counter ? counterName : 'Configurar guichê'}</span>
+          {counter?.priority && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 text-[10px] font-bold uppercase tracking-wider">
+              <Star size={9} /> Prioritário
+            </span>
+          )}
         </button>
+        <div className="flex-1" />
       </div>
 
       {loading && tickets.length === 0 ? (
         <div className="py-20 text-center text-sm text-muted-foreground">Carregando fila…</div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-          <section>
-            <QueueSection
-              title="Aguardando"
-              items={waiting}
-              counter={counter}
-              emptyMsg="Ninguém aguardando no momento."
-              onCall={doCall}
-              onStart={doStart}
-              onAssumeHandover={doAssumeHandover}
-              onCancel={t => setCancelModal(t)}
-              onOpenAttend={t => setAttendModal(t)}
-            />
+        <section>
+          {inService.length > 0 && (
+            <>
+              <QueueSection
+                title="Em atendimento"
+                items={inService}
+                emptyMsg=""
+                variant="inService"
+                onForward={t => setForwardModal(t)}
+                onOpenAttend={t => setAttendModal(t)}
+              />
+              <div className="mt-8" />
+            </>
+          )}
 
-            {inService.length > 0 && (
-              <>
-                <div className="mt-8" />
-                <QueueSection
-                  title="Em atendimento"
-                  items={inService}
-                  counter={counter}
-                  emptyMsg=""
-                  variant="inService"
-                  onForward={t => setForwardModal(t)}
-                  onCancel={t => setCancelModal(t)}
-                  onOpenAttend={t => setAttendModal(t)}
-                />
-              </>
-            )}
+          <QueueSection
+            title="Aguardando"
+            items={waiting}
+            emptyMsg="Ninguém aguardando no momento."
+            onCall={doCall}
+            onStart={doStart}
+            onAssumeHandover={doAssumeHandover}
+            onOpenAttend={t => setAttendModal(t)}
+          />
 
-            {rest.length > 0 && (
-              <>
-                <div className="mt-8" />
-                <QueueSection
-                  title="Encaminhados"
-                  items={rest}
-                  counter={counter}
-                  emptyMsg=""
-                  variant="rest"
-                />
-              </>
-            )}
-          </section>
-
-          <aside className="space-y-3">
-            <div className="rounded-xl border border-border bg-card p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Resumo
-              </h3>
-              <dl className="space-y-2 text-sm">
-                <Stat label="Aguardando" value={waiting.length} />
-                <Stat label="Em atendimento" value={inService.length} />
-                <Stat label="Encaminhados" value={rest.length} />
-                <Stat
-                  label="Prioridade"
-                  value={tickets.filter(t => t.priority).length}
-                  tone="priority"
-                />
-                <Stat
-                  label="Com handover"
-                  value={tickets.filter(t => t.needsHandoverFromAttendanceId).length}
-                  tone="warning"
-                />
-              </dl>
-            </div>
-          </aside>
-        </div>
+          {rest.length > 0 && (
+            <>
+              <div className="mt-8" />
+              <QueueSection
+                title="Encaminhados"
+                items={rest}
+                emptyMsg=""
+                variant="rest"
+              />
+            </>
+          )}
+        </section>
       )}
 
       {attendModal && (
         <AttendModal
           ticket={attendModal}
-          counter={counter}
+          counter={counter ? counterName : ''}
           onClose={() => setAttendModal(null)}
           onCall={async t => { await doCall(t); setAttendModal(null) }}
           onStart={async t => { await doStart(t); setAttendModal(null) }}
@@ -244,24 +242,32 @@ export function RecQueuePage() {
           onForward={async t => { setAttendModal(null); setForwardModal(t) }}
         />
       )}
+      {counterModal && (
+        <CounterConfigModal
+          initial={counter}
+          onClose={() => setCounterModal(false)}
+          onSave={cfg => {
+            setCounter(cfg)
+            saveCounter(cfg)
+            setCounterModal(false)
+          }}
+          onClear={() => {
+            setCounter(null)
+            try { localStorage.removeItem(COUNTER_STORAGE_KEY) } catch {}
+            setCounterModal(false)
+          }}
+        />
+      )}
       {forwardModal && (
         <ForwardModal
           ticket={forwardModal}
           sectors={sectors}
+          allowedSectorNames={allowedSectorNames}
+          suggestedSector={suggestedSector}
           onClose={() => setForwardModal(null)}
           onConfirm={async sector => {
             await doForward(forwardModal, sector)
             setForwardModal(null)
-          }}
-        />
-      )}
-      {cancelModal && (
-        <CancelModal
-          ticket={cancelModal}
-          onClose={() => setCancelModal(null)}
-          onConfirm={async reason => {
-            await doCancel(cancelModal, reason)
-            setCancelModal(null)
           }}
         />
       )}
@@ -274,25 +280,27 @@ export function RecQueuePage() {
 type QueueSectionProps = {
   title: string
   items: AttendanceItem[]
-  counter: string
   emptyMsg: string
   variant?: 'waiting' | 'inService' | 'rest'
+  headerBadge?: React.ReactNode
   onCall?: (t: AttendanceItem) => void
   onStart?: (t: AttendanceItem) => void
   onForward?: (t: AttendanceItem) => void
-  onCancel?: (t: AttendanceItem) => void
   onAssumeHandover?: (t: AttendanceItem) => void
   onOpenAttend?: (t: AttendanceItem) => void
 }
 
 function QueueSection({
-  title, items, emptyMsg, variant = 'waiting',
-  onCall, onStart, onForward, onCancel, onAssumeHandover, onOpenAttend,
+  title, items, emptyMsg, variant = 'waiting', headerBadge,
+  onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
 }: QueueSectionProps) {
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
+      <div className="flex items-baseline justify-between gap-3 mb-3 flex-wrap">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {headerBadge}
+        </div>
         <span className="text-xs text-muted-foreground">
           {items.length} {items.length === 1 ? 'senha' : 'senhas'}
         </span>
@@ -314,7 +322,6 @@ function QueueSection({
               onCall={onCall}
               onStart={onStart}
               onForward={onForward}
-              onCancel={onCancel}
               onAssumeHandover={onAssumeHandover}
               onOpenAttend={onOpenAttend}
             />
@@ -329,14 +336,13 @@ function QueueSection({
 
 function QueueRow({
   ticket, variant,
-  onCall, onStart, onForward, onCancel, onAssumeHandover, onOpenAttend,
+  onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
 }: {
   ticket: AttendanceItem
   variant: 'waiting' | 'inService' | 'rest'
   onCall?: (t: AttendanceItem) => void
   onStart?: (t: AttendanceItem) => void
   onForward?: (t: AttendanceItem) => void
-  onCancel?: (t: AttendanceItem) => void
   onAssumeHandover?: (t: AttendanceItem) => void
   onOpenAttend?: (t: AttendanceItem) => void
 }) {
@@ -397,6 +403,9 @@ function QueueRow({
           <WaitLabel sinceIso={ticket.arrivedAt} />
           {ticket.docType === 'cpf' && ticket.docValue && ` · CPF ${maskCpf(ticket.docValue)}`}
           {ticket.docType === 'cns' && ticket.docValue && ` · CNS ${maskCns(ticket.docValue)}`}
+          {ticket.orderReasons && ticket.orderReasons.length > 0 && (
+            <OrderReasonsTooltip reasons={ticket.orderReasons} />
+          )}
         </p>
       </div>
 
@@ -412,15 +421,16 @@ function QueueRow({
         )}
         {variant === 'waiting' && (
           <>
-            {!wasCalled && onCall && (
+            {onCall && (
               <button
                 onClick={() => onCall(ticket)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40"
+                title={wasCalled ? 'Rechamar no painel' : 'Chamar no painel'}
               >
-                <PhoneCall size={13} /> Chamar
+                <PhoneCall size={13} /> {wasCalled ? 'Rechamar' : 'Chamar'}
               </button>
             )}
-            {wasCalled && onStart && (
+            {onStart && (
               <button
                 onClick={() => onOpenAttend?.(ticket)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -436,15 +446,6 @@ function QueueRow({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             <ArrowRight size={13} /> Encaminhar
-          </button>
-        )}
-        {variant !== 'rest' && onCancel && (
-          <button
-            onClick={() => onCancel(ticket)}
-            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted hover:text-rose-600 dark:hover:text-rose-400"
-            title="Cancelar atendimento"
-          >
-            <X size={13} />
           </button>
         )}
       </div>
@@ -474,7 +475,9 @@ function AttendModal({
       <div onClick={e => e.stopPropagation()} className="bg-card rounded-xl shadow-xl border border-border w-full max-w-md overflow-hidden">
         <header className="px-5 py-3 border-b border-border flex items-center justify-between">
           <div>
-            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{counter}</span>
+            {counter && (
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{counter}</span>
+            )}
             <h3 className="text-lg font-bold tabular-nums"
               style={{ color: ticket.priority ? '#dc2626' : '#0d9488' }}>
               {ticket.ticketNumber}
@@ -539,7 +542,7 @@ function AttendModal({
                 onClick={() => onCall(ticket)}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold"
               >
-                <PhoneCall size={14} /> Chamar ({counter})
+                <PhoneCall size={14} /> Chamar{counter && ` (${counter})`}
               </button>
             )}
             {canStart && (
@@ -568,14 +571,33 @@ function AttendModal({
 // ─── Modal: encaminhar pra setor ────────────────────────────────────────────
 
 function ForwardModal({
-  ticket, sectors, onClose, onConfirm,
+  ticket, sectors, allowedSectorNames, suggestedSector, onClose, onConfirm,
 }: {
   ticket: AttendanceItem
   sectors: Sector[]
+  /** ``null`` = todos permitidos. Lista = só estes aparecem. */
+  allowedSectorNames: string[] | null
+  suggestedSector: string | null
   onClose: () => void
   onConfirm: (sector: string) => void
 }) {
-  const [selected, setSelected] = useState<string>(sectors[0]?.name ?? 'Triagem')
+  // Filtra pelo que o admin liberou na config. Sugerido sempre aparece
+  // (mesmo que fora da lista) pra não sumir silenciosamente.
+  const allowed = allowedSectorNames === null
+    ? sectors
+    : sectors.filter(s => allowedSectorNames.includes(s.name))
+  const visibleSectors = suggestedSector
+    && !allowed.some(s => s.name === suggestedSector)
+    && sectors.find(s => s.name === suggestedSector)
+    ? [...allowed, sectors.find(s => s.name === suggestedSector)!]
+    : allowed
+  const suggestedInList = suggestedSector
+    && visibleSectors.some(s => s.name === suggestedSector)
+  const initial = suggestedInList
+    ? suggestedSector!
+    : (visibleSectors[0]?.name ?? 'Triagem')
+  const [selected, setSelected] = useState<string>(initial)
+
   return (
     <div onClick={onClose} className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div onClick={e => e.stopPropagation()} className="bg-card rounded-xl shadow-xl border border-border w-full max-w-sm overflow-hidden">
@@ -588,7 +610,7 @@ function ForwardModal({
         <div className="p-5 space-y-3">
           <p className="text-xs text-muted-foreground">Setor destino</p>
           <div className="grid grid-cols-2 gap-2 max-h-64 overflow-auto">
-            {sectors.length === 0 && (
+            {visibleSectors.length === 0 && (
               <button
                 onClick={() => setSelected('Triagem')}
                 className={cn(
@@ -601,21 +623,36 @@ function ForwardModal({
                 Triagem
               </button>
             )}
-            {sectors.map(s => (
-              <button
-                key={s.id}
-                onClick={() => setSelected(s.name)}
-                className={cn(
-                  'px-3 py-2 rounded-lg border text-sm text-left',
-                  selected === s.name
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border hover:bg-muted',
-                )}
-              >
-                {s.name}
-              </button>
-            ))}
+            {visibleSectors.map(s => {
+              const isSuggested = s.name === suggestedSector
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelected(s.name)}
+                  className={cn(
+                    'px-3 py-2 rounded-lg border text-sm text-left transition-colors relative',
+                    selected === s.name
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border hover:bg-muted',
+                  )}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate">{s.name}</span>
+                    {isSuggested && (
+                      <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Sugerido
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
           </div>
+          {suggestedSector && !suggestedInList && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              Setor sugerido ("{suggestedSector}") não está mais disponível.
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted">
               Cancelar
@@ -633,47 +670,96 @@ function ForwardModal({
   )
 }
 
-// ─── Modal: cancelar ───────────────────────────────────────────────────────
+// ─── Modal: configuração do guichê ─────────────────────────────────────────
 
-function CancelModal({
-  ticket, onClose, onConfirm,
+
+
+function CounterConfigModal({
+  initial, onClose, onSave, onClear,
 }: {
-  ticket: AttendanceItem
+  initial: CounterConfig | null
   onClose: () => void
-  onConfirm: (reason: string) => void
+  onSave: (cfg: CounterConfig) => void
+  onClear: () => void
 }) {
-  const [reason, setReason] = useState('')
+  const [number, setNumber] = useState(initial?.number ?? '')
+  const [priority, setPriority] = useState(initial?.priority ?? false)
+  const canSave = number.trim().length > 0
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
       <div onClick={e => e.stopPropagation()} className="bg-card rounded-xl shadow-xl border border-border w-full max-w-sm overflow-hidden">
         <header className="px-5 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Cancelar {ticket.ticketNumber}</h3>
+          <div>
+            <h3 className="text-sm font-semibold">Configurar guichê</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Opcional. Se deixar em branco, as chamadas não mostram guichê
+              no painel — útil pra unidades com só 1 ponto.
+            </p>
+          </div>
           <button onClick={onClose} className="p-1 rounded text-muted-foreground hover:bg-muted">
             <X size={16} />
           </button>
         </header>
-        <div className="p-5 space-y-3">
-          <label className="block text-xs text-muted-foreground">
-            Motivo (opcional)
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Nome
+            </label>
+            <input
+              type="text"
+              value={number}
+              onChange={e => setNumber(e.target.value)}
+              placeholder="Ex.: Guichê 1, Acolhimento, Balcão"
+              maxLength={40}
+              autoFocus
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              Aparece exatamente como digitado no painel de chamadas.
+            </p>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-border p-3 hover:bg-muted/40">
+            <input
+              type="checkbox"
+              checked={priority}
+              onChange={e => setPriority(e.target.checked)}
+              className="mt-0.5 rounded border-border text-primary focus:ring-primary/40"
+            />
+            <span className="flex-1 min-w-0">
+              <span className="block text-sm font-medium">Guichê prioritário</span>
+              <span className="block text-[11px] text-muted-foreground mt-0.5">
+                Atende idosos, gestantes, PCD etc. preferencialmente.
+              </span>
+            </span>
           </label>
-          <textarea
-            value={reason}
-            onChange={e => setReason(e.target.value)}
-            rows={3}
-            placeholder="Ex.: paciente desistiu, erro de cadastro"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            maxLength={300}
-          />
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted">
-              Voltar
-            </button>
-            <button
-              onClick={() => onConfirm(reason.trim())}
-              className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold"
-            >
-              Cancelar atendimento
-            </button>
+
+          <div className="flex items-center justify-between gap-2 pt-2">
+            <div>
+              {initial && (
+                <button
+                  onClick={onClear}
+                  className="px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                >
+                  Remover configuração
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => canSave && onSave({ number: number.trim(), priority })}
+                disabled={!canSave}
+                className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Salvar
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -681,21 +767,68 @@ function CancelModal({
   )
 }
 
+
 // ─── Componentes auxiliares ─────────────────────────────────────────────────
 
-function Stat({
-  label, value, tone = 'default',
-}: { label: string; value: number; tone?: 'default' | 'priority' | 'warning' }) {
+function OrderReasonsTooltip({ reasons }: { reasons: OrderReason[] }) {
+  const [open, setOpen] = useState(false)
+  if (reasons.length === 0) return null
+  // Score total pra dar contexto no topo
+  const total = reasons.reduce((s, r) => s + r.contrib, 0)
   return (
-    <div className="flex items-center justify-between">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn(
-        'font-semibold tabular-nums',
-        tone === 'priority' && value > 0 && 'text-red-600 dark:text-red-400',
-        tone === 'warning' && value > 0 && 'text-amber-600 dark:text-amber-400',
-      )}>{value}</dd>
-    </div>
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+        onBlur={() => setOpen(false)}
+        className="ml-1 text-violet-500 hover:text-violet-700 dark:hover:text-violet-400 transition-colors"
+        title="Por que esta ordem?"
+      >
+        <Info size={11} />
+      </button>
+      {open && (
+        <span className="absolute left-0 top-4 z-20 min-w-[220px] rounded-lg border border-border bg-popover shadow-lg p-2.5 text-[11px] text-left">
+          <span className="block font-semibold text-foreground mb-1.5 pb-1.5 border-b border-border">
+            Score: {total.toFixed(2)}
+          </span>
+          <span className="block space-y-1">
+            {reasons.map((r, i) => (
+              <span key={i} className="flex items-start justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="block text-foreground">{humanReason(r.tag)}</span>
+                  {r.note && (
+                    <span className="block text-muted-foreground italic text-[10px]">
+                      {r.note}
+                    </span>
+                  )}
+                </span>
+                <span className={cn(
+                  'font-mono tabular-nums font-semibold shrink-0',
+                  r.contrib > 0 ? 'text-emerald-600 dark:text-emerald-400'
+                  : r.contrib < 0 ? 'text-rose-600 dark:text-rose-400'
+                  : 'text-muted-foreground',
+                )}>
+                  {r.contrib > 0 ? '+' : ''}{r.contrib.toFixed(2)}
+                </span>
+              </span>
+            ))}
+          </span>
+        </span>
+      )}
+    </span>
   )
+}
+
+function humanReason(tag: string): string {
+  if (tag === 'prioridade_legal') return 'Prioridade legal'
+  if (tag === 'handover_pendente') return 'Handover pendente'
+  if (tag === 'espera_prolongada') return 'Espera prolongada'
+  if (tag === 'fairness_cap') return 'Damping de prioridade'
+  if (tag.startsWith('esperando_')) {
+    const min = tag.replace('esperando_', '').replace('min', '')
+    return `Esperando ${min} min`
+  }
+  return tag
 }
 
 function WaitLabel({ sinceIso }: { sinceIso: string }) {

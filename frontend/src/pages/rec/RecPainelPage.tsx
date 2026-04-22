@@ -94,9 +94,11 @@ export function RecPainelPage() {
             >
               {current.ticket}
             </div>
-            <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
-              {current.counter}
-            </p>
+            {current.counter && (
+              <p className="mt-6 text-4xl sm:text-6xl font-semibold text-slate-800">
+                {current.counter}
+              </p>
+            )}
             {current.patientName && (
               <p className="mt-2 text-xl sm:text-2xl text-slate-500">
                 {current.patientName}
@@ -123,7 +125,7 @@ export function RecPainelPage() {
               >
                 {h.ticket}
               </span>
-              <span className="text-sm text-slate-500">{h.counter}</span>
+              {h.counter && <span className="text-sm text-slate-500">{h.counter}</span>}
               <span className="text-xs text-slate-400">{timeAgo(h.at)}</span>
             </div>
           ))

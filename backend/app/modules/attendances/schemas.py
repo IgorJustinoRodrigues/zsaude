@@ -85,10 +85,22 @@ class AttendanceRead(CamelModel):
     cancellation_reason: str | None = None
 
 
+class OrderReason(CamelModel):
+    """Explicação de uma contribuição ao score no modo 'ai'. A recepção
+    exibe num tooltip: 'por que esse antes daquele'."""
+
+    tag: str
+    contrib: float
+    note: str | None = None
+
+
 class AttendanceListItem(AttendanceRead):
     """Item pra lista da recepção — inclui dados do handover pra badge."""
 
     handover: HandoverInfo | None = None
+    # Preenchido só quando ``queue_order_mode='ai'`` — razões que
+    # contribuíram pro score desse ticket na ordenação atual.
+    order_reasons: list[OrderReason] = []
 
 
 class ForwardInput(CamelModel):

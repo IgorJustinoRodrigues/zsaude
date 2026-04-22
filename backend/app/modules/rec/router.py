@@ -154,7 +154,9 @@ async def effective_rec_config(
 
 class CallInput(CamelModel):
     ticket: str
-    counter: str
+    # Opcional — muitas unidades têm só 1 ponto de atendimento. Quando
+    # null, o painel não mostra linha de "guichê".
+    counter: str | None = None
     patient_name: str | None = None
     priority: bool = False
 

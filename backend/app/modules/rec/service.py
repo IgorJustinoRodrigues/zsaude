@@ -39,7 +39,11 @@ def default_rec_config() -> RecConfig:
     return RecConfig(
         totem=TotemConfig(enabled=True),
         painel=PainelConfig(enabled=True),
-        recepcao=RecepcaoConfig(enabled=True, after_attendance="triagem"),
+        recepcao=RecepcaoConfig(
+            enabled=True,
+            after_attendance_sector=None,
+            queue_order_mode="priority_fifo",
+        ),
     )
 
 
@@ -277,5 +281,7 @@ def _restrict_painel(child: PainelConfig, parent: PainelConfig) -> PainelConfig:
 def _restrict_recepcao(child: RecepcaoConfig, parent: RecepcaoConfig) -> RecepcaoConfig:
     return RecepcaoConfig(
         enabled=child.enabled and parent.enabled,
-        after_attendance=child.after_attendance,
+        after_attendance_sector=child.after_attendance_sector,
+        forward_sector_names=child.forward_sector_names,
+        queue_order_mode=child.queue_order_mode,
     )

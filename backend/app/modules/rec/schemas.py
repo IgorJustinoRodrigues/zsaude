@@ -46,12 +46,31 @@ class PainelConfig(_TolerantCamelModel):
     enabled: bool = True
 
 
+QueueOrderMode = Literal["fifo", "priority_fifo", "ai"]
+
+
 class RecepcaoConfig(_TolerantCamelModel):
     """Balcão/console da atendente."""
 
     enabled: bool = True
-    # Pra onde o paciente vai depois do atendimento na recepção.
-    after_attendance: Literal["triagem", "consulta", "nenhum"] = "triagem"
+    # Setor pra onde o paciente vai depois do atendimento na recepção.
+    # ``None`` = atendimento conclui na recepção (não encaminha).
+    # O valor é o **nome do setor** (ex.: "Triagem", "Consulta médica").
+    # A atendente ainda pode sobrescrever manualmente no momento de
+    # encaminhar, mas esse campo é o default exibido.
+    after_attendance_sector: str | None = None
+    # Lista de setores disponíveis no modal de encaminhamento. ``None``
+    # = mostra todos os setores do escopo (compat). Lista vazia = nenhum
+    # setor aparece (caso raro). Cada item é o nome do setor. Outros
+    # módulos (triagem, consulta) terão listas análogas — essa é a
+    # config do módulo "Recepção".
+    forward_sector_names: list[str] | None = None
+    # Estratégia de ordenação da fila de espera na recepção.
+    # - ``fifo``: pura ordem de chegada, sem prioridade.
+    # - ``priority_fifo``: intercala prioritários e normais (default 2:1).
+    # - ``ai``: ordenação dinâmica (hoje cai no priority_fifo até plugar
+    #   o modelo real).
+    queue_order_mode: QueueOrderMode = "priority_fifo"
 
 
 # ─── Config completa ─────────────────────────────────────────────────────────

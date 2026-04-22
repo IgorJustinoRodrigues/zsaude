@@ -28,6 +28,7 @@ from app.modules.attendances.schemas import (
     FaceCandidate,
     FaceMatchOutput,
     ForwardInput,
+    OrderReason,
 )
 from app.modules.attendances.service import AttendanceService
 from app.modules.devices.models import Device
@@ -118,12 +119,30 @@ async def list_tickets(
     db: DB, tenant_db: TenantDB, ctx: CurrentContextDep,
     include_closed: bool = False,
 ) -> list[AttendanceListItem]:
+    # Resolve o modo de ordenação efetivo (defaults → município → unidade)
+    # — atendentes veem a fila na ordem configurada pelo admin.
+    from app.modules.rec.service import RecConfigService
+    rec_cfg = await RecConfigService(db).effective_for_facility(
+        ctx.facility_id, ctx.municipality_id,
+    )
+    order_mode = rec_cfg.recepcao.queue_order_mode
+
     svc = AttendanceService(app_db=db, tenant_db=tenant_db)
-    rows = await svc.list_for_facility(ctx.facility_id, include_closed=include_closed)
+    rows, reasons_map = await svc.list_for_facility(
+        ctx.facility_id, include_closed=include_closed, order_mode=order_mode,
+    )
     out: list[AttendanceListItem] = []
     for att, handover in rows:
         base = AttendanceRead.model_validate(att)
-        out.append(AttendanceListItem(**base.model_dump(), handover=handover))
+        reasons = [
+            OrderReason(tag=r.tag, contrib=r.contrib, note=r.note)
+            for r in reasons_map.get(att.id, [])
+        ]
+        out.append(AttendanceListItem(
+            **base.model_dump(),
+            handover=handover,
+            order_reasons=reasons,
+        ))
     return out
 
 
