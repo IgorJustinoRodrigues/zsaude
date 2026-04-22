@@ -70,6 +70,9 @@ export interface DeviceConfigPainel {
   announceAudio: boolean
   sectorNames: string[]
   voiceId: string | null
+  repeatCount: number
+  silenceEnabled: boolean
+  silenceMessage: string
 }
 
 export interface DeviceConfigTotem {

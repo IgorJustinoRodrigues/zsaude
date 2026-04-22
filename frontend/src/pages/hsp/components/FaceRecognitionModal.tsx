@@ -23,7 +23,12 @@ interface Props {
    */
   mode?: 'match' | 'enroll'
   onCapture?: (dataUrl: string) => void
-  onMatched?: (candidates: import('../../../api/face').MatchCandidate[]) => void
+  /** Recebe os candidatos + o dataUrl da foto capturada (pra ser reutilizada
+   *  no passo de confirmação/enrollment sem recapturar). */
+  onMatched?: (
+    candidates: import('../../../api/face').MatchCandidate[],
+    capturedDataUrl: string,
+  ) => void
 }
 
 type Phase =
@@ -350,7 +355,7 @@ export function FaceRecognitionModal({
       const { faceApi, dataUrlToBlob } = await import('../../../api/face')
       const blob = dataUrlToBlob(captured)
       const resp = await faceApi.match(blob)
-      onMatched?.(resp.candidates)
+      onMatched?.(resp.candidates, captured)
       onClose()
     } catch (err) {
       console.error('[FaceRecognition] match failed:', err)

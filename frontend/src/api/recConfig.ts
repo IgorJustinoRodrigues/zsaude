@@ -21,6 +21,13 @@ export interface PainelConfig {
   mode: PainelMode
   /** UUID de ``tts_voices``. ``null`` = herda default global. */
   voiceId: string | null
+  /** Quantas vezes cada chamada é anunciada (áudio). 1–3. */
+  repeatCount: number
+  /** Se o botão "Solicitar silêncio" aparece na recepção + se o painel
+   *  processa o evento de silêncio. */
+  silenceEnabled: boolean
+  /** Mensagem falada pelo painel quando silêncio é solicitado. */
+  silenceMessage: string
 }
 
 export type QueueOrderMode = 'fifo' | 'priority_fifo' | 'ai'

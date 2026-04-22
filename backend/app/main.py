@@ -80,12 +80,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as e:  # noqa: BLE001
             log.warning("cbo_abilities_seed_failed", error=str(e))
             n_abilities = 0
+        # Invalida o cache de permissões do Valkey — senão sessões ativas
+        # continuam vendo o conjunto antigo até expirar o TTL (15 min).
+        try:
+            from app.core.deps import _valkey_client
+            valkey = _valkey_client()
+            cursor = 0
+            n_invalidated = 0
+            while True:
+                cursor, keys = await valkey.scan(cursor=cursor, match="perms:*", count=500)
+                if keys:
+                    await valkey.delete(*keys)
+                    n_invalidated += len(keys)
+                if cursor == 0:
+                    break
+        except Exception as e:  # noqa: BLE001
+            log.warning("perm_cache_flush_failed", error=str(e))
+            n_invalidated = 0
+
         log.info(
             "rbac_sync_ok",
             permissions=n_perms,
             system_roles=n_roles,
             settings_loaded=n_settings,
             cbo_ability_pairs=n_abilities,
+            cache_invalidated=n_invalidated,
         )
     except Exception as e:  # noqa: BLE001
         log.error("rbac_sync_failed", error=str(e))

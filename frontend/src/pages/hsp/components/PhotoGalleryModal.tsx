@@ -25,6 +25,10 @@ interface Props {
 export function PhotoGalleryModal({ patientId, currentPhotoId, onClose, onChanged }: Props) {
   const [photos, setPhotos] = useState<PatientPhotoMeta[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Espelha o prop mas PERMITE atualização otimista após setAsCurrent —
+  // senão o badge "Oficial" fica no lugar antigo até o pai re-fetchar.
+  const [localCurrentId, setLocalCurrentId] = useState<string | null>(currentPhotoId)
+  useEffect(() => { setLocalCurrentId(currentPhotoId) }, [currentPhotoId])
 
   const reload = useCallback(async () => {
     try {
@@ -43,7 +47,10 @@ export function PhotoGalleryModal({ patientId, currentPhotoId, onClose, onChange
   async function setAsCurrent(photo: PatientPhotoMeta) {
     setBusy(photo.id)
     try {
-      await hspApi.restorePhoto(patientId, photo.id)
+      const updated = await hspApi.restorePhoto(patientId, photo.id)
+      // Atualiza internamente com o que o backend confirmou — não espera
+      // o pai propagar a mudança.
+      setLocalCurrentId(updated.currentPhotoId)
       toast.success('Foto oficial atualizada')
       await reload()
       onChanged()
@@ -94,7 +101,7 @@ export function PhotoGalleryModal({ patientId, currentPhotoId, onClose, onChange
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {photos.map(p => {
-                const isCurrent = p.id === currentPhotoId
+                const isCurrent = p.id === localCurrentId
                 return (
                   <div
                     key={p.id}

@@ -237,12 +237,15 @@ class DeviceService:
         não vinculado (UI mostra "aguardando configuração")."""
         painel = None
         totem = None
-        # Config efetiva — mode + voice_id vêm do rec_config (município
-        # ou unidade). Admin muda num só lugar pra afetar todos os
-        # painéis/totens do escopo.
+        # Config efetiva — vem do rec_config (município ou unidade).
+        # Admin muda num só lugar pra afetar todos os painéis/totens
+        # do escopo.
         mode = "senha"
         painel_voice_id = None
         totem_voice_id = None
+        repeat_count = 1
+        silence_enabled = True
+        silence_message = "Por favor, silêncio na recepção."
         if device.facility_id:
             try:
                 from app.modules.rec.service import RecConfigService
@@ -254,6 +257,9 @@ class DeviceService:
                     mode = eff.painel.mode
                     painel_voice_id = _parse_uuid(eff.painel.voice_id)
                     totem_voice_id = _parse_uuid(eff.totem.voice_id)
+                    repeat_count = eff.painel.repeat_count
+                    silence_enabled = eff.painel.silence_enabled
+                    silence_message = eff.painel.silence_message
             except Exception:
                 pass
 
@@ -265,6 +271,9 @@ class DeviceService:
                 announce_audio=device.painel.announce_audio,
                 sector_names=list(device.painel.sector_names),
                 voice_id=painel_voice_id,
+                repeat_count=repeat_count,
+                silence_enabled=silence_enabled,
+                silence_message=silence_message,
             )
         if device.totem_id and device.totem:
             totem = DeviceConfigTotem(

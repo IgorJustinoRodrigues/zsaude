@@ -32,7 +32,14 @@ import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 type Scope = 'municipality' | 'facility'
 
 const DEFAULT_TOTEM: TotemConfig = { enabled: true, voiceId: null }
-const DEFAULT_PAINEL: PainelConfig = { enabled: true, mode: 'senha', voiceId: null }
+const DEFAULT_PAINEL: PainelConfig = {
+  enabled: true,
+  mode: 'senha',
+  voiceId: null,
+  repeatCount: 1,
+  silenceEnabled: true,
+  silenceMessage: 'Por favor, silêncio na recepção.',
+}
 const DEFAULT_RECEPCAO: RecepcaoConfig = {
   enabled: true,
   afterAttendanceSector: null,
@@ -417,6 +424,67 @@ function PainelForm({
               onSelect={() => setDraft({ ...draft, mode: 'ambos' })}
             />
           </div>
+        </div>
+
+        {/* Repetição da chamada */}
+        <div>
+          <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
+            Repetições do áudio
+          </p>
+          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800">
+            {[1, 2, 3].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setDraft({ ...draft, repeatCount: n })}
+                className={cn(
+                  'px-4 py-1.5 rounded-md text-xs font-medium transition-all',
+                  draft.repeatCount === n
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                )}
+              >
+                {n}×
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+            Cada chamada é anunciada {draft.repeatCount}× seguida. O visual flasha uma vez só.
+          </p>
+        </div>
+
+        {/* Silêncio */}
+        <div className="space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.silenceEnabled}
+              onChange={e => setDraft({ ...draft, silenceEnabled: e.target.checked })}
+              className="mt-1 rounded border-slate-300 dark:border-slate-600 text-teal-600 focus:ring-teal-500"
+            />
+            <div className="flex-1">
+              <span className="text-sm font-medium">Botão "Solicitar silêncio"</span>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Quando ligado, a recepção pode disparar um anúncio de silêncio — o painel
+                exibe overlay e fala a mensagem abaixo.
+              </p>
+            </div>
+          </label>
+          {draft.silenceEnabled && (
+            <div className="pl-6">
+              <label className="block text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">
+                Mensagem do silêncio
+              </label>
+              <input
+                type="text"
+                value={draft.silenceMessage}
+                onChange={e => setDraft({ ...draft, silenceMessage: e.target.value })}
+                maxLength={200}
+                placeholder="Por favor, silêncio na recepção."
+                className="w-full max-w-md px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+          )}
         </div>
       </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />

@@ -282,6 +282,9 @@ def _restrict_painel(child: PainelConfig, parent: PainelConfig) -> PainelConfig:
         enabled=child.enabled and parent.enabled,
         mode=child.mode,
         voice_id=child.voice_id,
+        repeat_count=child.repeat_count,
+        silence_enabled=child.silence_enabled,
+        silence_message=child.silence_message,
     )
 
 

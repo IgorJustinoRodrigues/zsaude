@@ -6,6 +6,11 @@
 //    (ou nome em vez de senha, dependendo do modo)
 // 2. POST /rec/tts/prepare → URLs em sequência
 // 3. enqueue no AudioQueue — toca sem cortar chamada anterior
+// 4. Ao terminar (incl. repetições), chama ``advance()`` na store pra
+//    puxar a próxima chamada da fila ``pending``
+//
+// Repetições: entre iterações coloca 2s de silêncio pra a voz não
+// atropelar. Cada frase é cacheada, então repetir = zero custo no backend.
 //
 // Fallback: se /prepare falha ou não há voz configurada, delega pra
 // o speechSynthesis do browser (hook usePainelAnnouncer antigo).
@@ -13,7 +18,7 @@
 import { useEffect, useRef } from 'react'
 import { ttsRuntimeApi } from '../api/tts'
 import { HttpError } from '../api/client'
-import { type AudioQueue } from './useAudioQueue'
+import { type AudioQueue, type AudioQueueItem } from './useAudioQueue'
 
 type PainelMode = 'senha' | 'nome' | 'ambos'
 
@@ -26,6 +31,9 @@ interface LiveCall {
   at: Date
 }
 
+/** Tempo de silêncio entre uma repetição e outra da MESMA chamada. */
+const REPEAT_GAP_MS = 2_000
+
 interface Options {
   enabled: boolean
   mode: PainelMode
@@ -33,13 +41,22 @@ interface Options {
   queue: AudioQueue
   deviceToken: string | null
   voiceId?: string | null
+  /** Quantas vezes repetir a chamada inteira (cada frase é cacheada;
+   *  repetir = enfileirar N vezes com 2s entre). Default 1. */
+  repeatCount?: number
   /** Chamado se o TTS falhar totalmente e precisar cair no fallback. */
   onFallback?: (call: LiveCall) => void
+  /** Chamado quando o anúncio (com todas as repetições) termina.
+   *  O componente usa isso pra avançar a fila ``pending`` da store. */
+  onDone?: () => void
 }
 
-/** Remove zeros à esquerda do número da senha: ``P-001`` → ``P-1``. */
-function normalizeTicket(ticket: string): string {
-  return ticket.replace(/-0+(\d)/, '-$1')
+/** Extrai só o número da senha pra ser falado — ignora prefixo de letra.
+ *  Ex.: ``R-001`` → ``1``, ``P-047`` → ``47``. Se não casar o padrão,
+ *  devolve o ticket inteiro (defensive, quase nunca cai aqui). */
+function ticketNumberForSpeech(ticket: string): string {
+  const m = ticket.match(/[A-Za-z]*-?0*(\d+)/)
+  return m ? m[1] : ticket
 }
 
 function hasRealName(name: string | null | undefined): boolean {
@@ -58,16 +75,16 @@ export function composeCallPhrases(
   call: { ticket: string; patientName: string | null; counter: string },
 ): string[] {
   const phrases: string[] = ['Atenção!']
-  const normalizedTicket = normalizeTicket(call.ticket)
+  const number = ticketNumberForSpeech(call.ticket)
   const useName = (mode === 'nome' || mode === 'ambos') && hasRealName(call.patientName)
 
   if (mode === 'nome' && useName) {
     phrases.push(call.patientName!)
   } else if (mode === 'ambos' && useName) {
     phrases.push(call.patientName!)
-    phrases.push(`Senha ${normalizedTicket}`)
+    phrases.push(`Senha ${number}`)
   } else {
-    phrases.push(`Senha ${normalizedTicket}`)
+    phrases.push(`Senha ${number}`)
   }
 
   if (call.counter && call.counter.trim()) {
@@ -78,7 +95,8 @@ export function composeCallPhrases(
 }
 
 export function usePainelTtsAnnouncer({
-  enabled, mode, call, queue, deviceToken, voiceId, onFallback,
+  enabled, mode, call, queue, deviceToken, voiceId, repeatCount = 1,
+  onFallback, onDone,
 }: Options) {
   const lastIdRef = useRef<string | null>(null)
 
@@ -89,8 +107,11 @@ export function usePainelTtsAnnouncer({
 
     if (!deviceToken) {
       onFallback?.(call)
+      onDone?.()
       return
     }
+
+    let cancelled = false
 
     const phrases = composeCallPhrases(mode, {
       ticket: call.ticket,
@@ -104,17 +125,67 @@ export function usePainelTtsAnnouncer({
           phrases,
           voiceId: voiceId ?? null,
         })
-        queue.enqueue(resp.audios.map(a => a.url))
-      } catch (err) {
-        // Backend não tem voz configurada, provider fora do ar, etc.
-        // Cai pro fallback sem travar o painel.
-        if (err instanceof HttpError) {
-          console.warn('[tts] /prepare failed; falling back to speech synth:', err.message)
-        } else {
-          console.warn('[tts] /prepare network error; falling back to speech synth')
+        if (cancelled) return
+        const urls = resp.audios.map(a => a.url)
+        // Constrói [urls..., gap, urls..., gap, urls...] pra repeatCount iter.
+        const n = Math.max(1, Math.min(3, repeatCount))
+        const items: AudioQueueItem[] = []
+        for (let i = 0; i < n; i++) {
+          if (i > 0) items.push({ delayMs: REPEAT_GAP_MS })
+          items.push(...urls)
         }
-        onFallback?.(call)
+        // Aguarda o batch terminar (ou ser abortado por clear()).
+        await queue.enqueue(items).catch(() => { /* abortado */ })
+      } catch (err) {
+        if (!cancelled) {
+          if (err instanceof HttpError) {
+            console.warn('[tts] /prepare failed; falling back to speech synth:', err.message)
+          } else {
+            console.warn('[tts] /prepare network error; falling back to speech synth')
+          }
+          onFallback?.(call)
+        }
+      } finally {
+        // Avança a fila seja sucesso, erro OU abort — evita travar em ``current``.
+        if (!cancelled) onDone?.()
       }
     })()
-  }, [enabled, mode, call, queue, deviceToken, voiceId, onFallback])
+
+    return () => { cancelled = true }
+  }, [enabled, mode, call, queue, deviceToken, voiceId, repeatCount, onFallback, onDone])
+}
+
+/** Hook separado pra TTS do silêncio — quando o evento ``painel:silence``
+ *  chega, dispara a mensagem via mesma voz. A fila + cache reaproveitam
+ *  tudo que já existe. */
+export function useSilenceTtsAnnouncer({
+  enabled, message, queue, deviceToken, voiceId, silenceAt,
+}: {
+  enabled: boolean
+  message: string
+  queue: AudioQueue
+  deviceToken: string | null
+  voiceId?: string | null
+  /** Timestamp vindo do store — muda = disparar nova fala. */
+  silenceAt: number | null
+}) {
+  const lastAtRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!enabled || !silenceAt || !deviceToken || !message.trim()) return
+    if (lastAtRef.current === silenceAt) return
+    lastAtRef.current = silenceAt
+
+    ;(async () => {
+      try {
+        const resp = await ttsRuntimeApi.prepare(deviceToken, {
+          phrases: [message.trim()],
+          voiceId: voiceId ?? null,
+        })
+        await queue.enqueue(resp.audios.map(a => a.url)).catch(() => {})
+      } catch {
+        /* sem fallback — o overlay visual já comunicou */
+      }
+    })()
+  }, [enabled, message, queue, deviceToken, voiceId, silenceAt])
 }

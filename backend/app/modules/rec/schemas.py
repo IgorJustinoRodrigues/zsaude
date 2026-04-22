@@ -56,6 +56,17 @@ class PainelConfig(_TolerantCamelModel):
     mode: PainelMode = "senha"
     # Voz TTS (UUID de tts_voices). ``None`` = usa a default global.
     voice_id: str | None = None
+    # Quantas vezes a mesma chamada é anunciada (áudio). Visual flasha
+    # uma vez só. Range: 1–3.
+    repeat_count: int = Field(default=1, ge=1, le=3)
+    # Botão "Solicitar silêncio" na recepção — quando false, some da UI
+    # e o painel ignora eventos de silêncio.
+    silence_enabled: bool = True
+    # Mensagem falada quando a recepção pede silêncio. Cacheada no TTS.
+    silence_message: str = Field(
+        default="Por favor, silêncio na recepção.",
+        max_length=200,
+    )
 
 
 QueueOrderMode = Literal["fifo", "priority_fifo", "ai"]

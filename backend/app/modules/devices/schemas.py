@@ -99,6 +99,9 @@ class DeviceConfigPainel(CamelModel):
     announce_audio: bool
     sector_names: list[str]
     voice_id: UUID | None = None
+    repeat_count: int = 1
+    silence_enabled: bool = True
+    silence_message: str = "Por favor, silêncio na recepção."
 
 
 class DeviceConfigTotem(CamelModel):

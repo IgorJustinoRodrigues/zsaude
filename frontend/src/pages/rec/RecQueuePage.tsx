@@ -65,6 +65,7 @@ export function RecQueuePage() {
   // Lista de setores permitidos pelo admin no encaminhamento.
   // ``null`` = todos. Carregado da rec_config efetiva.
   const [allowedSectorNames, setAllowedSectorNames] = useState<string[] | null>(null)
+  const [silenceButtonEnabled, setSilenceButtonEnabled] = useState(true)
   // Cooldowns pra evitar duplo-clique. Mapa ticket_id → timestamp "libera em".
   const [callCooldowns, setCallCooldowns] = useState<Record<string, number>>({})
   const [silenceCooldownUntil, setSilenceCooldownUntil] = useState(0)
@@ -103,6 +104,7 @@ export function RecQueuePage() {
         .then(cfg => {
           setSuggestedSector(cfg.recepcao.afterAttendanceSector)
           setAllowedSectorNames(cfg.recepcao.forwardSectorNames)
+          setSilenceButtonEnabled(cfg.painel.silenceEnabled)
         })
         .catch(() => { /* sem sugestão — modal abre no default */ })
     }
@@ -147,6 +149,26 @@ export function RecQueuePage() {
       void reload()
     } catch (err) {
       if (err instanceof HttpError) toast.error('Chamar', err.message)
+    }
+  }
+
+  // Re-anúncio do paciente que JÁ está em atendimento: não muda o status
+  // no backend — só republica o evento pro painel/TTS falar de novo.
+  // Útil quando o paciente não escutou/não apareceu.
+  async function doRecallInService(t: AttendanceItem) {
+    setCallCooldowns(m => ({ ...m, [t.id]: Date.now() + ACTION_COOLDOWN_MS }))
+    try {
+      await recApi.publishCall({
+        ticket: t.ticketNumber,
+        counter: counter ? counterName : null,
+        patientName: t.patientName,
+        priority: t.priority,
+      })
+      const who = t.patientName ? ` · ${t.patientName}` : ''
+      const where = counter ? ` · ${counterName}` : ''
+      toast.success('Rechamado', `${t.ticketNumber}${who}${where}`)
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Rechamar', err.message)
     }
   }
 
@@ -205,23 +227,25 @@ export function RecQueuePage() {
           )}
         </button>
         <div className="flex-1" />
-        <button
-          disabled={silenceDisabledSec > 0}
-          onClick={async () => {
-            setSilenceCooldownUntil(Date.now() + ACTION_COOLDOWN_MS)
-            try {
-              await recApi.requestSilence()
-              toast.info('Silêncio solicitado', 'Exibido no painel por alguns segundos.')
-            } catch (err) {
-              if (err instanceof HttpError) toast.error('Silêncio', err.message)
-            }
-          }}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-card"
-          title="Mostra no painel um aviso grande de 'Silêncio, por favor'"
-        >
-          <VolumeX size={14} />
-          {silenceDisabledSec > 0 ? `Aguarde ${silenceDisabledSec}s` : 'Solicitar silêncio'}
-        </button>
+        {silenceButtonEnabled && (
+          <button
+            disabled={silenceDisabledSec > 0}
+            onClick={async () => {
+              setSilenceCooldownUntil(Date.now() + ACTION_COOLDOWN_MS)
+              try {
+                await recApi.requestSilence()
+                toast.info('Silêncio solicitado', 'Exibido no painel por alguns segundos.')
+              } catch (err) {
+                if (err instanceof HttpError) toast.error('Silêncio', err.message)
+              }
+            }}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-card"
+            title="Mostra no painel um aviso grande de 'Silêncio, por favor'"
+          >
+            <VolumeX size={14} />
+            {silenceDisabledSec > 0 ? `Aguarde ${silenceDisabledSec}s` : 'Solicitar silêncio'}
+          </button>
+        )}
         <button
           onClick={() => navigate('/rec/atendimento/novo')}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition-colors shadow-sm shadow-teal-500/20"
@@ -241,6 +265,8 @@ export function RecQueuePage() {
                 items={inService}
                 emptyMsg=""
                 variant="inService"
+                callCooldowns={callCooldowns}
+                onCall={doRecallInService}
                 onForward={t => setForwardModal(t)}
                 onOpenAttend={t => setAttendModal(t)}
               />
@@ -492,13 +518,28 @@ function QueueRow({
             )}
           </>
         )}
-        {variant === 'inService' && onForward && (
-          <button
-            onClick={() => onForward(ticket)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
-          >
-            <ArrowRight size={13} /> Encaminhar
-          </button>
+        {variant === 'inService' && (
+          <>
+            {onCall && (
+              <button
+                onClick={() => onCall(ticket)}
+                disabled={callDisabled}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                title="Anuncia de novo no painel — sem mexer no status"
+              >
+                <PhoneCall size={13} />
+                {callDisabled ? `Aguarde ${callDisabledSec}s` : 'Rechamar'}
+              </button>
+            )}
+            {onForward && (
+              <button
+                onClick={() => onForward(ticket)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                <ArrowRight size={13} /> Encaminhar
+              </button>
+            )}
+          </>
         )}
       </div>
     </li>
