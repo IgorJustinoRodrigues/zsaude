@@ -20,6 +20,8 @@ export interface TtsVoice {
   availableForSelection: boolean
   archived: boolean
   displayOrder: number
+  /** Velocidade de fala (0.25 — 4.0, default 0.9). */
+  speed: number
 }
 
 export interface PrepareAudio {
@@ -101,6 +103,7 @@ export const ttsAdminApi = {
     availableForSelection: boolean
     archived: boolean
     displayOrder: number
+    speed: number
   }>) =>
     api.patch<TtsVoice>(`/api/v1/admin/tts/voices/${voiceId}`, patch),
 

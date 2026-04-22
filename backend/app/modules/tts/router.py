@@ -207,4 +207,5 @@ def _voice_to_read(v) -> VoiceRead:
         available_for_selection=v.available_for_selection,
         archived=v.archived,
         display_order=v.display_order,
+        speed=float(v.speed),
     )

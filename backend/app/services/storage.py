@@ -73,20 +73,24 @@ class StorageService:
     async def presigned_url(self, key: str, expires: int = 3600) -> str:
         """Gera URL temporária para download direto (sem proxy pela API).
 
-        Quando ``STORAGE_PUBLIC_ENDPOINT`` está setado, reescreve o host
-        do URL assinado — necessário em dev onde o backend fala com o
-        MinIO via ``minio:9000`` (rede docker) mas o browser só enxerga
-        ``localhost:9002`` (porta mapeada).
+        Quando ``STORAGE_PUBLIC_ENDPOINT`` está setado, **assina** usando
+        esse endpoint — não dá pra só reescrever o host depois porque o
+        host entra no cálculo da assinatura S3v4. Em dev, o browser
+        acessa via ``localhost:9002`` mesmo com o backend falando com
+        ``minio:9000`` dentro do Docker.
         """
-        async with self._client() as s3:
+        public = settings.storage_public_endpoint
+        endpoint_for_signing = public.rstrip("/") if public else self._endpoint
+        async with self._session.client(
+            "s3",
+            endpoint_url=endpoint_for_signing,
+            config=self._client_config,
+        ) as s3:
             url = await s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=expires,
             )
-        public = settings.storage_public_endpoint
-        if public and self._endpoint:
-            url = url.replace(self._endpoint, public.rstrip("/"))
         return url
 
     async def exists(self, key: str) -> bool:

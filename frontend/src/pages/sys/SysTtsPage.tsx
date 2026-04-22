@@ -373,6 +373,11 @@ function VoiceRow({ voice, onChanged }: { voice: TtsVoice; onChanged: () => void
         </p>
       </div>
 
+      {/* Velocidade (fixa por voz — ajustada por curadoria do sistema) */}
+      <span className="text-[11px] font-mono tabular-nums text-muted-foreground shrink-0">
+        {voice.speed.toFixed(2)}x
+      </span>
+
       <button
         onClick={preview}
         disabled={busy}

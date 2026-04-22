@@ -40,8 +40,10 @@ class TtsProvider(Protocol):
 
     async def synthesize(
         self, *, text: str, voice_external_id: str, language: str = "pt-BR",
+        speed: float = 1.0,
     ) -> SynthesizeResult:
-        """Gera o áudio. Levanta ``TtsError`` em falhas."""
+        """Gera o áudio. ``speed`` 0.25 — 4.0 (1.0 = natural).
+        Levanta ``TtsError`` em falhas."""
         ...
 
     async def test_key(self) -> bool:

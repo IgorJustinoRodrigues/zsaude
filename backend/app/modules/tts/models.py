@@ -5,7 +5,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from decimal import Decimal
+
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +53,12 @@ class TtsVoice(Base, TimestampedMixin):
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     available_for_selection: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Velocidade de fala (0.25 — 4.0). 0.9 = levemente mais lento que o
+    # natural, melhora inteligibilidade em painéis públicos. Entra no
+    # hash do cache — mudar o valor re-gera os fragmentos da voz.
+    speed: Mapped[Decimal] = mapped_column(
+        Numeric(3, 2), nullable=False, default=Decimal("0.9"),
+    )
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime]

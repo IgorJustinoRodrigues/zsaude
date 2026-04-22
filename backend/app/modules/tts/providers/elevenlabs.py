@@ -14,6 +14,41 @@ _BASE_URL = "https://api.elevenlabs.io"
 _DEFAULT_MODEL = "eleven_multilingual_v2"
 
 
+def _friendly_error(response: httpx.Response) -> str:
+    """Converte erros do ElevenLabs em mensagens legíveis pro usuário."""
+    try:
+        data = response.json()
+    except Exception:
+        return f"Falha no provedor ({response.status_code})."
+
+    detail = (data or {}).get("detail") or {}
+    status = detail.get("status", "") if isinstance(detail, dict) else ""
+    msg = detail.get("message", "") if isinstance(detail, dict) else str(detail)
+
+    # Mapeamento dos erros mais comuns.
+    if status == "invalid_voice_settings":
+        if "speed" in msg.lower():
+            return "Velocidade fora do intervalo aceito (0.7 a 1.2)."
+        return f"Configurações da voz inválidas: {msg}"
+    if status == "voice_not_found":
+        return "Voz não encontrada no provedor (pode ter sido removida)."
+    if status == "voice_limit_reached":
+        return "Limite de vozes do plano atingido."
+    if status == "quota_exceeded" or response.status_code == 429:
+        return "Cota de caracteres do plano esgotada. Aguarde renovação ou faça upgrade."
+    if status == "invalid_api_key":
+        return "Chave de API inválida."
+    if response.status_code == 402:
+        return "Assinatura expirada ou pagamento pendente no provedor."
+    if response.status_code >= 500:
+        return "Provedor com instabilidade — tente novamente em alguns instantes."
+
+    # Fallback: usa a mensagem do provider diretamente se for curta.
+    if msg and len(msg) < 200:
+        return msg
+    return f"Falha no provedor ({response.status_code})."
+
+
 class ElevenLabsProvider:
     name = "elevenlabs"
 
@@ -30,6 +65,7 @@ class ElevenLabsProvider:
 
     async def synthesize(
         self, *, text: str, voice_external_id: str, language: str = "pt-BR",
+        speed: float = 1.0,
     ) -> SynthesizeResult:
         payload = {
             "text": text,
@@ -39,6 +75,7 @@ class ElevenLabsProvider:
                 "similarity_boost": 0.75,
                 "style": 0.0,
                 "use_speaker_boost": True,
+                "speed": speed,
             },
         }
         async with self._client() as c:
@@ -55,10 +92,9 @@ class ElevenLabsProvider:
                     code="quota_exceeded",
                 )
             if r.status_code >= 400:
-                raise TtsError(
-                    f"ElevenLabs falhou ({r.status_code}): {r.text[:200]}",
-                    code="provider_error",
-                )
+                # Tenta extrair mensagem útil do payload estruturado.
+                friendly = _friendly_error(r)
+                raise TtsError(friendly, code="provider_error")
             return SynthesizeResult(
                 audio_bytes=r.content,
                 mime_type=r.headers.get("content-type", "audio/mpeg"),

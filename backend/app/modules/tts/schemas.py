@@ -27,6 +27,7 @@ class VoiceRead(CamelModel):
     available_for_selection: bool
     archived: bool
     display_order: int
+    speed: float = 0.9
 
 
 class VoiceUpdate(CamelModel):
@@ -37,6 +38,9 @@ class VoiceUpdate(CamelModel):
     available_for_selection: bool | None = None
     archived: bool | None = None
     display_order: int | None = None
+    # ``speed`` é fixo por voz (ajustado por curadoria do sistema, não
+    # pelo admin) — não aceita via API pra evitar desalinhamento entre
+    # municípios e queimar cota de créditos com re-geração.
 
 
 # ─── Credenciais ─────────────────────────────────────────────────────
@@ -53,7 +57,9 @@ class ProviderKeyRead(CamelModel):
 
 
 class ProviderKeyInput(CamelModel):
-    api_key: str = Field(min_length=8, max_length=500)
+    # Limite alto pra acomodar JSON de service account (Google ~2.5k chars).
+    # ElevenLabs é ~60 chars.
+    api_key: str = Field(min_length=8, max_length=8000)
     extra_config: dict | None = None
 
 

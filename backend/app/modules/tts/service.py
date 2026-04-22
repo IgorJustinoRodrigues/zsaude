@@ -28,6 +28,7 @@ from app.core.logging import get_logger
 from app.modules.tts.models import TtsAudioCache, TtsProviderKey, TtsVoice
 from app.modules.tts.providers.base import TtsError
 from app.modules.tts.providers.elevenlabs import ElevenLabsProvider
+from app.modules.tts.providers.google import GoogleProvider
 from app.services.storage import get_storage
 
 log = get_logger(__name__)
@@ -41,6 +42,7 @@ class _ResolvedVoice:
     provider: str
     external_id: str
     language: str
+    speed: float
 
 
 @dataclass
@@ -100,11 +102,23 @@ class TtsService:
             await self.db.flush()
 
     def preview_key(self, row: TtsProviderKey) -> str:
+        """ElevenLabs: últimos 4 da chave. Google: client_email (o JSON
+        não tem "últimos 4" úteis; o email identifica a service account)."""
         try:
             plain = decrypt_secret(row.api_key_encrypted)
-            return f"••••{last4(plain)}"
         except Exception:
             return "••••"
+        if row.provider == "google":
+            import json as _json
+            try:
+                sa = _json.loads(plain)
+                email = sa.get("client_email", "")
+                if email:
+                    return f"SA: {email}"
+            except Exception:
+                pass
+            return "SA: (inválida)"
+        return f"••••{last4(plain)}"
 
     # ─── Admin: default voice ─────────────────────────────────────
 
@@ -173,35 +187,42 @@ class TtsService:
             provider=voice.provider,
             external_id=voice.external_id,
             language=voice.language,
+            speed=float(voice.speed),
         )
 
     # ─── Provider ────────────────────────────────────────────────
 
-    async def _get_provider(self, provider_name: str) -> ElevenLabsProvider:
+    async def _get_provider(self, provider_name: str):
+        """Retorna uma instância do provider com credencial carregada.
+        ElevenLabs: api_key_encrypted é a chave direta. Google: é o
+        JSON completo da service account."""
         key_row = await self.get_global_key(provider_name)
         if key_row is None:
             raise HTTPException(
                 status_code=409,
                 detail=f"Credencial não configurada pra provider '{provider_name}'.",
             )
-        api_key = decrypt_secret(key_row.api_key_encrypted)
+        credential = decrypt_secret(key_row.api_key_encrypted)
         if provider_name == "elevenlabs":
-            return ElevenLabsProvider(api_key=api_key)
+            return ElevenLabsProvider(api_key=credential)
+        if provider_name == "google":
+            return GoogleProvider(service_account_json=credential)
         raise HTTPException(
             status_code=501,
             detail=f"Provider '{provider_name}' ainda não implementado.",
         )
 
     async def test_provider_key(
-        self, provider_name: str, api_key: str,
+        self, provider_name: str, credential: str,
     ) -> bool:
         """Valida uma chave sem salvar — usado pelo admin pra testar."""
-        if provider_name == "elevenlabs":
-            provider = ElevenLabsProvider(api_key=api_key)
-            try:
-                return await provider.test_key()
-            except Exception:
-                return False
+        try:
+            if provider_name == "elevenlabs":
+                return await ElevenLabsProvider(api_key=credential).test_key()
+            if provider_name == "google":
+                return await GoogleProvider(service_account_json=credential).test_key()
+        except Exception:
+            return False
         return False
 
     # ─── Core: prepare ───────────────────────────────────────────
@@ -221,7 +242,7 @@ class TtsService:
             if not text_norm:
                 raise HTTPException(status_code=400, detail="Frase vazia.")
 
-            text_hash = _hash_phrase(voice.external_id, text_norm)
+            text_hash = _hash_phrase(voice.external_id, text_norm, voice.speed)
 
             cached = await self.db.scalar(
                 select(TtsAudioCache).where(TtsAudioCache.text_hash == text_hash)
@@ -244,6 +265,7 @@ class TtsService:
                     text=text_norm,
                     voice_external_id=voice.external_id,
                     language=voice.language,
+                    speed=voice.speed,
                 )
             except TtsError as e:
                 raise HTTPException(status_code=422, detail={"code": e.code, "message": str(e)}) from e
@@ -295,8 +317,11 @@ class TtsService:
 
 # ─── Helpers ────────────────────────────────────────────────────────
 
-def _hash_phrase(voice_external_id: str, text: str) -> str:
-    payload = f"{voice_external_id}:{text}".encode()
+def _hash_phrase(voice_external_id: str, text: str, speed: float = 1.0) -> str:
+    # Speed entra no hash — mudar velocidade invalida o cache (na prática
+    # os fragmentos antigos ficam órfãos; a próxima chamada regenera).
+    speed_str = f"{speed:.2f}"
+    payload = f"{voice_external_id}:{speed_str}:{text}".encode()
     return hashlib.sha256(payload).hexdigest()
 
 
