@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.schema_base import CamelModel
@@ -173,6 +174,46 @@ async def list_tickets(
             order_reasons=reasons,
         ))
     return out
+
+
+class _PatientVisitSummary(CamelModel):
+    """Resumo de histórico do paciente na unidade atual.
+
+    Usado pela tela de atendimento pra dar contexto à atendente: "é a
+    primeira vez" / "voltou depois de 20 dias" / "frequenta toda semana".
+    """
+    total_visits: int
+    last_visit_at: datetime | None = None
+
+
+@router.get("/patients/{patient_id}/visit-summary", response_model=_PatientVisitSummary)
+async def patient_visit_summary(
+    patient_id: UUID,
+    tenant_db: TenantDB, ctx: CurrentContextDep,
+    _user: CurrentUserDep,
+) -> _PatientVisitSummary:
+    """Total de atendimentos + data da última visita (excluindo ativa).
+
+    Filtra por unidade atual — "última visita aqui". Exclui atendimentos
+    ativos (a sessão em curso não conta como "visita passada").
+    """
+    # Total (inclui ativo)
+    total = await tenant_db.scalar(
+        select(func.count(Attendance.id))
+        .where(Attendance.patient_id == patient_id)
+        .where(Attendance.facility_id == ctx.facility_id)
+    ) or 0
+
+    # Última finalizada (status NÃO-ativo — ignora sessão corrente)
+    last = await tenant_db.scalar(
+        select(Attendance.arrived_at)
+        .where(Attendance.patient_id == patient_id)
+        .where(Attendance.facility_id == ctx.facility_id)
+        .where(Attendance.status.not_in(Attendance.ACTIVE_STATUSES))
+        .order_by(Attendance.arrived_at.desc())
+        .limit(1)
+    )
+    return _PatientVisitSummary(total_visits=total, last_visit_at=last)
 
 
 @router.post("/tickets/{att_id}/call", response_model=AttendanceRead)

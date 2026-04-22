@@ -15,12 +15,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, ArrowRight, Camera, Check, CheckCircle2, Clock, Edit3, Home,
-  Loader2, MapPin, PhoneCall, Phone, Plus, ShieldAlert, Star, Trash2, User, X,
+  AlertTriangle, ArrowLeft, ArrowRight, Cake, Calendar, Camera, Check,
+  CheckCircle2, Clock, Edit3, Hash, Home, Loader2, MapPin, PhoneCall, Phone,
+  Plus, ShieldAlert, Star, Trash2, User, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PatientPhotoImg } from '../hsp/components/PatientPhotoImg'
 import { FaceRecognitionModal } from '../hsp/components/FaceRecognitionModal'
+import { HspPatientFormPage } from '../hsp/HspPatientFormPage'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import {
@@ -29,7 +31,7 @@ import {
   type PatientAddressOut,
   type PatientRead,
 } from '../../api/hsp'
-import { recApi, type AttendanceItem } from '../../api/rec'
+import { recApi, type AttendanceItem, type PatientVisitSummary } from '../../api/rec'
 import { recConfigApi } from '../../api/recConfig'
 import { sectorsApi, type Sector } from '../../api/sectors'
 import { dataUrlToBlob } from '../../api/face'
@@ -37,9 +39,9 @@ import { fetchCep } from '../../api/viacep'
 import { HttpError } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../store/toastStore'
-import { promptDialog, confirmDialog } from '../../store/dialogStore'
+import { confirmDialog } from '../../store/dialogStore'
 import { cepMask, phoneMask } from '../../lib/masks'
-import { formatCPF, formatDate, calcAge, initials, cn } from '../../lib/utils'
+import { birthdayHint, formatCPF, formatDate, calcAge, initials, cn } from '../../lib/utils'
 
 type Step = 1 | 2 | 3
 
@@ -61,21 +63,6 @@ export function RecAttendancePage() {
   const [allowedSectorNames, setAllowedSectorNames] = useState<string[] | null>(null)
   const [suggestedSector, setSuggestedSector] = useState<string | null>(null)
 
-  // Campos editáveis na etapa 2. Começam populados do paciente e só
-  // viram patch quando algo realmente mudou.
-  const [phone, setPhone] = useState('')
-  const [cellphone, setCellphone] = useState('')
-  const [cep, setCep] = useState('')
-  const [endereco, setEndereco] = useState('')
-  const [numero, setNumero] = useState('')
-  const [complemento, setComplemento] = useState('')
-  const [bairro, setBairro] = useState('')
-  const [uf, setUf] = useState('')
-  const [municipioIbge, setMunicipioIbge] = useState('')
-  const [municipioDisplay, setMunicipioDisplay] = useState('')
-  const [savingData, setSavingData] = useState(false)
-  const [cepLoading, setCepLoading] = useState(false)
-
   // Upload de foto quando paciente não tem
   const [uploadModalOpen, setUploadModalOpen] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -84,6 +71,12 @@ export function RecAttendancePage() {
   const [extraAddresses, setExtraAddresses] = useState<PatientAddressOut[]>([])
   const [addrEditor, setAddrEditor] = useState<PatientAddressOut | 'new' | null>(null)
   const [addrBusy, setAddrBusy] = useState(false)
+
+  // Modal de cancelamento (com check de confirmação explícita)
+  const [cancelOpen, setCancelOpen] = useState(false)
+
+  // Resumo de histórico na unidade (total de visitas + última).
+  const [visitSummary, setVisitSummary] = useState<PatientVisitSummary | null>(null)
 
   const [selectedSector, setSelectedSector] = useState<string | null>(null)
   const [forwarding, setForwarding] = useState(false)
@@ -103,24 +96,16 @@ export function RecAttendancePage() {
         ? recConfigApi.effective({ facilityId }).catch(() => null)
         : Promise.resolve(null),
       hspApi.listAddresses(patientId).catch(() => [] as PatientAddressOut[]),
-    ]).then(([p, tickets, sectorsRes, cfg, addresses]) => {
+      recApi.patientVisitSummary(patientId).catch(() => null),
+    ]).then(([p, tickets, sectorsRes, cfg, addresses, visits]) => {
       if (cancelled) return
       setPatient(p)
-      setPhone(p.phone ?? '')
-      setCellphone(p.cellphone ?? '')
-      setCep(p.cep ?? '')
-      setEndereco(p.endereco ?? '')
-      setNumero(p.numero ?? '')
-      setComplemento(p.complemento ?? '')
-      setBairro(p.bairro ?? '')
-      setUf(p.uf ?? '')
-      setMunicipioIbge(p.municipioIbge ?? '')
-      setMunicipioDisplay('')
       const active = tickets.find(t =>
         t.patientId === patientId && ACTIVE_STATUSES.has(t.status),
       ) ?? null
       setTicket(active)
       setExtraAddresses(addresses)
+      setVisitSummary(visits)
       setSectors(sectorsRes.sectors)
       if (cfg) {
         setSuggestedSector(cfg.recepcao.afterAttendanceSector)
@@ -279,6 +264,12 @@ export function RecAttendancePage() {
 
   async function handleRecall() {
     if (!ticket) return
+    const ok = await confirmDialog({
+      title: 'Chamar no painel?',
+      message: `Senha ${ticket.ticketNumber} · ${ticket.patientName} será anunciada agora em todos os painéis da unidade.`,
+      confirmLabel: 'Chamar',
+    })
+    if (!ok) return
     setCalling(true)
     try {
       await recApi.publishCall({
@@ -286,33 +277,26 @@ export function RecAttendancePage() {
         patientName: ticket.patientName,
         priority: ticket.priority,
       })
-      toast.success('Rechamado no painel', ticket.ticketNumber)
+      toast.success('Chamado no painel', ticket.ticketNumber)
     } catch (err) {
-      if (err instanceof HttpError) toast.error('Rechamar', err.message)
+      if (err instanceof HttpError) toast.error('Chamar', err.message)
     } finally {
       window.setTimeout(() => setCalling(false), 5000)
     }
   }
 
-  async function handleCancel() {
+  async function handleCancelConfirmed(reason: string) {
     if (!ticket) return
-    const reason = await promptDialog({
-      title: 'Cancelar atendimento',
-      message: `Senha ${ticket.ticketNumber}. Informe o motivo — fica no log.`,
-      placeholder: 'Ex.: paciente desistiu, duplicidade…',
-      confirmLabel: 'Cancelar atendimento',
-      variant: 'danger',
-    })
-    if (!reason) return
     setCancelling(true)
     try {
       await recApi.cancelTicket(ticket.id, reason)
-      toast.success('Atendimento cancelado')
+      toast.success('Atendimento cancelado', `Senha ${ticket.ticketNumber}`)
       navigate('/rec/atendimento')
     } catch (err) {
       if (err instanceof HttpError) toast.error('Cancelar', err.message)
     } finally {
       setCancelling(false)
+      setCancelOpen(false)
     }
   }
 
@@ -369,6 +353,19 @@ export function RecAttendancePage() {
           ? `Senha ${ticket.ticketNumber} · ${display}`
           : display}
         back="/rec/atendimento"
+        actions={ticket && (
+          <button
+            onClick={() => setCancelOpen(true)}
+            disabled={cancelling}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50 transition-colors"
+            title="Cancela o atendimento — requer motivo"
+          >
+            {cancelling
+              ? <Loader2 size={13} className="animate-spin" />
+              : <X size={13} />}
+            Cancelar atendimento
+          </button>
+        )}
       />
 
       {/* Alerta: paciente sem senha ativa (atendente navegou direto pela URL) */}
@@ -383,7 +380,7 @@ export function RecAttendancePage() {
       {/* Stepper */}
       <Stepper
         current={step}
-        labels={['Identidade', 'Dados rápidos', 'Encaminhamento']}
+        labels={['Identidade', 'Dados cadastrais', 'Encaminhamento']}
         onJump={s => setStep(s)}
       />
 
@@ -393,36 +390,25 @@ export function RecAttendancePage() {
           ticket={ticket}
           calling={calling}
           uploadingPhoto={uploadingPhoto}
+          visitSummary={visitSummary}
           onRecall={handleRecall}
           onRequestPhotoUpload={() => setUploadModalOpen(true)}
           onEditFull={() => navigate(`/rec/atendimento/${patient.id}/ficha`)}
+          onFillData={() => setStep(2)}
           onNext={() => setStep(2)}
           onBack={handleBack}
         />
       )}
 
       {step === 2 && (
-        <StepQuickData
-          phone={phone} setPhone={setPhone}
-          cellphone={cellphone} setCellphone={setCellphone}
-          cep={cep} onCepChange={handleCepLookup} cepLoading={cepLoading}
-          endereco={endereco} setEndereco={setEndereco}
-          numero={numero} setNumero={setNumero}
-          complemento={complemento} setComplemento={setComplemento}
-          bairro={bairro} setBairro={setBairro}
-          uf={uf} setUf={setUf}
-          municipioIbge={municipioIbge}
-          municipioDisplay={municipioDisplay}
+        <StepRegistrationData
+          patientId={patient.id}
           extraAddresses={extraAddresses}
           onAddAddress={() => setAddrEditor('new')}
           onEditAddress={a => setAddrEditor(a)}
           onDeleteAddress={deleteExtraAddress}
-          saving={savingData}
           onPrev={() => setStep(1)}
-          onNext={async () => {
-            const ok = await saveDataIfDirty()
-            if (ok) setStep(3)
-          }}
+          onAdvance={() => setStep(3)}
         />
       )}
 
@@ -445,6 +431,16 @@ export function RecAttendancePage() {
         />
       )}
 
+      {/* Modal de cancelamento — com motivo + confirmação explícita */}
+      {cancelOpen && ticket && (
+        <CancelAttendanceModal
+          ticket={ticket}
+          busy={cancelling}
+          onCancel={() => setCancelOpen(false)}
+          onConfirm={handleCancelConfirmed}
+        />
+      )}
+
       {step === 3 && (
         <StepForward
           sectors={visibleSectors}
@@ -453,9 +449,7 @@ export function RecAttendancePage() {
           onSelect={setSelectedSector}
           ticket={ticket}
           forwarding={forwarding}
-          cancelling={cancelling}
           onForward={handleForward}
-          onCancel={handleCancel}
           onPrev={() => setStep(2)}
         />
       )}
@@ -517,21 +511,39 @@ function Stepper({
 // ─── Etapa 1: Identidade ─────────────────────────────────────────────────
 
 function StepIdentity({
-  patient, ticket, calling, uploadingPhoto,
-  onRecall, onRequestPhotoUpload, onEditFull, onNext, onBack,
+  patient, ticket, calling, uploadingPhoto, visitSummary,
+  onRecall, onRequestPhotoUpload, onEditFull, onFillData, onNext, onBack,
 }: {
   patient: PatientRead
   ticket: AttendanceItem | null
   calling: boolean
   uploadingPhoto: boolean
+  visitSummary: PatientVisitSummary | null
   onRecall: () => void
   onRequestPhotoUpload: () => void
   onEditFull: () => void
+  onFillData: () => void
   onNext: () => void
   onBack: () => void
 }) {
   const display = patient.socialName || patient.name
   const hasPhoto = !!patient.currentPhotoId
+
+  // Aniversário (hoje/breve)
+  const birthday = patient.birthDate ? birthdayHint(patient.birthDate) : null
+
+  // Última visita — "primeira vez" quando não há.
+  const lastVisit = visitSummary?.lastVisitAt
+    ? formatRelativePast(visitSummary.lastVisitAt)
+    : null
+
+  // Campos que a recepção deve conferir/atualizar sempre. Agrupa por
+  // seção pra exibir organizado no banner. O último campo booleano
+  // ``inQuickForm`` indica se "Atualizar agora" resolve (step 2) ou se
+  // precisa abrir a ficha completa.
+  const missingGroups = computeMissingGroups(patient)
+  const allMissingInQuick = missingGroups.length > 0
+    && missingGroups.every(g => g.inQuickForm)
   return (
     <section className="space-y-4">
       {/* Card de identidade */}
@@ -635,11 +647,108 @@ function StepIdentity({
               title="Anuncia de novo no painel"
             >
               <PhoneCall size={13} />
-              {calling ? 'Aguarde…' : 'Rechamar no painel'}
+              {calling ? 'Aguarde…' : 'Chamar no painel'}
             </button>
           </div>
         )}
       </div>
+
+      {/* Informações adicionais — contexto pra atendente */}
+      {(birthday || ticket || visitSummary) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {birthday && (
+            <InfoCard
+              icon={<Cake size={18} />}
+              tone={birthday.includes('hoje') ? 'celebrate' : 'info'}
+              label="Aniversário"
+              value={capitalizeFirst(birthday)}
+            />
+          )}
+          {ticket && (
+            <InfoCard
+              icon={<Clock size={18} />}
+              tone="neutral"
+              label="Check-in nesta visita"
+              value={<WaitLabel sinceIso={ticket.arrivedAt} />}
+              hint={ticket.docType === 'manual' ? 'Registro manual' : 'Via totem/balcão'}
+            />
+          )}
+          {visitSummary && (
+            <InfoCard
+              icon={<Hash size={18} />}
+              tone="neutral"
+              label="Visitas nesta unidade"
+              value={`${visitSummary.totalVisits}`}
+              hint={visitSummary.totalVisits === 0 ? 'Primeira vez'
+                : visitSummary.totalVisits === 1 ? 'Só esta' : 'Paciente recorrente'}
+            />
+          )}
+          {visitSummary?.lastVisitAt && (
+            <InfoCard
+              icon={<Calendar size={18} />}
+              tone="neutral"
+              label="Última visita"
+              value={lastVisit ?? formatDate(visitSummary.lastVisitAt.slice(0, 10))}
+              hint={formatDate(visitSummary.lastVisitAt.slice(0, 10))}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Alerta de dados incompletos — recepção confirma ou preenche */}
+      {missingGroups.length > 0 && (
+        <div className="p-4 rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3 mb-3">
+            <span className="w-9 h-9 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+              <AlertTriangle size={18} className="text-white" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                Dados do cadastro precisam de confirmação
+              </p>
+              <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                Sempre confirme com o paciente — dados atualizados melhoram o
+                cuidado e as buscas futuras.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-1.5 mb-3 pl-12">
+            {missingGroups.map(g => (
+              <li key={g.section} className="text-xs text-amber-900 dark:text-amber-200">
+                <span className="font-semibold">{g.section}:</span>{' '}
+                <span className="text-amber-800/80 dark:text-amber-200/80">
+                  {g.fields.join(', ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2 pl-12">
+            {allMissingInQuick ? (
+              <button
+                onClick={onFillData}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/30"
+              >
+                Atualizar agora <ArrowRight size={13} />
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={onEditFull}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm shadow-amber-500/30"
+                >
+                  <Edit3 size={13} /> Abrir ficha completa
+                </button>
+                <button
+                  onClick={onFillData}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-amber-400 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs font-semibold"
+                >
+                  Atualizar só contato/endereço <ArrowRight size={13} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
         <button
@@ -667,156 +776,34 @@ function StepIdentity({
   )
 }
 
-// ─── Etapa 2: Dados rápidos ──────────────────────────────────────────────
+// ─── Etapa 2: Dados cadastrais (ficha completa) ──────────────────────────
 
-function StepQuickData({
-  phone, setPhone, cellphone, setCellphone,
-  cep, onCepChange, cepLoading,
-  endereco, setEndereco, numero, setNumero,
-  complemento, setComplemento, bairro, setBairro,
-  uf, setUf, municipioIbge, municipioDisplay,
-  extraAddresses, onAddAddress, onEditAddress, onDeleteAddress,
-  saving, onPrev, onNext,
+function StepRegistrationData({
+  patientId, extraAddresses, onAddAddress, onEditAddress, onDeleteAddress,
+  onPrev, onAdvance,
 }: {
-  phone: string; setPhone: (v: string) => void
-  cellphone: string; setCellphone: (v: string) => void
-  cep: string; onCepChange: (v: string) => void; cepLoading: boolean
-  endereco: string; setEndereco: (v: string) => void
-  numero: string; setNumero: (v: string) => void
-  complemento: string; setComplemento: (v: string) => void
-  bairro: string; setBairro: (v: string) => void
-  uf: string; setUf: (v: string) => void
-  municipioIbge: string
-  municipioDisplay: string
+  patientId: string
   extraAddresses: PatientAddressOut[]
   onAddAddress: () => void
   onEditAddress: (a: PatientAddressOut) => void
   onDeleteAddress: (a: PatientAddressOut) => void
-  saving: boolean
   onPrev: () => void
-  onNext: () => void
+  onAdvance: () => void
 }) {
-  const cityLabel = municipioDisplay || (municipioIbge ? `IBGE ${municipioIbge}` : '')
   return (
     <section className="space-y-4">
-      <div className="bg-card border border-border rounded-xl p-5 sm:p-6 space-y-5">
-        <div>
-          <h3 className="text-sm font-semibold flex items-center gap-2 mb-1">
-            <Phone size={14} /> Contato
-          </h3>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Mantenha celular e telefone sempre atualizados — usamos pra avisos.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label="Celular">
-              <MaskedInput
-                mask={phoneMask}
-                value={cellphone}
-                onChange={setCellphone}
-                placeholder="(00) 00000-0000"
-                className="w-full text-base px-4 py-3"
-              />
-            </FormField>
-            <FormField label="Telefone fixo">
-              <MaskedInput
-                mask={phoneMask}
-                value={phone}
-                onChange={setPhone}
-                placeholder="(00) 0000-0000"
-                className="w-full text-base px-4 py-3"
-              />
-            </FormField>
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-sm font-semibold flex items-center gap-2 mb-1">
-            <Home size={14} /> Endereço principal
-          </h3>
-          <p className="text-[11px] text-muted-foreground mb-3">
-            Informe o CEP — o endereço é preenchido automaticamente e pode
-            ser ajustado.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3">
-            <FormField label="CEP">
-              <div className="relative">
-                <MaskedInput
-                  mask={cepMask}
-                  value={cep}
-                  onChange={onCepChange}
-                  placeholder="00000-000"
-                  className="w-full text-base px-4 py-3 pr-9"
-                />
-                {cepLoading && (
-                  <Loader2
-                    size={14}
-                    className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  />
-                )}
-              </div>
-            </FormField>
-            <FormField label="Cidade · UF">
-              <div className="flex items-center gap-2 h-full">
-                <input
-                  type="text"
-                  value={cityLabel}
-                  readOnly
-                  placeholder="Preenchido via CEP"
-                  className="flex-1 px-4 py-3 rounded-lg border border-border bg-muted/40 text-base text-muted-foreground cursor-not-allowed"
-                />
-                <input
-                  type="text"
-                  value={uf}
-                  onChange={e => setUf(e.target.value.toUpperCase().slice(0, 2))}
-                  placeholder="UF"
-                  className="w-20 px-3 py-3 rounded-lg border border-border bg-background text-base text-center uppercase focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </div>
-            </FormField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3 mt-3">
-            <FormField label="Logradouro">
-              <input
-                type="text"
-                value={endereco}
-                onChange={e => setEndereco(e.target.value)}
-                placeholder="Rua / avenida"
-                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </FormField>
-            <FormField label="Número">
-              <input
-                type="text"
-                value={numero}
-                onChange={e => setNumero(e.target.value)}
-                placeholder="S/N"
-                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </FormField>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-            <FormField label="Complemento">
-              <input
-                type="text"
-                value={complemento}
-                onChange={e => setComplemento(e.target.value)}
-                placeholder="Apto, bloco, ponto de referência"
-                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </FormField>
-            <FormField label="Bairro">
-              <input
-                type="text"
-                value={bairro}
-                onChange={e => setBairro(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </FormField>
-          </div>
-        </div>
+      {/* Ficha cadastral completa — mesma impl do HspPatientFormPage,
+          embedada (sem o próprio PageHeader). Ao salvar, avança etapa. */}
+      <div className="bg-card border border-border rounded-xl p-5 sm:p-6">
+        <HspPatientFormPage
+          embedded
+          patientId={patientId}
+          onSaved={() => onAdvance()}
+        />
       </div>
 
-      {/* Endereços extras (trabalho, casa da mãe, etc.) */}
+      {/* Endereços extras (trabalho, casa da mãe, etc.) — continua aqui
+          pois são dados separados do cadastro principal. */}
       <div className="bg-card border border-border rounded-xl p-5 sm:p-6">
         <div className="flex items-center justify-between gap-3 mb-1">
           <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -861,13 +848,11 @@ function StepQuickData({
         </button>
         <div className="flex-1" />
         <button
-          onClick={onNext}
-          disabled={saving}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold disabled:opacity-50"
+          onClick={onAdvance}
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold"
+          title="Pula pra próxima etapa sem salvar a ficha — use o botão Salvar dentro da ficha se houver mudanças."
         >
-          {saving
-            ? <><Loader2 size={14} className="animate-spin" /> Salvando…</>
-            : <>Continuar <ArrowRight size={14} /></>}
+          Avançar sem salvar <ArrowRight size={14} />
         </button>
       </div>
     </section>
@@ -878,7 +863,7 @@ function StepQuickData({
 
 function StepForward({
   sectors, selected, suggested, onSelect, ticket,
-  forwarding, cancelling, onForward, onCancel, onPrev,
+  forwarding, onForward, onPrev,
 }: {
   sectors: Sector[]
   selected: string | null
@@ -886,9 +871,7 @@ function StepForward({
   onSelect: (name: string) => void
   ticket: AttendanceItem | null
   forwarding: boolean
-  cancelling: boolean
   onForward: () => void
-  onCancel: () => void
   onPrev: () => void
 }) {
   return (
@@ -950,14 +933,6 @@ function StepForward({
         >
           <ArrowLeft size={14} /> Voltar
         </button>
-        <button
-          onClick={onCancel}
-          disabled={cancelling || !ticket}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 disabled:opacity-50"
-        >
-          {cancelling ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-          Cancelar atendimento
-        </button>
         <div className="flex-1" />
         <button
           onClick={onForward}
@@ -974,6 +949,142 @@ function StepForward({
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
+
+function CancelAttendanceModal({
+  ticket, busy, onCancel, onConfirm,
+}: {
+  ticket: AttendanceItem
+  busy: boolean
+  onCancel: () => void
+  onConfirm: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
+  const reasonValid = reason.trim().length >= 3
+  const canSubmit = reasonValid && confirmed && !busy
+
+  const QUICK_REASONS = [
+    'Paciente desistiu',
+    'Paciente não compareceu',
+    'Identidade incorreta',
+    'Duplicidade',
+    'Unidade errada',
+  ]
+
+  return (
+    <div onClick={onCancel} className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 animate-[fadeIn_0.15s_ease-out]">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-card rounded-xl shadow-2xl border border-border w-full max-w-md overflow-hidden animate-[pop_0.2s_cubic-bezier(0.18,1.3,0.6,1)]"
+      >
+        <header className="px-5 py-4 border-b border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/30 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-full bg-rose-500 flex items-center justify-center shrink-0">
+              <X size={18} className="text-white" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-rose-700 dark:text-rose-300">
+                Cancelar atendimento
+              </h3>
+              <p className="text-xs text-rose-800/80 dark:text-rose-200/80 mt-0.5 truncate">
+                Senha <strong>{ticket.ticketNumber}</strong> · {ticket.patientName}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="p-1.5 rounded text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Motivo do cancelamento
+              <span className="text-rose-500 ml-0.5">*</span>
+            </label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value.slice(0, 500))}
+              placeholder="Descreva o motivo — mín. 3 caracteres"
+              rows={3}
+              maxLength={500}
+              autoFocus
+              className="w-full px-4 py-3 rounded-lg border border-border bg-background text-base focus:outline-none focus:ring-2 focus:ring-rose-500/40 resize-none"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_REASONS.map(q => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setReason(q)}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                {reason.length}/500
+              </span>
+            </div>
+          </div>
+
+          <label className={cn(
+            'flex items-start gap-3 cursor-pointer select-none p-3 rounded-lg border-2 transition-colors',
+            confirmed
+              ? 'border-rose-400 bg-rose-50/70 dark:bg-rose-950/30'
+              : 'border-dashed border-border hover:bg-muted/40',
+          )}>
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={e => setConfirmed(e.target.checked)}
+              className="mt-0.5 rounded border-border text-rose-600 focus:ring-rose-500/40 w-4 h-4"
+            />
+            <span className="flex-1 text-sm">
+              <span className="block font-semibold">
+                Confirmo o cancelamento deste atendimento
+              </span>
+              <span className="block text-[11px] text-muted-foreground mt-0.5">
+                A ação fica registrada no log com o motivo informado e não pode
+                ser desfeita.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <footer className="px-5 py-3 border-t border-border bg-muted/20 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 rounded-lg border border-border hover:bg-muted text-sm font-medium"
+          >
+            Voltar
+          </button>
+          <button
+            onClick={() => canSubmit && onConfirm(reason.trim())}
+            disabled={!canSubmit}
+            title={
+              !reasonValid ? 'Informe o motivo (mín. 3 caracteres)'
+              : !confirmed ? 'Marque a caixa de confirmação'
+              : undefined
+            }
+            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white text-sm font-bold shadow-md shadow-rose-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {busy
+              ? <><Loader2 size={14} className="animate-spin" /> Cancelando…</>
+              : <><X size={14} /> Confirmar cancelamento</>}
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}
 
 function ExtraAddressRow({
   address, onEdit, onDelete,
@@ -1221,6 +1332,138 @@ function Chip({ icon, children }: { icon?: React.ReactNode; children: React.Reac
       {icon}{children}
     </span>
   )
+}
+
+type InfoTone = 'neutral' | 'info' | 'celebrate'
+
+function InfoCard({
+  icon, label, value, hint, tone = 'neutral',
+}: {
+  icon: React.ReactNode
+  label: string
+  value: React.ReactNode
+  hint?: React.ReactNode
+  tone?: InfoTone
+}) {
+  const styles: Record<InfoTone, string> = {
+    neutral: 'bg-card border-border',
+    info: 'bg-sky-50/60 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900',
+    celebrate: 'bg-gradient-to-br from-fuchsia-50 to-rose-50 dark:from-fuchsia-950/30 dark:to-rose-950/30 border-fuchsia-300 dark:border-fuchsia-800',
+  }
+  const iconStyles: Record<InfoTone, string> = {
+    neutral: 'bg-muted text-slate-600 dark:text-slate-300',
+    info: 'bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-300',
+    celebrate: 'bg-fuchsia-500 text-white',
+  }
+  return (
+    <div className={cn('rounded-xl border p-3 flex items-start gap-3', styles[tone])}>
+      <span className={cn('w-9 h-9 rounded-lg shrink-0 flex items-center justify-center', iconStyles[tone])}>
+        {icon}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-sm font-semibold truncate mt-0.5">{value}</p>
+        {hint && (
+          <p className="text-[11px] text-muted-foreground truncate">{hint}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface MissingGroup {
+  section: string
+  fields: string[]
+  /** true = todos os campos do grupo são editáveis no wizard (step 2).
+   *  false = precisa abrir a ficha completa pra resolver. */
+  inQuickForm: boolean
+}
+
+/** Audita a ficha do paciente e retorna as seções que têm pelo menos
+ *  um campo "importante" vazio. A lista é propositalmente ampla — o
+ *  papel da recepção é manter o cadastro sempre atualizado. */
+function computeMissingGroups(p: PatientRead): MissingGroup[] {
+  const isEmpty = (v: string | null | undefined) => !v || !v.toString().trim()
+  const groups: MissingGroup[] = []
+
+  // Identificação
+  const ident: string[] = []
+  if (!p.cpf && !p.cns) ident.push('CPF ou CNS')
+  if (!p.birthDate) ident.push('data de nascimento')
+  if (!p.sex) ident.push('sexo')
+  if (isEmpty(p.socialName) && isEmpty(p.name)) ident.push('nome')
+  if (ident.length) groups.push({ section: 'Identificação', fields: ident, inQuickForm: false })
+
+  // Filiação
+  const fil: string[] = []
+  if (isEmpty(p.motherName) && !p.motherUnknown) fil.push('nome da mãe')
+  if (isEmpty(p.fatherName) && !p.fatherUnknown) fil.push('nome do pai')
+  if (fil.length) groups.push({ section: 'Filiação', fields: fil, inQuickForm: false })
+
+  // Contato
+  const cont: string[] = []
+  if (isEmpty(p.cellphone) && isEmpty(p.phone)) cont.push('celular ou telefone')
+  if (isEmpty(p.email)) cont.push('e-mail')
+  if (cont.length) groups.push({ section: 'Contato', fields: cont, inQuickForm: true })
+
+  // Endereço
+  const end: string[] = []
+  if (isEmpty(p.cep)) end.push('CEP')
+  if (isEmpty(p.endereco)) end.push('logradouro')
+  if (isEmpty(p.numero)) end.push('número')
+  if (isEmpty(p.bairro)) end.push('bairro')
+  if (isEmpty(p.municipioIbge) || isEmpty(p.uf)) end.push('cidade/UF')
+  if (end.length) groups.push({ section: 'Endereço', fields: end, inQuickForm: true })
+
+  // Sociodemográfico
+  const demo: string[] = []
+  if (!p.racaId) demo.push('raça/cor')
+  if (!p.escolaridadeId) demo.push('escolaridade')
+  if (!p.estadoCivilId) demo.push('estado civil')
+  if (!p.nacionalidadeId) demo.push('nacionalidade')
+  if (demo.length) groups.push({ section: 'Sociodemográfico', fields: demo, inQuickForm: false })
+
+  // Socioeconômico
+  const socio: string[] = []
+  if (isEmpty(p.ocupacaoLivre) && !p.cboId) socio.push('ocupação')
+  if (p.rendaFamiliar === null || p.rendaFamiliar === undefined) socio.push('renda familiar')
+  if (socio.length) groups.push({ section: 'Socioeconômico', fields: socio, inQuickForm: false })
+
+  // Contato de emergência
+  const emerg: string[] = []
+  if (isEmpty(p.contatoEmergenciaNome)) emerg.push('nome')
+  if (isEmpty(p.contatoEmergenciaTelefone)) emerg.push('telefone')
+  if (emerg.length) groups.push({ section: 'Contato de emergência', fields: emerg, inQuickForm: false })
+
+  return groups
+}
+
+function capitalizeFirst(s: string): string {
+  if (!s) return s
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** "há 3 dias", "há 2 meses", "há 1 ano". Datas no futuro viram "—". */
+function formatRelativePast(iso: string): string {
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const diffMs = now - then
+  if (diffMs < 0) return '—'
+  const hours = diffMs / (1000 * 60 * 60)
+  if (hours < 1) return 'há menos de 1 hora'
+  if (hours < 24) {
+    const h = Math.round(hours)
+    return `há ${h} ${h === 1 ? 'hora' : 'horas'}`
+  }
+  const days = Math.floor(hours / 24)
+  if (days === 1) return 'ontem'
+  if (days < 30) return `há ${days} dias`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `há ${months} ${months === 1 ? 'mês' : 'meses'}`
+  const years = Math.floor(days / 365)
+  return `há ${years} ${years === 1 ? 'ano' : 'anos'}`
 }
 
 function WaitLabel({ sinceIso }: { sinceIso: string }) {

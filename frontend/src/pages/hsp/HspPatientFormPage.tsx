@@ -134,14 +134,29 @@ const EMPTY: PatientFormData = {
 
 // ─── Página ────────────────────────────────────────────────────────────────
 
-export function HspPatientFormPage() {
-  const { id } = useParams()
+interface HspPatientFormPageProps {
+  /** Quando true, o componente renderiza só o corpo do formulário — sem
+   *  PageHeader nem tabs sticky com z-index — pra ser embedado dentro de
+   *  outra página (ex.: wizard de atendimento). Após salvar, chama
+   *  ``onSaved`` em vez de navegar. */
+  embedded?: boolean
+  /** Override do patientId — normalmente vem do ``useParams`` mas em
+   *  modo embedado o pai pode passar direto. */
+  patientId?: string
+  onSaved?: (patientId: string) => void
+}
+
+export function HspPatientFormPage({
+  embedded = false, patientId: patientIdProp, onSaved,
+}: HspPatientFormPageProps = {}) {
+  const params = useParams()
+  const id = patientIdProp ?? params.id
   const isEdit = Boolean(id)
   const navigate = useNavigate()
   const location = useLocation()
   /** true quando a ficha está sendo aberta via URL do módulo recepção —
    *  ajusta título/back pra o fluxo de atendimento. */
-  const inRecFlow = location.pathname.startsWith('/rec/')
+  const inRecFlow = embedded || location.pathname.startsWith('/rec/')
 
   const [tab, setTab] = useState<Tab>('Identificação')
   const [loading, setLoading] = useState(isEdit)
@@ -326,8 +341,13 @@ export function HspPatientFormPage() {
         saved = await hspApi.create(payload)
       }
       toast.success(isEdit ? 'Paciente atualizado.' : 'Paciente cadastrado.')
-      // No fluxo do rec, após salvar volta pra fila. No hsp, vai pro detalhe.
-      navigate(inRecFlow ? '/rec/atendimento' : `/hsp/pacientes/${saved.id}`)
+      // Embedado: o pai decide o que fazer (geralmente avançar pro próximo
+      // passo do wizard). Standalone no rec: volta pra fila. No hsp: detalhe.
+      if (embedded) {
+        onSaved?.(saved.id)
+      } else {
+        navigate(inRecFlow ? '/rec/atendimento' : `/hsp/pacientes/${saved.id}`)
+      }
     } catch (err) {
       if (err instanceof HttpError) toast.error(err.message)
       else toast.error('Falha ao salvar.')
@@ -408,7 +428,8 @@ export function HspPatientFormPage() {
 
   return (
     <div>
-      <PageHeader
+      {!embedded && (
+        <PageHeader
         title={inRecFlow
           ? 'Atendimento'
           : isEdit ? 'Editar paciente' : 'Novo paciente'}
@@ -436,6 +457,7 @@ export function HspPatientFormPage() {
           </div>
         }
       />
+      )}
 
       {/* Tabs */}
       <div className="border-b border-border mb-6 overflow-x-auto sticky top-0 bg-background z-10">
@@ -1075,6 +1097,25 @@ export function HspPatientFormPage() {
           </div>
         </Section>
       )}
+
+      {/* Botão de salvar no final do form — essencial em modo embedado
+          (sem PageHeader) e útil também no modo standalone pra quem rolou
+          até o final. */}
+      <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-border">
+        {submitTried && totalErrors > 0 && (
+          <span className="text-xs text-rose-600 dark:text-rose-400 flex items-center gap-1">
+            <AlertCircle size={13} />
+            {totalErrors} erro{totalErrors !== 1 ? 's' : ''}
+          </span>
+        )}
+        <button
+          onClick={handleSubmit}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-60"
+        >
+          <Save size={16} /> {saving ? 'Salvando…' : (embedded ? 'Salvar e avançar' : 'Salvar')}
+        </button>
+      </div>
     </div>
   )
 }

@@ -197,4 +197,14 @@ export const recApi = {
 
   assumeHandover: (id: string) =>
     api.post<AttendanceItem>(`/api/v1/rec/tickets/${id}/assume-handover`, {}, { withContext: true }),
+
+  patientVisitSummary: (patientId: string) =>
+    api.get<PatientVisitSummary>(
+      `/api/v1/rec/patients/${patientId}/visit-summary`, { withContext: true },
+    ),
+}
+
+export interface PatientVisitSummary {
+  totalVisits: number
+  lastVisitAt: string | null
 }
