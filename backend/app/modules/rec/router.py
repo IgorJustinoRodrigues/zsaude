@@ -181,6 +181,20 @@ async def publish_call(
     )
 
 
+@router.post("/silence", status_code=204)
+async def request_silence(
+    valkey: Valkey, ctx: CurrentContextDep,
+) -> None:
+    """Recepção solicita silêncio — publica ``painel:silence`` em todos
+    os painéis da unidade, que exibem um overlay destacado por alguns
+    segundos."""
+    await publish_facility_event(
+        valkey, ctx.facility_id,
+        "painel:silence",
+        {"at": datetime_now_iso()},
+    )
+
+
 def datetime_now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()

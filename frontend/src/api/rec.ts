@@ -103,6 +103,10 @@ export const recApi = {
   publishCall: (payload: CallInput) =>
     api.post<void>('/api/v1/rec/calls', payload, { withContext: true }),
 
+  /** Solicita silêncio em todos os painéis da unidade. */
+  requestSilence: () =>
+    api.post<void>('/api/v1/rec/silence', {}, { withContext: true }),
+
   // ── Totem (device auth) ───────────────────────────────────────────
   emitTicket: (deviceToken: string, payload: EmitTicketInput) =>
     apiFetch<EmitTicketOutput>('/api/v1/rec/tickets', {
@@ -161,6 +165,14 @@ export const recApi = {
   // ── Console da recepção (user auth) ────────────────────────────────
   listTickets: () =>
     api.get<AttendanceItem[]>('/api/v1/rec/tickets', { withContext: true }),
+
+  /** Recepção cria atendimento manualmente pra um paciente existente. */
+  emitManualTicket: (patientId: string, priority = false) =>
+    api.post<EmitTicketOutput>(
+      '/api/v1/rec/tickets/manual',
+      { patientId, priority },
+      { withContext: true },
+    ),
 
   callTicket: (id: string) =>
     api.post<AttendanceItem>(`/api/v1/rec/tickets/${id}/call`, {}, { withContext: true }),

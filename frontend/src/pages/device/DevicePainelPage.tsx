@@ -14,6 +14,7 @@ export function DevicePainelPage() {
   const { config, loading } = useDeviceConfig()
   const pushCall = useLiveCallStore(s => s.push)
   const currentCall = useLiveCallStore(s => s.current)
+  const requestSilence = useLiveCallStore(s => s.requestSilence)
 
   // Áudio (Web Speech API) — desligado por padrão, ligado via config.
   usePainelAnnouncer({
@@ -26,6 +27,10 @@ export function DevicePainelPage() {
     onEvent: ({ event, payload }) => {
       if (event === 'device:revoked' && payload.deviceId === deviceId) {
         reset()
+        return
+      }
+      if (event === 'painel:silence') {
+        requestSilence()
         return
       }
       if (event === 'painel:call') {

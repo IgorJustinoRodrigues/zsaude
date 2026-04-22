@@ -370,6 +370,129 @@ class AttendanceService:
 
         return att, handover_info
 
+    # ── Emit manual (recepcionista) ────────────────────────────────────
+
+    async def emit_manual(
+        self,
+        facility_id: UUID,
+        patient_id: UUID,
+        priority: bool,
+        user_id: UUID,
+    ) -> tuple[Attendance, HandoverInfo | None]:
+        """Cria atendimento direto do balcão — sem totem físico.
+        Reusa a numeração de algum totem da unidade (primeiro não arquivado).
+        Se não tiver totem, erro — admin precisa criar pelo menos um."""
+        patient = await self.tenant_db.get(Patient, patient_id)
+        if patient is None:
+            raise HTTPException(status_code=404, detail="Paciente não encontrado.")
+
+        facility = await self.app_db.get(Facility, facility_id)
+        if facility is None:
+            raise HTTPException(status_code=404, detail="Unidade não encontrada.")
+        municipality = await self.app_db.get(Municipality, facility.municipality_id)
+        if municipality is None:
+            raise HTTPException(status_code=404, detail="Município não encontrado.")
+
+        # Busca totem — prioridade facility, fallback município.
+        totem = await self.app_db.scalar(
+            select(Totem)
+            .where(Totem.scope_type == "facility")
+            .where(Totem.scope_id == facility_id)
+            .where(Totem.archived == False)  # noqa: E712
+            .limit(1)
+        ) or await self.app_db.scalar(
+            select(Totem)
+            .where(Totem.scope_type == "municipality")
+            .where(Totem.scope_id == municipality.id)
+            .where(Totem.archived == False)  # noqa: E712
+            .limit(1)
+        )
+        if totem is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Nenhum totem configurado pra usar como base de numeração. "
+                       "Peça ao admin pra criar um totem no município ou unidade.",
+            )
+
+        # Define doc_type/doc_value a partir do cadastro.
+        if patient.cpf:
+            doc_type, doc_value = "cpf", patient.cpf
+        elif patient.cns:
+            doc_type, doc_value = "cns", patient.cns
+        else:
+            doc_type, doc_value = "manual", None
+
+        # Dedup por doc na unidade — se ativo na mesma, bloqueia.
+        handover_old: Attendance | None = None
+        if doc_value:
+            existing = await self._find_active_by_doc(doc_value)
+            if existing is not None:
+                if existing.facility_id == facility_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "already_exists_here",
+                            "existingTicket": existing.ticket_number,
+                            "existingStatus": existing.status,
+                            "arrivedAt": existing.arrived_at.isoformat(),
+                        },
+                    )
+                handover_old = existing
+
+        # Numeração usando o totem escolhido.
+        tz = ZoneInfo(municipality.timezone or "America/Sao_Paulo")
+        now_local = datetime.now(tz)
+        period = _period_key(totem.reset_strategy, now_local)
+        prefix = totem.ticket_prefix_priority if priority else totem.ticket_prefix_normal
+        number = await self._next_counter(totem.id, prefix, period)
+        ticket_number = _format_ticket(prefix, number, totem.number_padding)
+
+        # Status inicial — se totem é setor-direct, herda o setor; senão,
+        # cai direto em atendimento (o operador já está na frente do
+        # paciente, não faz sentido "aguardando chamada").
+        if totem.default_sector_name:
+            initial_status = "sector_waiting"
+            initial_sector: str | None = totem.default_sector_name
+            started_at = None
+            started_by = None
+        else:
+            initial_status = "reception_attending"
+            initial_sector = None
+            started_at = datetime.now(UTC)
+            started_by = user_id
+
+        att = Attendance(
+            facility_id=facility_id,
+            device_id=None,  # sem device — entrada manual
+            ticket_number=ticket_number,
+            priority=priority,
+            doc_type=doc_type,
+            doc_value=doc_value,
+            patient_name=patient.social_name.strip() or patient.name,
+            patient_id=patient.id,
+            status=initial_status,
+            sector_name=initial_sector,
+            needs_handover_from_attendance_id=handover_old.id if handover_old else None,
+            started_at=started_at,
+            started_by_user_id=started_by,
+        )
+        self.tenant_db.add(att)
+        await self.tenant_db.flush()
+
+        handover_info: HandoverInfo | None = None
+        if handover_old:
+            old_facility = await self.app_db.get(Facility, handover_old.facility_id)
+            handover_info = HandoverInfo(
+                attendance_id=handover_old.id,
+                facility_name=old_facility.name if old_facility else "—",
+                facility_short_name=old_facility.short_name if old_facility else "—",
+                status=handover_old.status,  # type: ignore[arg-type]
+                started_at=handover_old.arrived_at,
+            )
+
+        await self._publish_status(att)
+        return att, handover_info
+
     # ── Transições (console da recepção) ───────────────────────────────
 
     async def call(self, attendance_id: UUID, user_id: UUID) -> Attendance:

@@ -7,9 +7,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Maximize, X } from 'lucide-react'
+import { ArrowLeft, Maximize, VolumeX, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useLiveCallStore } from '../../store/liveCallStore'
+import { useLiveCallStore, SILENCE_DURATION_MS } from '../../store/liveCallStore'
 
 const ADMIN_UNLOCK_TAPS = 5
 const ADMIN_UNLOCK_WINDOW_MS = 2_000
@@ -20,7 +20,18 @@ export function RecPainelPage() {
   const [adminUnlocked, setAdminUnlocked] = useState(false)
   const current = useLiveCallStore(s => s.current)
   const history = useLiveCallStore(s => s.history)
+  const silenceAt = useLiveCallStore(s => s.silenceAt)
   const [flash, setFlash] = useState(false)
+  const [silenceOn, setSilenceOn] = useState(false)
+
+  // Mostra overlay de silêncio quando ``silenceAt`` é setado e auto-
+  // dismisses depois de SILENCE_DURATION_MS.
+  useEffect(() => {
+    if (!silenceAt) return
+    setSilenceOn(true)
+    const t = window.setTimeout(() => setSilenceOn(false), SILENCE_DURATION_MS)
+    return () => window.clearTimeout(t)
+  }, [silenceAt])
 
   // Dispara flash visual toda vez que ``current`` muda (nova chamada).
   useEffect(() => {
@@ -185,6 +196,26 @@ export function RecPainelPage() {
             </div>
             <p className="text-[11px] text-slate-400 mt-4 text-center">
               5× no canto superior esquerdo pra destravar quando precisar.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay de silêncio */}
+      {silenceOn && (
+        <div className="fixed inset-0 z-[90] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center animate-[fadeIn_0.25s_ease-out]">
+          <div className="flex flex-col items-center text-white animate-[pop_0.4s_cubic-bezier(0.18,1.3,0.6,1)_forwards]">
+            <div className="relative mb-8">
+              <span className="absolute inset-0 rounded-full bg-white/10 animate-ping" />
+              <span className="relative w-40 h-40 rounded-full bg-white/10 border-4 border-white/30 flex items-center justify-center">
+                <VolumeX size={96} strokeWidth={1.8} />
+              </span>
+            </div>
+            <p className="text-[12vw] landscape:text-[8vw] font-black tracking-tight leading-none">
+              SILÊNCIO
+            </p>
+            <p className="text-2xl sm:text-4xl text-white/70 mt-4 font-light">
+              por favor
             </p>
           </div>
         </div>

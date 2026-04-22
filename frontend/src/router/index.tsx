@@ -82,6 +82,7 @@ import { OpsFormaOrgSearchPage } from '../pages/ops/OpsFormaOrgSearchPage'
 // REC – Recepção
 import { RecHomePage } from '../pages/rec/RecHomePage'
 import { RecQueuePage } from '../pages/rec/RecQueuePage'
+import { RecNewAttendancePage } from '../pages/rec/RecNewAttendancePage'
 import { RecTotemPage } from '../pages/rec/RecTotemPage'
 import { RecPainelPage } from '../pages/rec/RecPainelPage'
 import { RecDevicesPage } from '../pages/rec/RecDevicesPage'
@@ -355,6 +356,7 @@ export const router = createBrowserRouter([
                     element: <RequireRecFeature feature="recepcao" />,
                     children: [
                       { path: '/rec/atendimento', element: <RecQueuePage /> },
+                      { path: '/rec/atendimento/novo', element: <RecNewAttendancePage /> },
                     ],
                   },
                   {

@@ -6,9 +6,10 @@
 // opera em minutos, então 5s é suficiente.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, Clock, Info, PhoneCall, Settings2,
-  ShieldAlert, Star, UserCheck, X,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock, Info, PhoneCall, Plus, Settings2,
+  ShieldAlert, Star, UserCheck, VolumeX, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
@@ -21,6 +22,9 @@ import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
 const POLL_MS = 5_000
+/** Após chamar/pedir silêncio, mantém o botão desativado por esse tempo
+ *  pra evitar duplo-clique sem querer. */
+const ACTION_COOLDOWN_MS = 5_000
 
 interface CounterConfig {
   number: string
@@ -49,6 +53,7 @@ function counterLabel(cfg: CounterConfig | null): string {
 }
 
 export function RecQueuePage() {
+  const navigate = useNavigate()
   const [counter, setCounter] = useState<CounterConfig | null>(() => loadCounter())
   const [counterModal, setCounterModal] = useState(false)
   const [tickets, setTickets] = useState<AttendanceItem[]>([])
@@ -60,6 +65,17 @@ export function RecQueuePage() {
   // Lista de setores permitidos pelo admin no encaminhamento.
   // ``null`` = todos. Carregado da rec_config efetiva.
   const [allowedSectorNames, setAllowedSectorNames] = useState<string[] | null>(null)
+  // Cooldowns pra evitar duplo-clique. Mapa ticket_id → timestamp "libera em".
+  const [callCooldowns, setCallCooldowns] = useState<Record<string, number>>({})
+  const [silenceCooldownUntil, setSilenceCooldownUntil] = useState(0)
+  // Re-render a cada 1s pra atualizar os countdowns visualmente.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setTick(t => t + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  const now = Date.now()
+  const silenceDisabledSec = Math.max(0, Math.ceil((silenceCooldownUntil - now) / 1000))
   const [attendModal, setAttendModal] = useState<AttendanceItem | null>(null)
   const [forwardModal, setForwardModal] = useState<AttendanceItem | null>(null)
   const counterName = counterLabel(counter)
@@ -113,6 +129,8 @@ export function RecQueuePage() {
   }, [tickets])
 
   async function doCall(t: AttendanceItem) {
+    // Marca em cooldown imediatamente — evita clique duplo durante a request.
+    setCallCooldowns(m => ({ ...m, [t.id]: Date.now() + ACTION_COOLDOWN_MS }))
     try {
       await recApi.callTicket(t.id)
       // Publica no painel — guichê só vai junto quando a atendente
@@ -187,6 +205,29 @@ export function RecQueuePage() {
           )}
         </button>
         <div className="flex-1" />
+        <button
+          disabled={silenceDisabledSec > 0}
+          onClick={async () => {
+            setSilenceCooldownUntil(Date.now() + ACTION_COOLDOWN_MS)
+            try {
+              await recApi.requestSilence()
+              toast.info('Silêncio solicitado', 'Exibido no painel por alguns segundos.')
+            } catch (err) {
+              if (err instanceof HttpError) toast.error('Silêncio', err.message)
+            }
+          }}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-card hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-card"
+          title="Mostra no painel um aviso grande de 'Silêncio, por favor'"
+        >
+          <VolumeX size={14} />
+          {silenceDisabledSec > 0 ? `Aguarde ${silenceDisabledSec}s` : 'Solicitar silêncio'}
+        </button>
+        <button
+          onClick={() => navigate('/rec/atendimento/novo')}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold transition-colors shadow-sm shadow-teal-500/20"
+        >
+          <Plus size={14} /> Novo atendimento
+        </button>
       </div>
 
       {loading && tickets.length === 0 ? (
@@ -211,6 +252,7 @@ export function RecQueuePage() {
             title="Aguardando"
             items={waiting}
             emptyMsg="Ninguém aguardando no momento."
+            callCooldowns={callCooldowns}
             onCall={doCall}
             onStart={doStart}
             onAssumeHandover={doAssumeHandover}
@@ -283,6 +325,8 @@ type QueueSectionProps = {
   emptyMsg: string
   variant?: 'waiting' | 'inService' | 'rest'
   headerBadge?: React.ReactNode
+  /** Mapa ticket_id → timestamp de quando o botão Chamar libera. */
+  callCooldowns?: Record<string, number>
   onCall?: (t: AttendanceItem) => void
   onStart?: (t: AttendanceItem) => void
   onForward?: (t: AttendanceItem) => void
@@ -291,7 +335,7 @@ type QueueSectionProps = {
 }
 
 function QueueSection({
-  title, items, emptyMsg, variant = 'waiting', headerBadge,
+  title, items, emptyMsg, variant = 'waiting', headerBadge, callCooldowns,
   onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
 }: QueueSectionProps) {
   return (
@@ -319,6 +363,7 @@ function QueueSection({
               key={t.id}
               ticket={t}
               variant={variant}
+              callCooldownUntil={callCooldowns?.[t.id] ?? 0}
               onCall={onCall}
               onStart={onStart}
               onForward={onForward}
@@ -335,11 +380,12 @@ function QueueSection({
 // ─── Linha da fila ──────────────────────────────────────────────────────────
 
 function QueueRow({
-  ticket, variant,
+  ticket, variant, callCooldownUntil = 0,
   onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
 }: {
   ticket: AttendanceItem
   variant: 'waiting' | 'inService' | 'rest'
+  callCooldownUntil?: number
   onCall?: (t: AttendanceItem) => void
   onStart?: (t: AttendanceItem) => void
   onForward?: (t: AttendanceItem) => void
@@ -348,6 +394,8 @@ function QueueRow({
 }) {
   const needsHandover = !!ticket.needsHandoverFromAttendanceId
   const wasCalled = ticket.status === 'reception_called'
+  const callDisabledSec = Math.max(0, Math.ceil((callCooldownUntil - Date.now()) / 1000))
+  const callDisabled = callDisabledSec > 0
 
   return (
     <li className={cn(
@@ -424,10 +472,14 @@ function QueueRow({
             {onCall && (
               <button
                 onClick={() => onCall(ticket)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40"
+                disabled={callDisabled}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-sky-700 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 title={wasCalled ? 'Rechamar no painel' : 'Chamar no painel'}
               >
-                <PhoneCall size={13} /> {wasCalled ? 'Rechamar' : 'Chamar'}
+                <PhoneCall size={13} />
+                {callDisabled
+                  ? `Aguarde ${callDisabledSec}s`
+                  : wasCalled ? 'Rechamar' : 'Chamar'}
               </button>
             )}
             {onStart && (

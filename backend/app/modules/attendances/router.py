@@ -28,6 +28,7 @@ from app.modules.attendances.schemas import (
     FaceCandidate,
     FaceMatchOutput,
     ForwardInput,
+    ManualEmitInput,
     OrderReason,
 )
 from app.modules.attendances.service import AttendanceService
@@ -113,6 +114,31 @@ async def emit_ticket(
 
 
 # ─── Console da recepção (user autenticado) ───────────────────────────────
+
+@router.post("/tickets/manual", response_model=EmitTicketOutput, status_code=201)
+async def emit_manual_ticket(
+    payload: ManualEmitInput,
+    db: DB, tenant_db: TenantDB,
+    valkey: Valkey, ctx: CurrentContextDep, user: CurrentUserDep,
+) -> EmitTicketOutput:
+    """Recepção cria atendimento diretamente pra um paciente cadastrado,
+    sem usar o totem físico. Usa a numeração de algum totem da unidade."""
+    svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
+    att, handover = await svc.emit_manual(
+        facility_id=ctx.facility_id,
+        patient_id=payload.patient_id,
+        priority=payload.priority,
+        user_id=user.id,
+    )
+    return EmitTicketOutput(
+        id=att.id,
+        ticket_number=att.ticket_number,
+        priority=att.priority,
+        patient_name=att.patient_name,
+        patient_id=att.patient_id,
+        handover=handover,
+    )
+
 
 @router.get("/tickets", response_model=list[AttendanceListItem])
 async def list_tickets(

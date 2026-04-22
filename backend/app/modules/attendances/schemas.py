@@ -64,6 +64,15 @@ class EmitTicketOutput(CamelModel):
     handover: HandoverInfo | None = None
 
 
+class ManualEmitInput(CamelModel):
+    """Recepção cria atendimento sem passar pelo totem. Tipicamente
+    quando o paciente já chegou no balcão (ex.: idoso, dificuldade com
+    totem) e a atendente localiza o cadastro e inicia direto."""
+
+    patient_id: UUID
+    priority: bool = False
+
+
 class AttendanceRead(CamelModel):
     id: UUID
     facility_id: UUID
