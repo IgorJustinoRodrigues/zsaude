@@ -71,13 +71,22 @@ class StorageService:
         log.info("storage_delete", extra={"key": key})
 
     async def presigned_url(self, key: str, expires: int = 3600) -> str:
-        """Gera URL temporária para download direto (sem proxy pela API)."""
+        """Gera URL temporária para download direto (sem proxy pela API).
+
+        Quando ``STORAGE_PUBLIC_ENDPOINT`` está setado, reescreve o host
+        do URL assinado — necessário em dev onde o backend fala com o
+        MinIO via ``minio:9000`` (rede docker) mas o browser só enxerga
+        ``localhost:9002`` (porta mapeada).
+        """
         async with self._client() as s3:
             url = await s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=expires,
             )
+        public = settings.storage_public_endpoint
+        if public and self._endpoint:
+            url = url.replace(self._endpoint, public.rstrip("/"))
         return url
 
     async def exists(self, key: str) -> bool:

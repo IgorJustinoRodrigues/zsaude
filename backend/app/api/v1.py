@@ -34,6 +34,10 @@ from app.modules.rec.router import (
     admin_router as rec_admin_router,
     router as rec_router,
 )
+from app.modules.tts.router import (
+    admin_router as tts_admin_router,
+    router as tts_router,
+)
 from app.modules.painels.router import (
     admin_router as painels_admin_router,
     router as painels_router,
@@ -95,6 +99,8 @@ api_v1.include_router(notifications_router)
 api_v1.include_router(notifications_admin_router)
 api_v1.include_router(rec_router)
 api_v1.include_router(rec_admin_router)
+api_v1.include_router(tts_router)
+api_v1.include_router(tts_admin_router)
 api_v1.include_router(devices_public_router)
 api_v1.include_router(devices_router)
 api_v1.include_router(sectors_admin_router)

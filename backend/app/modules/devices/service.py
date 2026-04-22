@@ -236,36 +236,43 @@ class DeviceService:
         """Config que o device consome. ``painel``/``totem`` = None quando
         não vinculado (UI mostra "aguardando configuração")."""
         painel = None
+        totem = None
+        # Config efetiva — mode + voice_id vêm do rec_config (município
+        # ou unidade). Admin muda num só lugar pra afetar todos os
+        # painéis/totens do escopo.
+        mode = "senha"
+        painel_voice_id = None
+        totem_voice_id = None
+        if device.facility_id:
+            try:
+                from app.modules.rec.service import RecConfigService
+                fac = await self.db.get(Facility, device.facility_id)
+                if fac:
+                    eff = await RecConfigService(self.db).effective_for_facility(
+                        device.facility_id, fac.municipality_id,
+                    )
+                    mode = eff.painel.mode
+                    painel_voice_id = _parse_uuid(eff.painel.voice_id)
+                    totem_voice_id = _parse_uuid(eff.totem.voice_id)
+            except Exception:
+                pass
+
         if device.painel_id and device.painel:
-            # ``mode`` vem do rec_config (município/unidade) pra admin
-            # conseguir mudar num só lugar. Per-painel continua salvo
-            # mas hoje é ignorado — serve só como override futuro.
-            mode = device.painel.mode
-            if device.facility_id:
-                try:
-                    from app.modules.rec.service import RecConfigService
-                    fac = await self.db.get(Facility, device.facility_id)
-                    if fac:
-                        eff = await RecConfigService(self.db).effective_for_facility(
-                            device.facility_id, fac.municipality_id,
-                        )
-                        mode = eff.painel.mode
-                except Exception:
-                    pass  # fallback pro per-painel se algo quebrar
             painel = DeviceConfigPainel(
                 id=device.painel.id,
                 name=device.painel.name,
-                mode=mode,
+                mode=mode or device.painel.mode,
                 announce_audio=device.painel.announce_audio,
                 sector_names=list(device.painel.sector_names),
+                voice_id=painel_voice_id,
             )
-        totem = None
         if device.totem_id and device.totem:
             totem = DeviceConfigTotem(
                 id=device.totem.id,
                 name=device.totem.name,
                 capture=dict(device.totem.capture),
                 priority_prompt=device.totem.priority_prompt,
+                voice_id=totem_voice_id,
             )
         return DeviceConfigOutput.model_validate({
             "deviceId": device.id,
@@ -359,6 +366,15 @@ class DeviceService:
         if device is None:
             raise HTTPException(status_code=404, detail="Dispositivo não encontrado.")
         return device
+
+
+def _parse_uuid(value: str | None) -> UUID | None:
+    if not value:
+        return None
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError):
+        return None
 
 
 def _to_read(device: Device) -> DeviceRead:

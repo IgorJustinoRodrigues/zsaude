@@ -5,11 +5,11 @@
 // (captura do totem, modo do painel, áudio, setores) vivem nos
 // painéis/totens lógicos — ver `/sys/{mun|unidade}/recursos`.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  ArrowDownUp, BellRing, Clock, Loader2, MonitorSmartphone, RotateCcw, Save,
-  Sparkles, Star, Users,
+  ArrowDownUp, BellRing, Clock, Loader2, MonitorSmartphone, Pause, Play,
+  RotateCcw, Save, Sparkles, Star, Users,
 } from 'lucide-react'
 import {
   recConfigApi,
@@ -22,6 +22,7 @@ import {
   type TotemConfig,
 } from '../../api/recConfig'
 import { sectorsAdminApi, type Sector } from '../../api/sectors'
+import { ttsAdminApi, type TtsVoice } from '../../api/tts'
 import { directoryApi } from '../../api/workContext'
 import { HttpError } from '../../api/client'
 import { toast } from '../../store/toastStore'
@@ -30,8 +31,8 @@ import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 
 type Scope = 'municipality' | 'facility'
 
-const DEFAULT_TOTEM: TotemConfig = { enabled: true }
-const DEFAULT_PAINEL: PainelConfig = { enabled: true, mode: 'senha' }
+const DEFAULT_TOTEM: TotemConfig = { enabled: true, voiceId: null }
+const DEFAULT_PAINEL: PainelConfig = { enabled: true, mode: 'senha', voiceId: null }
 const DEFAULT_RECEPCAO: RecepcaoConfig = {
   enabled: true,
   afterAttendanceSector: null,
@@ -58,6 +59,7 @@ function RecSectionPage({ scope }: { scope: Scope }) {
   const [effective, setEffective] = useState<EffectiveRecConfig | null>(null)
   const [parentEffective, setParentEffective] = useState<EffectiveRecConfig | null>(null)
   const [sectors, setSectors] = useState<Sector[]>([])
+  const [voices, setVoices] = useState<TtsVoice[]>([])
 
   const load = useCallback(async () => {
     if (!id || !section) return
@@ -106,6 +108,14 @@ function RecSectionPage({ scope }: { scope: Scope }) {
       .then(list => setSectors(list.filter(s => !s.archived)))
       .catch(() => { /* silencioso — campo continua funcionando em modo livre */ })
   }, [id, scope, section])
+
+  // Carrega vozes TTS pra os seletores (painel + totem).
+  useEffect(() => {
+    if (section !== 'painel' && section !== 'totem') return
+    ttsAdminApi.listVoices()
+      .then(list => setVoices(list.filter(v => !v.archived && v.availableForSelection)))
+      .catch(() => { /* sem vozes — select mostra só "padrão do sistema" */ })
+  }, [section])
 
   if (!id || !section) {
     return <div className="text-sm text-red-500">Parâmetros inválidos.</div>
@@ -207,6 +217,7 @@ function RecSectionPage({ scope }: { scope: Scope }) {
               <TotemForm
                 initial={effective.totem}
                 parent={parentEffective?.totem ?? null}
+                voices={voices}
                 saving={saving}
                 onSave={v => save({ totem: v })}
               />
@@ -215,6 +226,7 @@ function RecSectionPage({ scope }: { scope: Scope }) {
               <PainelForm
                 initial={effective.painel}
                 parent={parentEffective?.painel ?? null}
+                voices={voices}
                 saving={saving}
                 onSave={v => save({ painel: v })}
               />
@@ -300,7 +312,9 @@ interface FormProps<T> {
   onSave: (v: T) => void
 }
 
-function TotemForm({ initial, parent, saving, onSave }: FormProps<TotemConfig>) {
+function TotemForm({
+  initial, parent, voices, saving, onSave,
+}: FormProps<TotemConfig> & { voices: TtsVoice[] }) {
   const [draft, setDraft] = useState(initial)
   useEffect(() => { setDraft(initial) }, [initial])
 
@@ -322,6 +336,15 @@ function TotemForm({ initial, parent, saving, onSave }: FormProps<TotemConfig>) 
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
       />
+      <fieldset className={cn('space-y-3', !draft.enabled && 'opacity-50 pointer-events-none')}>
+        <VoicePicker
+          voices={voices}
+          value={draft.voiceId}
+          onChange={v => setDraft({ ...draft, voiceId: v })}
+          label="Voz do totem"
+          help="Voz usada nas mensagens de boas-vindas e confirmações do totem."
+        />
+      </fieldset>
       <FormFooter saving={saving} onSave={() => onSave(draft)} />
     </div>
   )
@@ -329,7 +352,9 @@ function TotemForm({ initial, parent, saving, onSave }: FormProps<TotemConfig>) 
 
 void DEFAULT_TOTEM; void DEFAULT_PAINEL; void DEFAULT_RECEPCAO  // reservados pra futuro
 
-function PainelForm({ initial, parent, saving, onSave }: FormProps<PainelConfig>) {
+function PainelForm({
+  initial, parent, voices, saving, onSave,
+}: FormProps<PainelConfig> & { voices: TtsVoice[] }) {
   const [draft, setDraft] = useState(initial)
   useEffect(() => { setDraft(initial) }, [initial])
 
@@ -351,7 +376,14 @@ function PainelForm({ initial, parent, saving, onSave }: FormProps<PainelConfig>
         onChange={b => setDraft({ ...draft, enabled: b })}
         disabled={parentDisabled}
       />
-      <fieldset className={cn('space-y-3', !draft.enabled && 'opacity-50 pointer-events-none')}>
+      <fieldset className={cn('space-y-5', !draft.enabled && 'opacity-50 pointer-events-none')}>
+        <VoicePicker
+          voices={voices}
+          value={draft.voiceId}
+          onChange={v => setDraft({ ...draft, voiceId: v })}
+          label="Voz do painel"
+          help="Voz usada ao anunciar chamadas. Mesma voz em todas as unidades do município, a menos que a unidade sobrescreva."
+        />
         <div>
           <p className="text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
             Exibição das chamadas
@@ -787,6 +819,105 @@ function QueueOrderPicker({
         })}
       </div>
     </div>
+  )
+}
+
+// ─── Voice picker (TTS) ────────────────────────────────────────────────────
+
+function VoicePicker({
+  voices, value, onChange, label, help,
+}: {
+  voices: TtsVoice[]
+  value: string | null
+  onChange: (v: string | null) => void
+  label: string
+  help?: string
+}) {
+  const selected = voices.find(v => v.id === value) ?? null
+  return (
+    <div>
+      <label className="block text-[11px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2">
+        {label}
+      </label>
+      <div className="flex items-center gap-2 max-w-md">
+        <select
+          value={value ?? ''}
+          onChange={e => onChange(e.target.value || null)}
+          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+        >
+          <option value="">Usar voz padrão do sistema</option>
+          {voices.map(v => (
+            <option key={v.id} value={v.id}>
+              {v.name}{v.gender === 'male' ? ' · Masc.' : v.gender === 'female' ? ' · Fem.' : ''}
+            </option>
+          ))}
+        </select>
+        <VoicePreviewButton voiceId={selected?.id ?? null} />
+      </div>
+      {help && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">
+          {help}
+        </p>
+      )}
+      {selected?.description && (
+        <p className="text-[11px] italic text-slate-400 dark:text-slate-500 mt-1">
+          {selected.description}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Botão reutilizável pra ouvir uma voz. Usa o endpoint ``/admin/tts/voices/:id/preview``
+ *  (frase fixa "Essa voz será usada…", cacheada). Se nenhuma voz estiver
+ *  selecionada fica desabilitado. */
+function VoicePreviewButton({ voiceId }: { voiceId: string | null }) {
+  const [busy, setBusy] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  async function toggle() {
+    if (playing) {
+      audioRef.current?.pause()
+      setPlaying(false)
+      return
+    }
+    if (!voiceId) return
+    setBusy(true)
+    try {
+      const out = await ttsAdminApi.previewVoice(voiceId)
+      const url = out.audios[0]?.url
+      if (!url) return
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => setPlaying(false)
+      audio.onerror = () => { setPlaying(false); toast.error('Falha ao tocar amostra') }
+      await audio.play()
+      setPlaying(true)
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Ouvir', err.message)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={!voiceId || busy}
+      title={voiceId ? 'Ouvir amostra desta voz' : 'Selecione uma voz pra ouvir'}
+      className={cn(
+        'shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors',
+        'border border-slate-200 dark:border-slate-700',
+        voiceId
+          ? 'text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40'
+          : 'text-slate-400 cursor-not-allowed',
+      )}
+    >
+      {busy
+        ? <Loader2 size={12} className="animate-spin" />
+        : playing ? <Pause size={12} /> : <Play size={12} />}
+      {playing ? 'Parar' : 'Ouvir'}
+    </button>
   )
 }
 

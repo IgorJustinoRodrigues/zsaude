@@ -271,13 +271,17 @@ def _merge_recepcao(
 
 
 def _restrict_totem(child: TotemConfig, parent: TotemConfig) -> TotemConfig:
-    return TotemConfig(enabled=child.enabled and parent.enabled)
+    return TotemConfig(
+        enabled=child.enabled and parent.enabled,
+        voice_id=child.voice_id,
+    )
 
 
 def _restrict_painel(child: PainelConfig, parent: PainelConfig) -> PainelConfig:
     return PainelConfig(
         enabled=child.enabled and parent.enabled,
         mode=child.mode,
+        voice_id=child.voice_id,
     )
 
 

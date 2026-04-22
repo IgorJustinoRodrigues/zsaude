@@ -69,6 +69,7 @@ export interface DeviceConfigPainel {
   mode: 'senha' | 'nome' | 'ambos'
   announceAudio: boolean
   sectorNames: string[]
+  voiceId: string | null
 }
 
 export interface DeviceConfigTotem {
@@ -76,6 +77,7 @@ export interface DeviceConfigTotem {
   name: string
   capture: { cpf: boolean; cns: boolean; face: boolean; manualName: boolean }
   priorityPrompt: boolean
+  voiceId: string | null
 }
 
 export interface DeviceConfigOutput {

@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # Em dev: MinIO local (endpoint = http://minio:9000)
     # Em prod: AWS S3 (endpoint vazio, usa default da AWS)
     storage_endpoint: str = "http://minio:9000"
+    # URL pública pra reescrever presigned URLs — o browser não enxerga
+    # "minio:9000" (hostname interno do Docker). Em prod com AWS S3, deixa
+    # vazio (URL já é publicamente acessível).
+    storage_public_endpoint: str = ""
     storage_access_key: str = "minioadmin"
     storage_secret_key: str = "minioadmin"
     storage_bucket: str = "zsaude-files"

@@ -40,6 +40,8 @@ class _TolerantCamelModel(CamelModel):
 
 class TotemConfig(_TolerantCamelModel):
     enabled: bool = True
+    # Voz TTS do totem (UUID). ``None`` = usa a default global.
+    voice_id: str | None = None
 
 
 PainelMode = Literal["senha", "nome", "ambos"]
@@ -52,6 +54,8 @@ class PainelConfig(_TolerantCamelModel):
     # - "nome":  só o nome do paciente (quando tem)
     # - "ambos": número grande em cima, nome embaixo
     mode: PainelMode = "senha"
+    # Voz TTS (UUID de tts_voices). ``None`` = usa a default global.
+    voice_id: str | None = None
 
 
 QueueOrderMode = Literal["fifo", "priority_fifo", "ai"]

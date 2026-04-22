@@ -98,6 +98,7 @@ class DeviceConfigPainel(CamelModel):
     mode: str
     announce_audio: bool
     sector_names: list[str]
+    voice_id: UUID | None = None
 
 
 class DeviceConfigTotem(CamelModel):
@@ -105,6 +106,7 @@ class DeviceConfigTotem(CamelModel):
     name: str
     capture: dict
     priority_prompt: bool
+    voice_id: UUID | None = None
 
 
 class DeviceConfigOutput(CamelModel):

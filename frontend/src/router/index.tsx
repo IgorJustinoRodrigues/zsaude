@@ -112,6 +112,7 @@ import { SysImportCnesPage } from '../pages/sys/SysImportCnesPage'
 import { SysReferencePage } from '../pages/sys/SysReferencePage'
 import { SysCadsusPage } from '../pages/sys/SysCadsusPage'
 import { SysAiPage } from '../pages/sys/SysAiPage'
+import { SysTtsPage } from '../pages/sys/SysTtsPage'
 import { SysMunicipalityBrandingPage, SysFacilityBrandingPage } from '../pages/sys/SysBrandingPage'
 import {
   SysMunicipalityModulesPage,
@@ -231,6 +232,7 @@ export const router = createBrowserRouter([
               { path: '/sys/dados-referencia',      element: <SysReferencePage /> },
               { path: '/sys/cadsus',                element: <SysCadsusPage /> },
               { path: '/sys/ia',                    element: <SysAiPage /> },
+              { path: '/sys/tts',                   element: <SysTtsPage /> },
               { path: '/sys/configuracoes',         element: <SysSettingsPage /> },
               { path: '/sys/templates-email',       element: <SysEmailTemplatesPage /> },
               { path: '/sys/credenciais-email',     element: <SysEmailCredentialsPage /> },

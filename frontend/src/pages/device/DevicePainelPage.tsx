@@ -1,9 +1,12 @@
 // URL pública ``/dispositivo/painel``.
 
+import { useCallback, useEffect, useState } from 'react'
 import { useDeviceStore } from '../../store/deviceStore'
 import { useDeviceSocket } from '../../hooks/useDeviceSocket'
 import { useDeviceConfig } from '../../hooks/useDeviceConfig'
 import { usePainelAnnouncer } from '../../hooks/usePainelAnnouncer'
+import { usePainelTtsAnnouncer } from '../../hooks/usePainelTtsAnnouncer'
+import { useAudioQueue } from '../../hooks/useAudioQueue'
 import { useLiveCallStore } from '../../store/liveCallStore'
 import { DevicePairingScreen } from './DevicePairingScreen'
 import { DeviceWaitingConfigScreen } from './DeviceWaitingConfigScreen'
@@ -15,12 +18,45 @@ export function DevicePainelPage() {
   const pushCall = useLiveCallStore(s => s.push)
   const currentCall = useLiveCallStore(s => s.current)
   const requestSilence = useLiveCallStore(s => s.requestSilence)
+  const silenceAt = useLiveCallStore(s => s.silenceAt)
 
-  // Áudio (Web Speech API) — desligado por padrão, ligado via config.
-  usePainelAnnouncer({
-    enabled: config?.painel?.announceAudio ?? false,
-    mode: config?.painel?.mode ?? 'senha',
+  const painelMode = (config?.painel?.mode as 'senha' | 'nome' | 'ambos' | undefined) ?? 'senha'
+  const announceAudio = config?.painel?.announceAudio ?? false
+
+  // Fila de áudio TTS — enfileira sem cortar a chamada anterior.
+  const queue = useAudioQueue({ volume: 1 })
+
+  // Silêncio solicitado → limpa fila e para áudio em curso.
+  useEffect(() => {
+    if (silenceAt) queue.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [silenceAt])
+
+  // Flag que liga pro fallback quando o TTS backend falha.
+  const [fallbackCall, setFallbackCall] = useState<typeof currentCall>(null)
+  const handleFallback = useCallback((c: NonNullable<typeof currentCall>) => {
+    setFallbackCall(c)
+  }, [])
+
+  // Voz configurada (vem do rec_config do escopo).
+  const voiceId = config?.painel?.voiceId ?? null
+
+  // TTS real (ElevenLabs/Google).
+  usePainelTtsAnnouncer({
+    enabled: announceAudio,
+    mode: painelMode,
     call: currentCall,
+    queue,
+    deviceToken,
+    voiceId,
+    onFallback: handleFallback,
+  })
+
+  // Fallback: Web Speech API (liga só se TTS falhou pra esta call).
+  usePainelAnnouncer({
+    enabled: announceAudio && !!fallbackCall,
+    mode: painelMode,
+    call: fallbackCall,
   })
 
   useDeviceSocket({
@@ -61,6 +97,5 @@ export function DevicePainelPage() {
   if (!config?.painel) {
     return <DeviceWaitingConfigScreen type="painel" deviceName={config?.name ?? null} />
   }
-  const mode = (config.painel.mode as 'senha' | 'nome' | 'ambos' | undefined) ?? 'senha'
-  return <RecPainelPage mode={mode} />
+  return <RecPainelPage mode={painelMode} />
 }

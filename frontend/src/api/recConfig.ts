@@ -10,6 +10,8 @@ export type RecScope = 'municipality' | 'facility'
 
 export interface TotemConfig {
   enabled: boolean
+  /** UUID de ``tts_voices``. ``null`` = herda default global. */
+  voiceId: string | null
 }
 
 export type PainelMode = 'senha' | 'nome' | 'ambos'
@@ -17,6 +19,8 @@ export type PainelMode = 'senha' | 'nome' | 'ambos'
 export interface PainelConfig {
   enabled: boolean
   mode: PainelMode
+  /** UUID de ``tts_voices``. ``null`` = herda default global. */
+  voiceId: string | null
 }
 
 export type QueueOrderMode = 'fifo' | 'priority_fifo' | 'ai'
