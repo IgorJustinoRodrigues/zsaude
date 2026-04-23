@@ -22,6 +22,8 @@ export interface ClnQueueItem {
   arrivedAt: string
   calledAt: string | null
   startedAt: string | null
+  startedByUserId: string | null
+  startedByUserName: string | null
 }
 
 export interface ClnConfig {
@@ -60,11 +62,16 @@ export const clnApi = {
     if (params?.facilityId) q.set('facilityId', params.facilityId)
     if (params?.municipalityId) q.set('municipalityId', params.municipalityId)
     const qs = q.toString()
+    // Só envia X-Work-Context quando NÃO há params explícitos — evita
+    // forçar MASTER a ter work-context no fluxo admin.
     return api.get<EffectiveClnConfig>(
       `${BASE}/config/effective${qs ? `?${qs}` : ''}`,
-      { withContext: true },
+      { withContext: !qs },
     )
   },
+
+  getTicket: (id: string) =>
+    api.get<ClnQueueItem>(`${BASE}/tickets/${id}`, { withContext: true }),
 
   listTriagem: () =>
     api.get<ClnQueueItem[]>(`${BASE}/triagem`, { withContext: true }),

@@ -79,6 +79,21 @@ class ClnConfigService:
             config=ClnConfig.model_validate(fac.cln_config) if fac.cln_config else None,
         )
 
+    def _validate_merged_config(self, cfg: dict) -> None:
+        """Valida regras de integridade do dict mesclado.
+
+        Só dispara 409 quando os dois campos estão preenchidos E iguais —
+        campos ausentes/nulos são tolerados (herdam).
+        """
+        triagem_en = cfg.get("triagem_enabled", True)
+        t = cfg.get("triagem_sector_name")
+        a = cfg.get("atendimento_sector_name")
+        if triagem_en and t and a and t == a:
+            raise HTTPException(
+                status_code=409,
+                detail="Triagem e atendimento precisam ser setores diferentes.",
+            )
+
     async def update_for_municipality(
         self, municipality_id: UUID, payload: ClnConfigUpdate,
     ) -> ClnConfigRead:
@@ -89,6 +104,7 @@ class ClnConfigService:
             new = (mun.cln_config or {}).copy()
             for k, v in payload.config.model_dump(exclude_unset=True).items():
                 new[k] = v
+            self._validate_merged_config(new)
             mun.cln_config = new
         await self.db.flush()
         return await self.get_for_municipality(municipality_id)
@@ -103,6 +119,7 @@ class ClnConfigService:
             new = (fac.cln_config or {}).copy()
             for k, v in payload.config.model_dump(exclude_unset=True).items():
                 new[k] = v
+            self._validate_merged_config(new)
             fac.cln_config = new
         await self.db.flush()
         return await self.get_for_facility(facility_id)
@@ -266,12 +283,43 @@ class ClnService:
     async def start(
         self, attendance_id: UUID, user_id: UUID, user_name: str = "",
     ) -> Attendance:
-        """Começa o atendimento — vai pra ``cln_attending``."""
+        """Começa o atendimento — vai pra ``cln_attending``.
+
+        Bloqueia atendimento concorrente: um mesmo usuário só pode estar
+        atendendo 1 ticket por vez na unidade. Precisa finalizar, liberar
+        ou cancelar o atual antes de pegar outro.
+        """
         att = await self._att._get_or_404(attendance_id)  # noqa: SLF001
         if att.status not in ("cln_called", "triagem_waiting", "sector_waiting"):
             raise HTTPException(
                 status_code=409,
                 detail=f"Status inválido pra atender: {att.status}",
+            )
+        # Atendimento único por usuário/unidade.
+        existing = await self.tenant_db.scalar(
+            select(Attendance)
+            .where(Attendance.facility_id == att.facility_id)
+            .where(Attendance.started_by_user_id == user_id)
+            .where(Attendance.status == "cln_attending")
+            .where(Attendance.id != attendance_id)
+            .limit(1)
+        )
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "already_attending",
+                    "message": (
+                        f"Você já está atendendo a senha {existing.ticket_number} "
+                        f"({existing.patient_name}). Libere ou finalize antes de "
+                        f"pegar outro paciente."
+                    ),
+                    "activeTicket": {
+                        "id": str(existing.id),
+                        "ticketNumber": existing.ticket_number,
+                        "patientName": existing.patient_name,
+                    },
+                },
             )
         att.status = "cln_attending"
         att.started_at = datetime.now(UTC)

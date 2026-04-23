@@ -30,6 +30,7 @@ import { MinhaContaPage } from '../pages/shared/MinhaContaPage'
 // CLN – Clínica
 import { ClnHomePage } from '../pages/cln/ClnHomePage'
 import { ClnQueuePage } from '../pages/cln/ClnQueuePage'
+import { ClnTriagemPage } from '../pages/cln/ClnTriagemPage'
 
 // DGN – Diagnóstico
 import { DgnHomePage } from '../pages/dgn/DgnHomePage'
@@ -271,6 +272,7 @@ export const router = createBrowserRouter([
                 children: [
                   { path: '/cln',             element: <ClnHomePage /> },
                   { path: '/cln/triagem',     element: <ClnQueuePage kind="triagem" /> },
+                  { path: '/cln/triagem/:ticketId', element: <ClnTriagemPage /> },
                   { path: '/cln/atendimento', element: <ClnQueuePage kind="atendimento" /> },
                 ],
               },

@@ -97,6 +97,10 @@ class ClnQueueItem(CamelModel):
     arrived_at: datetime
     called_at: datetime | None = None
     started_at: datetime | None = None
+    # Usuário que está atendendo (preenchido quando ticket foi iniciado).
+    # Útil pra outros atendentes saberem quem já pegou o paciente.
+    started_by_user_id: UUID | None = None
+    started_by_user_name: str | None = None
 
 
 class CancelInput(CamelModel):

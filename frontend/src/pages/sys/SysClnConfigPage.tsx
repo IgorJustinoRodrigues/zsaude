@@ -81,8 +81,20 @@ function ClnSectionPage({ scope }: { scope: Scope }) {
 
   useEffect(() => { void load() }, [load])
 
+  // Triagem e atendimento NUNCA podem ser o mesmo setor — o ticket teria
+  // que ficar em duas filas simultâneas e "liberar da triagem" viraria no-op.
+  const sectorConflict = Boolean(
+    enabled && triagemEnabled &&
+    triagemSector && atendimentoSector &&
+    triagemSector === atendimentoSector,
+  )
+
   async function handleSave() {
     if (!id) return
+    if (sectorConflict) {
+      toast.error('Setores inválidos', 'Triagem e atendimento precisam ser setores diferentes.')
+      return
+    }
     setSaving(true)
     try {
       const payload: ClnConfig = {
@@ -184,7 +196,7 @@ function ClnSectionPage({ scope }: { scope: Scope }) {
           description="Tickets encaminhados pra este setor aparecem na fila de Triagem do CLN."
           value={triagemSector}
           onChange={setTriagemSector}
-          options={sectorOptions}
+          options={sectorOptions.filter(s => s.name !== atendimentoSector)}
           disabled={!enabled || !triagemEnabled}
           hint={parentHint(effective?.sources?.triagem_sector_name, 'triagemSectorName')}
         />
@@ -194,11 +206,23 @@ function ClnSectionPage({ scope }: { scope: Scope }) {
           description="Tickets encaminhados pra este setor aparecem na fila de Atendimento do CLN."
           value={atendimentoSector}
           onChange={setAtendimentoSector}
-          options={sectorOptions}
+          options={sectorOptions.filter(s =>
+            // Só exclui a triagem quando ela está ativa — senão a lista
+            // some opções sem necessidade.
+            !(enabled && triagemEnabled && s.name === triagemSector),
+          )}
           disabled={!enabled}
           hint={parentHint(effective?.sources?.atendimento_sector_name, 'atendimentoSectorName')}
           required
         />
+
+        {sectorConflict && (
+          <div className="flex items-start gap-2 p-3 rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-950/40 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200">
+            Triagem e atendimento precisam ser <strong>setores diferentes</strong>.
+            Se os dois fossem iguais, o ticket ficaria em ambas as filas e a
+            ação "Liberar" da triagem não teria pra onde ir.
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between">
@@ -220,8 +244,9 @@ function ClnSectionPage({ scope }: { scope: Scope }) {
           )}
           <button
             onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold disabled:opacity-50"
+            disabled={saving || sectorConflict}
+            title={sectorConflict ? 'Triagem e atendimento não podem ser o mesmo setor' : undefined}
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Salvar

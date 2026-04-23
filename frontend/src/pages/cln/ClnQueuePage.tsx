@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, CheckCircle2, Clock, History, PhoneCall, Star, X,
+  CheckCircle2, Clock, History, PhoneCall, Star, Stethoscope, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { clnApi, type ClnQueueItem, type EffectiveClnConfig } from '../../api/cln'
@@ -24,6 +24,7 @@ interface Props {
 }
 
 export function ClnQueuePage({ kind }: Props) {
+  const navigate = useNavigate()
   const [tickets, setTickets] = useState<ClnQueueItem[]>([])
   const [config, setConfig] = useState<EffectiveClnConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -91,9 +92,33 @@ export function ClnQueuePage({ kind }: Props) {
     try {
       await clnApi.start(t.id)
       toast.success('Atendendo', t.ticketNumber)
-      void load()
+      // Em triagem, abre tela dedicada pra coletar sinais vitais +
+      // classificação. Em atendimento, por enquanto só atualiza a fila.
+      if (kind === 'triagem') {
+        navigate(`/cln/triagem/${t.id}`)
+      } else {
+        void load()
+      }
     } catch (err) {
-      if (err instanceof HttpError) toast.error('Atender', err.message)
+      if (err instanceof HttpError) {
+        if (err.code === 'already_attending') {
+          // Backend bloqueou: já tem outro ticket em atendimento por este
+          // usuário. Oferece ir direto pra ele.
+          const active = err.details?.activeTicket as
+            | { id: string; ticketNumber: string; patientName: string } | undefined
+          toast.warning(
+            'Você já está atendendo',
+            active
+              ? `Senha ${active.ticketNumber} · ${active.patientName}. Libere ou finalize antes.`
+              : err.message,
+          )
+          if (active && kind === 'triagem') {
+            navigate(`/cln/triagem/${active.id}`)
+          }
+          return
+        }
+        toast.error('Atender', err.message)
+      }
     }
   }
 
@@ -292,6 +317,16 @@ function QueueRow({
   const callDisabledSec = Math.max(0, Math.ceil((callCooldownUntil - Date.now()) / 1000))
   const callDisabled = callDisabledSec > 0
 
+  // Destino do clique: em triagem (e se o ticket já foi chamado/iniciado),
+  // vai pra tela de triagem dedicada. Caso contrário, abre a ficha do
+  // paciente na recepção (pra revisar dados cadastrais).
+  const clickTarget: string | null = (() => {
+    if (kind === 'triagem' && (wasCalled || attending)) return `/cln/triagem/${ticket.id}`
+    if (ticket.patientId) return `/rec/atendimento/${ticket.patientId}`
+    return null
+  })()
+  const openClickTarget = () => { if (clickTarget) navigate(clickTarget) }
+
   return (
     <li className={cn(
       'bg-card border border-border rounded-xl p-3 flex items-center gap-4 transition-colors',
@@ -301,16 +336,16 @@ function QueueRow({
       <span
         className="text-2xl font-black tabular-nums shrink-0 min-w-[5.5rem] cursor-pointer"
         style={{ color: ticket.priority ? '#dc2626' : '#0d9488' }}
-        onClick={() => ticket.patientId && navigate(`/rec/atendimento/${ticket.patientId}`)}
-        title={ticket.patientId ? 'Abrir ficha' : undefined}
+        onClick={openClickTarget}
+        title={clickTarget ? 'Abrir' : undefined}
       >{ticket.ticketNumber}</span>
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate flex items-center gap-2">
           <button
-            onClick={() => ticket.patientId && navigate(`/rec/atendimento/${ticket.patientId}`)}
+            onClick={openClickTarget}
             className="hover:underline truncate text-left"
-            disabled={!ticket.patientId}
+            disabled={!clickTarget}
           >
             {ticket.patientName || <span className="italic text-muted-foreground">Sem nome</span>}
           </button>
@@ -333,6 +368,12 @@ function QueueRow({
         <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
           <Clock size={11} />
           <WaitLabel sinceIso={ticket.arrivedAt} />
+          {ticket.startedByUserName && (wasCalled || attending) && (
+            <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold">
+              <Stethoscope size={10} />
+              Atendido por <strong className="font-bold">{ticket.startedByUserName}</strong>
+            </span>
+          )}
         </p>
       </div>
 
@@ -382,13 +423,13 @@ function QueueRow({
                 {callDisabled ? `Aguarde ${callDisabledSec}s` : 'Rechamar'}
               </button>
             )}
-            {kind === 'triagem' && onRelease && (
+            {kind === 'triagem' && (
               <button
-                onClick={() => onRelease(ticket)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white"
-                title="Triagem concluída — libera pra atendimento"
+                onClick={() => navigate(`/cln/triagem/${ticket.id}`)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+                title="Abrir tela de triagem pra concluir"
               >
-                <ArrowRight size={13} /> Liberar
+                <CheckCircle2 size={13} /> Atender
               </button>
             )}
             {kind === 'atendimento' && onFinish && (
