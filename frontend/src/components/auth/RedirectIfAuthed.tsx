@@ -19,7 +19,7 @@ export function RedirectIfAuthed() {
     if (context) {
       return <Navigate to="/selecionar-sistema" replace />
     }
-    return <Navigate to="/selecionar-contexto" replace />
+    return <Navigate to="/selecionar-acesso" replace />
   }
   return <Outlet />
 }

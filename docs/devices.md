@@ -124,7 +124,7 @@ Usuário escaneia com o celular. A `RecDevicePairPage` trata 3 estados:
 - **Não logado**: mostra "Precisa estar logado" com link pra `/login`
   (preservando `returnTo` via `location.state`). Após login, volta.
 - **Logado sem work-context**: botão "Escolher unidade" redireciona pra
-  `/selecionar-contexto` (também preserva `returnTo`).
+  `/selecionar-acesso` (também preserva `returnTo`).
 - **Logado com unidade**: form reduzido (code pre-filled, nome, vínculo
   opcional, confirma).
 

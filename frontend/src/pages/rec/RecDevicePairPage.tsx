@@ -104,7 +104,7 @@ export function RecDevicePairPage() {
           <p className="text-sm">Você precisa selecionar uma unidade primeiro.</p>
           <button
             type="button"
-            onClick={() => navigate('/selecionar-contexto', { state: { returnTo } })}
+            onClick={() => navigate('/selecionar-acesso', { state: { returnTo } })}
             className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold"
           >
             Escolher unidade

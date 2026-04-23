@@ -70,10 +70,10 @@ export function LoginPage() {
           navigate('/selecionar-sistema', { replace: true })
         }
       } else {
-        navigate('/selecionar-contexto', { replace: true })
+        navigate('/selecionar-acesso', { replace: true })
       }
     } catch {
-      navigate(returnTo ?? '/selecionar-contexto', { replace: true })
+      navigate(returnTo ?? '/selecionar-acesso', { replace: true })
     } finally {
       setLoading(false)
     }

@@ -20,7 +20,7 @@ export function ForbiddenPage() {
       if (currentSystem && context.modules.includes(currentSystem)) return `/${currentSystem}`
       if (context.modules.length > 0) return `/${context.modules[0]}`
     }
-    return '/selecionar-contexto'
+    return '/selecionar-acesso'
   })()
 
   return (

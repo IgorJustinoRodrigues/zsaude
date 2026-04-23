@@ -188,7 +188,7 @@ export const router = createBrowserRouter([
   {
     element: <RequireAuth />,
     children: [
-      { path: '/selecionar-contexto', element: <ContextSelectPage /> },
+      { path: '/selecionar-acesso', element: <ContextSelectPage /> },
 
       // ── Área MASTER — plataforma, não usa WorkContext ──────────────
       {

@@ -203,7 +203,7 @@ export function SystemSelectPage() {
                 {/* Trocar unidade + Logout */}
                 <div className="p-2 space-y-0.5">
                   <button
-                    onClick={() => { setUserMenuOpen(false); navigate('/selecionar-contexto') }}
+                    onClick={() => { setUserMenuOpen(false); navigate('/selecionar-acesso') }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <LayoutGrid size={14} />
@@ -229,7 +229,7 @@ export function SystemSelectPage() {
         {context && (
           <div className="w-full max-w-2xl mb-6 flex items-center justify-between gap-3">
             <button
-              onClick={() => navigate('/selecionar-contexto')}
+              onClick={() => navigate('/selecionar-acesso')}
               className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
             >
               <ArrowLeft size={14} />
@@ -286,7 +286,7 @@ export function SystemSelectPage() {
               Tente outra unidade ou peça ao administrador para liberar um perfil com acesso.
             </p>
             <button
-              onClick={() => navigate('/selecionar-contexto')}
+              onClick={() => navigate('/selecionar-acesso')}
               className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition-colors"
             >
               <ArrowLeft size={14} />

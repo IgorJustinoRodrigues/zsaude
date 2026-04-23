@@ -5,7 +5,7 @@ import { useAuthStore } from '../../store/authStore'
 export function RequireContext() {
   const { context, contextToken } = useAuthStore()
   if (!context || !contextToken) {
-    return <Navigate to="/selecionar-contexto" replace />
+    return <Navigate to="/selecionar-acesso" replace />
   }
   return <Outlet />
 }

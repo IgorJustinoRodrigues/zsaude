@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { useUIStore } from '../../store/uiStore'
+import { useTheme } from '../../hooks/useTheme'
 import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
 import {
   Building2, ChevronDown, ChevronRight, Layers, LogOut, MapPin, Moon,
-  Stethoscope, Sun, User,
+  Shield, Stethoscope, Sun, User,
 } from 'lucide-react'
 import { cn, formatShortName } from '../../lib/utils'
 import { BrandName } from '../../components/shared/BrandName'
@@ -24,7 +24,8 @@ const FACILITY_TYPE_COLOR: Record<string, string> = {
 
 export function ContextSelectPage() {
   const { user, context, contextOptions, fetchContextOptions, selectContext, selectSystem, logout, isAuthenticated } = useAuthStore()
-  const { darkMode, toggleDarkMode } = useUIStore()
+  const { theme, toggle: toggleDarkMode } = useTheme()
+  const darkMode = theme === 'dark'
   const navigate = useNavigate()
   const [expandedMun, setExpandedMun] = useState<string | null>(null)
   // Key = `${facilityId}:${bindingId ?? '-'}`. Cada binding é uma linha
@@ -227,6 +228,30 @@ export function ContextSelectPage() {
               de <strong className="text-slate-700 dark:text-slate-300">{accessible.length} município{accessible.length !== 1 ? 's' : ''}</strong>
             </p>
           </div>
+
+          {/* Atalho para o painel da plataforma (só MASTER) */}
+          {user?.level === 'master' && (
+            <button
+              onClick={() => navigate('/sys')}
+              className="group w-full mb-6 bg-gradient-to-r from-violet-950 to-slate-900 hover:from-violet-900 hover:to-slate-800 border border-violet-800/60 rounded-2xl px-5 py-4 text-left transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 flex items-center gap-4"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-violet-500/20 text-violet-200 shrink-0 group-hover:scale-110 transition-transform">
+                <Shield size={22} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold tracking-widest text-violet-300 uppercase mb-0.5">
+                  Plataforma
+                </p>
+                <p className="text-sm font-semibold text-white">
+                  Painel MASTER
+                </p>
+                <p className="text-xs text-violet-300/80 mt-0.5">
+                  Municípios, unidades, usuários administrativos, perfis e configurações globais
+                </p>
+              </div>
+              <ChevronRight size={16} className="text-violet-300 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+            </button>
+          )}
 
           {/* Municipality list */}
           <div className="space-y-3">
