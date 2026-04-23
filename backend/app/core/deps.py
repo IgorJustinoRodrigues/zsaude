@@ -218,7 +218,7 @@ class WorkContext:
     __slots__ = (
         "user_id", "municipality_id", "municipality_ibge",
         "facility_id", "facility_access_id",
-        "role", "modules", "permissions",
+        "role", "modules", "permissions", "cbo_id",
     )
 
     def __init__(
@@ -232,6 +232,7 @@ class WorkContext:
         role: str,
         modules: list[str],
         permissions: "ResolvedPermissions",
+        cbo_id: str | None = None,
     ) -> None:
         self.user_id = user_id
         self.municipality_id = municipality_id
@@ -241,6 +242,7 @@ class WorkContext:
         self.role = role
         self.modules = modules
         self.permissions = permissions
+        self.cbo_id = cbo_id
 
     def has(self, permission_code: str) -> bool:
         return permission_code in self.permissions
@@ -336,6 +338,7 @@ async def current_context(
         role=str(payload.get("role", "")),
         modules=derived_modules,
         permissions=permissions,
+        cbo_id=active_cbo,
     )
 
     update_audit_context(

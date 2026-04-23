@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle, ArrowRight, Camera, CheckCircle2, Edit3, FileEdit, Loader2,
-  LogIn, MessageSquare, PhoneCall, Repeat2, UserCheck, X,
+  LogIn, MessageSquare, PhoneCall, Repeat2, RotateCcw, Send, UserCheck, X,
 } from 'lucide-react'
 import { recApi, type AttendanceEventOut } from '../../../api/rec'
 import { HttpError } from '../../../api/client'
@@ -123,9 +123,21 @@ const EVENT_STYLES: Record<string, EventStyle> = {
     icon: <ArrowRight size={14} />, label: 'Encaminhado',
     bg: 'bg-indigo-100 dark:bg-indigo-950', fg: 'text-indigo-700 dark:text-indigo-300',
   },
+  retriagem_requested: {
+    icon: <RotateCcw size={14} />, label: 'Retriagem solicitada',
+    bg: 'bg-violet-100 dark:bg-violet-950', fg: 'text-violet-700 dark:text-violet-300',
+  },
+  referred: {
+    icon: <Send size={14} />, label: 'Encaminhado pra UBS',
+    bg: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300',
+  },
   cancelled: {
     icon: <X size={14} />, label: 'Cancelado',
     bg: 'bg-rose-100 dark:bg-rose-950', fg: 'text-rose-700 dark:text-rose-300',
+  },
+  evaded: {
+    icon: <X size={14} />, label: 'Evadiu-se',
+    bg: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300',
   },
   handover_assumed: {
     icon: <UserCheck size={14} />, label: 'Presença confirmada (handover)',
@@ -152,7 +164,20 @@ const EVENT_STYLES: Record<string, EventStyle> = {
 function summarizeDetails(ev: AttendanceEventOut): string | null {
   const d = ev.details ?? {}
   if (ev.eventType === 'forwarded' && typeof d.sectorName === 'string') {
-    return `setor ${d.sectorName}`
+    const base = `setor ${d.sectorName}`
+    if (d.reason === 'retriagem_completed' && typeof d.retriagemNumber === 'number') {
+      return `${base} · ${d.retriagemNumber}ª triagem`
+    }
+    if (typeof d.risk === 'number') {
+      return `${base} · risco ${d.risk}`
+    }
+    return base
+  }
+  if (ev.eventType === 'retriagem_requested' && typeof d.fromStatus === 'string') {
+    return `de ${d.fromStatus}`
+  }
+  if (ev.eventType === 'referred' && typeof d.ubsName === 'string') {
+    return d.ubsName
   }
   if (ev.eventType === 'cancelled' && typeof d.reason === 'string') {
     return `motivo: ${d.reason}`

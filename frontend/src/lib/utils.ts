@@ -108,3 +108,20 @@ export function initials(name: string) {
     .map(n => n[0].toUpperCase())
     .join('')
 }
+
+/** Nome curto pra topbar/sidebar. Retorna "Primeiro Último" quando o
+ *  nome tem 2+ partes; só o primeiro quando tem 1 (evita "Igor Igor"
+ *  pra nomes de 1 palavra). Aceita socialName preferencial. */
+export function formatShortName(
+  nameOrUser: string | { name?: string | null; socialName?: string | null } | null | undefined,
+): string {
+  if (!nameOrUser) return ''
+  const raw =
+    typeof nameOrUser === 'string'
+      ? nameOrUser
+      : (nameOrUser.socialName?.trim() || nameOrUser.name || '')
+  const parts = raw.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return ''
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1]}`
+}

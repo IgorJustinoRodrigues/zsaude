@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { useUIStore } from '../../store/uiStore'
 import { toast } from '../../store/toastStore'
 import { HttpError } from '../../api/client'
 import {
-  MapPin, Building2, ChevronRight, Sun, Moon, LogOut,
-  ChevronDown, Layers, Stethoscope,
+  Building2, ChevronDown, ChevronRight, Layers, LogOut, MapPin, Moon,
+  Stethoscope, Sun, User,
 } from 'lucide-react'
-import { initials } from '../../lib/utils'
-import { cn } from '../../lib/utils'
+import { cn, formatShortName } from '../../lib/utils'
 import { BrandName } from '../../components/shared/BrandName'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 
 const FACILITY_TYPE_COLOR: Record<string, string> = {
   SMS:         '#0ea5e9',
@@ -23,13 +23,15 @@ const FACILITY_TYPE_COLOR: Record<string, string> = {
 }
 
 export function ContextSelectPage() {
-  const { user, contextOptions, fetchContextOptions, selectContext, selectSystem, logout, isAuthenticated } = useAuthStore()
+  const { user, context, contextOptions, fetchContextOptions, selectContext, selectSystem, logout, isAuthenticated } = useAuthStore()
   const { darkMode, toggleDarkMode } = useUIStore()
   const navigate = useNavigate()
   const [expandedMun, setExpandedMun] = useState<string | null>(null)
   // Key = `${facilityId}:${bindingId ?? '-'}`. Cada binding é uma linha
   // independente — não existe mais modal pra escolher CBO.
   const [selecting, setSelecting] = useState<string | null>(null)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/login'); return }
@@ -38,6 +40,17 @@ export function ContextSelectPage() {
       fetchContextOptions().catch(() => navigate('/login'))
     }
   }, []) // eslint-disable-line
+
+  // Fecha o menu ao clicar fora — mesma UX do SystemSelectPage.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Esconde municípios sem unidade cadastrada — não há onde estabelecer
   // contexto de trabalho. (Para MASTER o backend lista tudo; o admin panel
@@ -83,36 +96,119 @@ export function ContextSelectPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
-      {/* Top bar */}
+      {/* Top bar — mesmo padrão do SystemSelectPage */}
       <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 shrink-0">
         <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
           <BrandName accentClassName="text-sky-500" />
         </span>
+
         <div className="flex items-center gap-2">
+          {/* Dark mode */}
           <button
             onClick={toggleDarkMode}
             className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <div className="flex items-center gap-2.5 h-9 pl-2 pr-3 rounded-xl">
-            <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
-              {user ? initials(user.name) : 'U'}
-            </div>
-            <div className="text-left hidden sm:block">
-              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">
-                {user?.name?.split(' ')[0]}
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5 leading-none">{user?.email}</p>
-            </div>
+
+          {/* User menu */}
+          <div ref={menuRef} className="relative">
+            <button
+              onClick={() => setUserMenuOpen(v => !v)}
+              className={cn(
+                'flex items-center gap-2.5 h-9 pl-2 pr-3 rounded-xl border transition-all',
+                userMenuOpen
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
+              )}
+            >
+              {user
+                ? <UserAvatar
+                    userId={user.id}
+                    userName={user.socialName || user.name}
+                    photoId={user.currentPhotoId}
+                    className="w-7 h-7"
+                    initialsClassName="text-xs"
+                  />
+                : <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">U</div>}
+              <div className="text-left hidden sm:block">
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">
+                  {formatShortName(user)}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-none">
+                  {context?.role ?? user?.email}
+                </p>
+              </div>
+              <ChevronDown
+                size={13}
+                className={cn('text-slate-400 transition-transform', userMenuOpen && 'rotate-180')}
+              />
+            </button>
+
+            {/* Dropdown */}
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden">
+
+                {/* User header */}
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    {user
+                      ? <UserAvatar
+                          userId={user.id}
+                          userName={user.socialName || user.name}
+                          photoId={user.currentPhotoId}
+                          className="w-11 h-11"
+                          initialsClassName="text-sm"
+                        />
+                      : <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">U</div>}
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                        {user?.socialName || user?.name}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{user?.email}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dados da conta — só quando há contexto ativo
+                    (pode acontecer se o usuário voltou aqui pra trocar
+                    de unidade sem ter feito logout). */}
+                {context && (
+                  <div className="p-3 space-y-1 border-b border-slate-100 dark:border-slate-800">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-2 mb-2">Dados da conta</p>
+
+                    <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+                      <User size={13} className="text-slate-400 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-slate-400">Perfil</p>
+                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.role}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+                      <Building2 size={13} className="text-slate-400 shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-slate-400">Unidade atual</p>
+                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300">{context.facility.shortName}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Logout */}
+                <div className="p-2 space-y-0.5">
+                  <button
+                    onClick={() => { setUserMenuOpen(false); logout(); navigate('/login') }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-slate-500 dark:text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                  >
+                    <LogOut size={14} />
+                    Sair da conta
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <button
-            onClick={() => { logout(); navigate('/login') }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-          >
-            <LogOut size={13} />
-            <span className="hidden sm:inline">Sair</span>
-          </button>
         </div>
       </header>
 
@@ -124,7 +220,7 @@ export function ContextSelectPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950 text-sky-500 mb-4">
               <Layers size={22} />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione o contexto</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Selecione o Acesso</h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-2">
               Você tem <strong className="text-slate-700 dark:text-slate-300">{totalRows} opç{totalRows !== 1 ? 'ões' : 'ão'}</strong>{' '}
               em <strong className="text-slate-700 dark:text-slate-300">{totalFacilities} unidade{totalFacilities !== 1 ? 's' : ''}</strong>{' '}

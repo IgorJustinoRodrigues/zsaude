@@ -31,6 +31,7 @@ import { MinhaContaPage } from '../pages/shared/MinhaContaPage'
 import { ClnHomePage } from '../pages/cln/ClnHomePage'
 import { ClnQueuePage } from '../pages/cln/ClnQueuePage'
 import { ClnTriagemPage } from '../pages/cln/ClnTriagemPage'
+import { ClnReferralPrintPage } from '../pages/cln/ClnReferralPrintPage'
 
 // DGN – Diagnóstico
 import { DgnHomePage } from '../pages/dgn/DgnHomePage'
@@ -141,6 +142,7 @@ import {
   SysMunicipalityTotensPage,
   SysFacilityTotensPage,
 } from '../pages/sys/SysTotensPage'
+import { SysPriorityGroupsPage } from '../pages/sys/SysPriorityGroupsPage'
 
 // Shared (com contexto): Perfis do município
 import { RoleListPage } from '../pages/shared/RoleListPage'
@@ -207,6 +209,7 @@ export const router = createBrowserRouter([
               { path: '/sys/municipios/:id/modulos/cln/:section',         element: <SysMunicipalityClnSectionPage /> },
               { path: '/sys/municipios/:id/recursos',                     element: <SysMunicipalityResourcesPage /> },
               { path: '/sys/municipios/:id/recursos/setores',             element: <SysMunicipalitySectorsPage /> },
+              { path: '/sys/municipios/:id/recursos/grupos-prioritarios', element: <SysPriorityGroupsPage /> },
               { path: '/sys/municipios/:id/recursos/paineis',             element: <SysMunicipalityPainelsPage /> },
               { path: '/sys/municipios/:id/recursos/totens',              element: <SysMunicipalityTotensPage /> },
               { path: '/sys/unidades',                    element: <SysFacilityListPage /> },
@@ -274,6 +277,7 @@ export const router = createBrowserRouter([
                   { path: '/cln/triagem',     element: <ClnQueuePage kind="triagem" /> },
                   { path: '/cln/triagem/:ticketId', element: <ClnTriagemPage /> },
                   { path: '/cln/atendimento', element: <ClnQueuePage kind="atendimento" /> },
+                  { path: '/cln/referral/:ticketId/print', element: <ClnReferralPrintPage /> },
                 ],
               },
 

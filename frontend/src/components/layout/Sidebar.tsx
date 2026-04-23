@@ -10,7 +10,7 @@ import {
 import { useUIStore } from '../../store/uiStore'
 import { useAuthStore } from '../../store/authStore'
 import { UserAvatar } from '../shared/UserAvatar'
-import { cn } from '../../lib/utils'
+import { cn, formatShortName } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { BrandName } from '../shared/BrandName'
 import { useEffectiveRecConfig } from '../../hooks/useEffectiveRecConfig'
@@ -82,14 +82,6 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
 }
 
 interface Props { module: SystemId | null }
-
-// "Igor Rodrigues da Silva" → "Igor Silva"; "Igor" → "Igor".
-// Evita o bug antigo de repetir ("Igor Igor") quando o nome tem uma palavra só.
-function formatShortName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length <= 1) return parts[0] ?? name
-  return `${parts[0]} ${parts[parts.length - 1]}`
-}
 
 export function Sidebar({ module }: Props) {
   const {
@@ -387,7 +379,7 @@ export function Sidebar({ module }: Props) {
               />
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                  {formatShortName(user.name)}
+                  {formatShortName(user)}
                 </p>
                 <p className="text-[10px] text-slate-400 truncate">{context?.role ?? user.email}</p>
               </div>

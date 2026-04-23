@@ -8,7 +8,7 @@
 // Mesmo padrão pra /sys/unidades/:id/recursos/...
 
 import { useNavigate, useParams } from 'react-router-dom'
-import { BellRing, ChevronRight, LayoutList, MonitorSmartphone, type LucideIcon } from 'lucide-react'
+import { BellRing, ChevronRight, LayoutList, MonitorSmartphone, Shield, type LucideIcon } from 'lucide-react'
 import { ScopeHeader, useScopeHeader } from './SysModulesConfigPages'
 import { cn } from '../../lib/utils'
 
@@ -20,6 +20,7 @@ interface Resource {
   description: string
   icon: LucideIcon
   accent: string
+  scopes?: Scope[]  // ausência = aparece em ambos
 }
 
 /** Recursos cadastrados — cresce conforme formos adicionando.  */
@@ -44,6 +45,14 @@ const RESOURCES: Resource[] = [
     description: 'Configurações do autoatendimento — vinculadas a um dispositivo totem',
     icon: MonitorSmartphone,
     accent: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300',
+  },
+  {
+    id: 'grupos-prioritarios',
+    label: 'Grupos prioritários',
+    description: 'Gestantes, idosos, PCD — grupos legais usados pela triagem',
+    icon: Shield,
+    accent: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',
+    scopes: ['municipality'],
   },
 ]
 
@@ -85,7 +94,7 @@ function ResourcesPage({ scope }: { scope: Scope }) {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {RESOURCES.map(r => {
+        {RESOURCES.filter(r => !r.scopes || r.scopes.includes(scope)).map(r => {
           const Icon = r.icon
           return (
             <button

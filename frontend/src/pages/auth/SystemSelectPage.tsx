@@ -9,10 +9,10 @@ import {
   HelpCircle, ChevronDown, User, Building2, Shield, LayoutGrid,
   TrendingUp, BellRing, Link2, ArrowLeft, AlertCircle,
 } from 'lucide-react'
-import { initials } from '../../lib/utils'
-import { cn } from '../../lib/utils'
+import { cn, formatShortName } from '../../lib/utils'
 import type { SystemId } from '../../types'
 import { BrandName } from '../../components/shared/BrandName'
+import { UserAvatar } from '../../components/shared/UserAvatar'
 
 const ICONS: Record<SystemId, React.ReactNode> = {
   cln: <Stethoscope size={22} />,
@@ -108,12 +108,18 @@ export function SystemSelectPage() {
                   : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-slate-200 dark:hover:border-slate-700'
               )}
             >
-              <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">
-                {user ? initials(user.name) : 'U'}
-              </div>
+              {user
+                ? <UserAvatar
+                    userId={user.id}
+                    userName={user.socialName || user.name}
+                    photoId={user.currentPhotoId}
+                    className="w-7 h-7"
+                    initialsClassName="text-xs"
+                  />
+                : <div className="w-7 h-7 rounded-full bg-sky-500 flex items-center justify-center text-xs font-bold text-white">U</div>}
               <div className="text-left hidden sm:block">
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-none">
-                  {user?.name?.split(' ')[0]} {user?.name?.split(' ').slice(-1)[0]}
+                  {formatShortName(user)}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-0.5 leading-none">{context?.role ?? user?.email}</p>
               </div>
@@ -130,11 +136,19 @@ export function SystemSelectPage() {
                 {/* User header */}
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                      {user ? initials(user.name) : 'U'}
-                    </div>
+                    {user
+                      ? <UserAvatar
+                          userId={user.id}
+                          userName={user.socialName || user.name}
+                          photoId={user.currentPhotoId}
+                          className="w-11 h-11"
+                          initialsClassName="text-sm"
+                        />
+                      : <div className="w-11 h-11 rounded-full bg-sky-500 flex items-center justify-center text-sm font-bold text-white shrink-0">U</div>}
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{user?.name}</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                        {user?.socialName || user?.name}
+                      </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{user?.email}</p>
                     </div>
                   </div>

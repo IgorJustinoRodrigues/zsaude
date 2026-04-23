@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  CheckCircle2, Clock, History, PhoneCall, Star, Stethoscope, X,
+  Activity, ArrowRight, CheckCircle2, Clock, History, PhoneCall, RotateCcw,
+  Star, Stethoscope, UserX, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { clnApi, type ClnQueueItem, type EffectiveClnConfig } from '../../api/cln'
@@ -13,11 +14,13 @@ import { toast } from '../../store/toastStore'
 import { promptDialog, confirmDialog } from '../../store/dialogStore'
 import { cn } from '../../lib/utils'
 import { AttendanceTimeline } from '../rec/components/AttendanceTimeline'
+import { ProceduresSection } from './components/ProceduresSection'
 
 const POLL_MS = 5_000
 const ACTION_COOLDOWN_MS = 5_000
 
 type Kind = 'triagem' | 'atendimento'
+type Tab = 'fila' | 'encaminhados' | 'evadidos'
 
 interface Props {
   kind: Kind
@@ -25,11 +28,13 @@ interface Props {
 
 export function ClnQueuePage({ kind }: Props) {
   const navigate = useNavigate()
+  const [tab, setTab] = useState<Tab>('fila')
   const [tickets, setTickets] = useState<ClnQueueItem[]>([])
   const [config, setConfig] = useState<EffectiveClnConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [callCooldowns, setCallCooldowns] = useState<Record<string, number>>({})
   const [timelineOpen, setTimelineOpen] = useState<ClnQueueItem | null>(null)
+  const [proceduresOpen, setProceduresOpen] = useState<ClnQueueItem | null>(null)
 
   // Tick pra atualizar countdowns.
   const [, setTick] = useState(0)
@@ -40,7 +45,17 @@ export function ClnQueuePage({ kind }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const fetcher = kind === 'triagem' ? clnApi.listTriagem : clnApi.listAtendimento
+      // Escolhe o fetcher certo pela combinação kind × tab.
+      const fetcher = (() => {
+        if (kind === 'triagem') {
+          if (tab === 'encaminhados') return clnApi.listTriagemEncaminhados
+          if (tab === 'evadidos') return clnApi.listTriagemEvadidos
+          return clnApi.listTriagem
+        }
+        if (tab === 'encaminhados') return clnApi.listAtendimentoEncaminhados
+        if (tab === 'evadidos') return clnApi.listAtendimentoEvadidos
+        return clnApi.listAtendimento
+      })()
       const list = await fetcher()
       setTickets(list)
     } catch (err) {
@@ -48,7 +63,7 @@ export function ClnQueuePage({ kind }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [kind])
+  }, [kind, tab])
 
   useEffect(() => {
     void clnApi.effectiveConfig()
@@ -151,7 +166,30 @@ export function ClnQueuePage({ kind }: Props) {
       toast.success('Atendimento finalizado', t.ticketNumber)
       void load()
     } catch (err) {
-      if (err instanceof HttpError) toast.error('Finalizar', err.message)
+      if (err instanceof HttpError) {
+        if (err.code === 'no_procedures_marked') {
+          const confirm = await confirmDialog({
+            title: 'Finalizar sem procedimento?',
+            message: (
+              'Nenhum procedimento SIGTAP foi marcado. ' +
+              'Sem procedimento a BPA deste atendimento fica vazia. ' +
+              'Tem certeza que quer finalizar assim?'
+            ),
+            confirmLabel: 'Finalizar mesmo assim',
+            variant: 'danger',
+          })
+          if (!confirm) return
+          try {
+            await clnApi.finish(t.id, true)
+            toast.success('Atendimento finalizado', t.ticketNumber)
+            void load()
+          } catch (err2) {
+            if (err2 instanceof HttpError) toast.error('Finalizar', err2.message)
+          }
+          return
+        }
+        toast.error('Finalizar', err.message)
+      }
     }
   }
 
@@ -170,6 +208,42 @@ export function ClnQueuePage({ kind }: Props) {
       void load()
     } catch (err) {
       if (err instanceof HttpError) toast.error('Cancelar', err.message)
+    }
+  }
+
+  async function doEvade(t: ClnQueueItem) {
+    const ok = await confirmDialog({
+      title: 'Marcar como evadido?',
+      message: `Senha ${t.ticketNumber} · ${t.patientName} não retornou. Esta ação registra a evasão e fecha o atendimento.`,
+      confirmLabel: 'Evadiu-se',
+      variant: 'danger',
+    })
+    if (!ok) return
+    try {
+      await clnApi.evade(t.id)
+      toast.success('Evadido', t.ticketNumber)
+      void load()
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Evadiu-se', err.message)
+    }
+  }
+
+  async function doRetriage(t: ClnQueueItem) {
+    const ok = await confirmDialog({
+      title: 'Devolver pra triagem?',
+      message:
+        `Senha ${t.ticketNumber} · ${t.patientName} volta pra fila de ` +
+        `triagem pra ser reclassificada. O histórico da triagem anterior ` +
+        `fica preservado.`,
+      confirmLabel: 'Retriar',
+    })
+    if (!ok) return
+    try {
+      await clnApi.retriage(t.id)
+      toast.success('Retriagem solicitada', t.ticketNumber)
+      void load()
+    } catch (err) {
+      if (err instanceof HttpError) toast.error('Retriar', err.message)
     }
   }
 
@@ -192,11 +266,33 @@ export function ClnQueuePage({ kind }: Props) {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="mb-4 flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 w-fit">
+        {([
+          { id: 'fila', label: 'Fila' },
+          { id: 'encaminhados', label: 'Encaminhados' },
+          { id: 'evadidos', label: 'Evadidos' },
+        ] as { id: Tab; label: string }[]).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              tab === t.id
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {loading && tickets.length === 0 ? (
         <div className="py-20 text-center text-sm text-muted-foreground">
           Carregando…
         </div>
-      ) : (
+      ) : tab === 'fila' ? (
         <section className="space-y-6">
           {active.length > 0 && (
             <QueueSection
@@ -210,6 +306,9 @@ export function ClnQueuePage({ kind }: Props) {
               onRelease={doRelease}
               onFinish={doFinish}
               onCancel={doCancel}
+              onEvade={doEvade}
+              onRetriage={doRetriage}
+              onProcedures={t => setProceduresOpen(t)}
               onTimeline={t => setTimelineOpen(t)}
             />
           )}
@@ -223,15 +322,46 @@ export function ClnQueuePage({ kind }: Props) {
             callCooldowns={callCooldowns}
             onCall={doCall}
             onStart={doStart}
+            onEvade={doEvade}
+            onRetriage={doRetriage}
             onTimeline={t => setTimelineOpen(t)}
           />
         </section>
+      ) : tab === 'encaminhados' ? (
+        <QueueSection
+          title="Encaminhados (últimas 24h)"
+          items={tickets}
+          variant="history"
+          kind={kind}
+          historyKind="forwarded"
+          emptyMsg="Ninguém encaminhado nas últimas 24 horas."
+          callCooldowns={{}}
+          onRetriage={doRetriage}
+          onTimeline={t => setTimelineOpen(t)}
+        />
+      ) : (
+        <QueueSection
+          title="Evadidos (últimos 7 dias)"
+          items={tickets}
+          variant="history"
+          kind={kind}
+          historyKind="evaded"
+          emptyMsg="Ninguém evadiu nos últimos 7 dias."
+          callCooldowns={{}}
+          onTimeline={t => setTimelineOpen(t)}
+        />
       )}
 
       {timelineOpen && (
         <TimelineModal
           ticket={timelineOpen}
           onClose={() => setTimelineOpen(null)}
+        />
+      )}
+      {proceduresOpen && (
+        <ProceduresModal
+          ticket={proceduresOpen}
+          onClose={() => setProceduresOpen(null)}
         />
       )}
     </div>
@@ -241,20 +371,27 @@ export function ClnQueuePage({ kind }: Props) {
 // ─── Seção ──────────────────────────────────────────────────────────────
 
 function QueueSection({
-  title, items, variant, kind, emptyMsg, callCooldowns,
-  onCall, onStart, onRelease, onFinish, onCancel, onTimeline,
+  title, items, variant, kind, emptyMsg, callCooldowns, historyKind,
+  onCall, onStart, onRelease, onFinish, onCancel, onEvade, onRetriage,
+  onProcedures, onTimeline,
 }: {
   title: string
   items: ClnQueueItem[]
-  variant: 'waiting' | 'active'
+  variant: 'waiting' | 'active' | 'history'
   kind: Kind
   emptyMsg?: string
   callCooldowns: Record<string, number>
+  /** Só pra variant=history: diferencia 'forwarded' (encaminhados) de
+   *  'evaded' pra exibição correta. */
+  historyKind?: 'forwarded' | 'evaded'
   onCall?: (t: ClnQueueItem) => void
   onStart?: (t: ClnQueueItem) => void
   onRelease?: (t: ClnQueueItem) => void
   onFinish?: (t: ClnQueueItem) => void
   onCancel?: (t: ClnQueueItem) => void
+  onEvade?: (t: ClnQueueItem) => void
+  onRetriage?: (t: ClnQueueItem) => void
+  onProcedures?: (t: ClnQueueItem) => void
   onTimeline: (t: ClnQueueItem) => void
 }) {
   return (
@@ -279,12 +416,16 @@ function QueueSection({
               ticket={t}
               variant={variant}
               kind={kind}
+              historyKind={historyKind}
               callCooldownUntil={callCooldowns[t.id] ?? 0}
               onCall={onCall}
               onStart={onStart}
               onRelease={onRelease}
               onFinish={onFinish}
               onCancel={onCancel}
+              onEvade={onEvade}
+              onRetriage={onRetriage}
+              onProcedures={onProcedures}
               onTimeline={onTimeline}
             />
           ))}
@@ -297,18 +438,23 @@ function QueueSection({
 // ─── Linha ──────────────────────────────────────────────────────────────
 
 function QueueRow({
-  ticket, variant, kind, callCooldownUntil,
-  onCall, onStart, onRelease, onFinish, onCancel, onTimeline,
+  ticket, variant, kind, historyKind, callCooldownUntil,
+  onCall, onStart, onRelease, onFinish, onCancel, onEvade, onRetriage,
+  onProcedures, onTimeline,
 }: {
   ticket: ClnQueueItem
-  variant: 'waiting' | 'active'
+  variant: 'waiting' | 'active' | 'history'
   kind: Kind
+  historyKind?: 'forwarded' | 'evaded'
   callCooldownUntil: number
   onCall?: (t: ClnQueueItem) => void
   onStart?: (t: ClnQueueItem) => void
   onRelease?: (t: ClnQueueItem) => void
   onFinish?: (t: ClnQueueItem) => void
   onCancel?: (t: ClnQueueItem) => void
+  onEvade?: (t: ClnQueueItem) => void
+  onRetriage?: (t: ClnQueueItem) => void
+  onProcedures?: (t: ClnQueueItem) => void
   onTimeline: (t: ClnQueueItem) => void
 }) {
   const navigate = useNavigate()
@@ -350,8 +496,19 @@ function QueueRow({
             {ticket.patientName || <span className="italic text-muted-foreground">Sem nome</span>}
           </button>
           {ticket.priority && (
-            <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 text-[10px] font-semibold uppercase tracking-wider">
-              <Star size={9} /> Prioridade
+            <span
+              className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400 text-[10px] font-semibold uppercase tracking-wider"
+              title={ticket.priorityGroupLabel ?? undefined}
+            >
+              <Star size={9} /> {ticket.priorityGroupLabel || 'Prioridade'}
+            </span>
+          )}
+          {ticket.triageCount >= 2 && (
+            <span
+              className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 text-[10px] font-semibold uppercase tracking-wider"
+              title={`${ticket.triageCount}ª triagem deste atendimento`}
+            >
+              <RotateCcw size={9} /> {ticket.triageCount}ª triagem
             </span>
           )}
           {wasCalled && (
@@ -407,6 +564,25 @@ function QueueRow({
                 <CheckCircle2 size={13} /> Atender
               </button>
             )}
+            {/* Atendimento: devolve pra triagem quando o quadro mudou. */}
+            {kind === 'atendimento' && onRetriage && ticket.triageCount >= 1 && (
+              <button
+                onClick={() => onRetriage(ticket)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                title="Devolver pra triagem (retriagem)"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
+            {onEvade && (
+              <button
+                onClick={() => onEvade(ticket)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                title="Evadiu-se (paciente não retornou)"
+              >
+                <UserX size={14} />
+              </button>
+            )}
           </>
         )}
 
@@ -432,6 +608,15 @@ function QueueRow({
                 <CheckCircle2 size={13} /> Atender
               </button>
             )}
+            {kind === 'atendimento' && onProcedures && (
+              <button
+                onClick={() => onProcedures(ticket)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+                title="Procedimentos SIGTAP"
+              >
+                <Activity size={14} />
+              </button>
+            )}
             {kind === 'atendimento' && onFinish && (
               <button
                 onClick={() => onFinish(ticket)}
@@ -439,6 +624,24 @@ function QueueRow({
                 title="Finaliza o atendimento"
               >
                 <CheckCircle2 size={13} /> Finalizar
+              </button>
+            )}
+            {kind === 'atendimento' && onRetriage && ticket.triageCount >= 1 && (
+              <button
+                onClick={() => onRetriage(ticket)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                title="Devolver pra triagem (retriagem)"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
+            {onEvade && (
+              <button
+                onClick={() => onEvade(ticket)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                title="Evadiu-se (paciente não retornou)"
+              >
+                <UserX size={14} />
               </button>
             )}
             {onCancel && (
@@ -450,6 +653,40 @@ function QueueRow({
                 <X size={14} />
               </button>
             )}
+          </>
+        )}
+
+        {variant === 'history' && (
+          <>
+            {/* Retriar: só em triagem+encaminhados+ticket ainda ativo. */}
+            {kind === 'triagem'
+              && historyKind === 'forwarded'
+              && onRetriage
+              && (ticket.status === 'sector_waiting'
+                || ticket.status === 'cln_called'
+                || ticket.status === 'cln_attending') && (
+              <button
+                onClick={() => onRetriage(ticket)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                title="Devolver pra triagem (paciente piorou / reclassificar)"
+              >
+                <RotateCcw size={13} /> Retriar
+              </button>
+            )}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold',
+                historyKind === 'evaded'
+                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
+              )}
+            >
+              {historyKind === 'evaded' ? (
+                <><UserX size={11} /> Evadiu-se</>
+              ) : (
+                <><ArrowRight size={11} /> {ticket.sectorName ?? 'Encaminhado'}</>
+              )}
+            </span>
           </>
         )}
       </div>
@@ -491,6 +728,46 @@ function TimelineModal({
         </header>
         <div className="p-5 overflow-y-auto flex-1">
           <AttendanceTimeline ticketId={ticket.id} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal Procedimentos (atendimento) ──────────────────────────────────
+
+function ProceduresModal({
+  ticket, onClose,
+}: { ticket: ClnQueueItem; onClose: () => void }) {
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-background rounded-xl shadow-2xl border border-border w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
+      >
+        <header className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold">Procedimentos</h3>
+              <span
+                className="text-xs font-bold tabular-nums"
+                style={{ color: ticket.priority ? '#dc2626' : '#0d9488' }}
+              >{ticket.ticketNumber}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              {ticket.patientName || 'Sem nome'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded text-muted-foreground hover:bg-muted"
+            aria-label="Fechar"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="p-5 overflow-y-auto flex-1">
+          <ProceduresSection ticketId={ticket.id} />
         </div>
       </div>
     </div>
