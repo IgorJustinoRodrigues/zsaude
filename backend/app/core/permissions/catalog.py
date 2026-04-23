@@ -66,6 +66,9 @@ P("hsp.face.reindex", "Reindexar embeddings faciais do município (MASTER)")
 # (totem/balcão/painel) entram conforme cada função for implementada.
 P("rec.module.access", "Acessar o módulo Recepção")
 
+# ── Clínico (atendimento pós-recepção) ──────────────────────────────────────
+P("cln.module.access", "Acessar o módulo Clínico")
+
 # ── Gateway de IA ───────────────────────────────────────────────────────────
 P("ai.operations.use", "Usar operações de IA (consumidor)")
 # Configuração de IA é centralizada no SYS (MASTER) — não precisa de perm por

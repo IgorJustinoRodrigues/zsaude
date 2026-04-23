@@ -13,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, BellRing, Building2, ChevronRight, Loader2, MapPin,
-  MonitorSmartphone, Settings, Users, type LucideIcon,
+  MonitorSmartphone, Settings, Stethoscope, Users, type LucideIcon,
 } from 'lucide-react'
 import { recConfigApi } from '../../api/recConfig'
 import { sysApi, type MunicipalityAdminDetail } from '../../api/sys'
@@ -41,6 +41,13 @@ const MODULES_WITH_CONFIG: ModuleEntry[] = [
     description: 'Totem, painel de chamadas e balcão',
     icon: BellRing,
     accent: 'bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300',
+  },
+  {
+    id: 'cln',
+    label: 'Clínica',
+    description: 'Filas de triagem e atendimento pós-recepção',
+    icon: Stethoscope,
+    accent: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300',
   },
 ]
 
@@ -71,6 +78,14 @@ const SECTIONS_BY_MODULE: Record<string, SectionMeta[]> = {
       label: 'Atendimento (balcão)',
       description: 'Encaminhamento pós-atendimento',
       icon: Users,
+    },
+  ],
+  cln: [
+    {
+      id: 'geral',
+      label: 'Configuração do módulo',
+      description: 'Ativação, triagem e setores associados',
+      icon: Stethoscope,
     },
   ],
 }

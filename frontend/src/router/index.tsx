@@ -28,13 +28,8 @@ import { NotificationsPage } from '../pages/shared/NotificationsPage'
 import { MinhaContaPage } from '../pages/shared/MinhaContaPage'
 
 // CLN – Clínica
-import { GAHomePage } from '../pages/cln/GAHomePage'
-import { PatientListPage } from '../pages/cln/PatientListPage'
-import { PatientDetailPage } from '../pages/cln/PatientDetailPage'
-import { AppointmentListPage } from '../pages/cln/AppointmentListPage'
-import { ConsultationListPage } from '../pages/cln/ConsultationListPage'
-import { QueuePage } from '../pages/cln/QueuePage'
-import { ProductionPage } from '../pages/cln/ProductionPage'
+import { ClnHomePage } from '../pages/cln/ClnHomePage'
+import { ClnQueuePage } from '../pages/cln/ClnQueuePage'
 
 // DGN – Diagnóstico
 import { DgnHomePage } from '../pages/dgn/DgnHomePage'
@@ -126,6 +121,10 @@ import {
   SysFacilityRecSectionPage,
 } from '../pages/sys/SysRecConfigPage'
 import {
+  SysMunicipalityClnSectionPage,
+  SysFacilityClnSectionPage,
+} from '../pages/sys/SysClnConfigPage'
+import {
   SysMunicipalitySectorsPage,
   SysFacilitySectorsPage,
 } from '../pages/sys/SysSectorsPage'
@@ -204,6 +203,7 @@ export const router = createBrowserRouter([
               { path: '/sys/municipios/:id/modulos',                      element: <SysMunicipalityModulesPage /> },
               { path: '/sys/municipios/:id/modulos/:module',              element: <SysMunicipalityModuleSectionsPage /> },
               { path: '/sys/municipios/:id/modulos/rec/:section',         element: <SysMunicipalityRecSectionPage /> },
+              { path: '/sys/municipios/:id/modulos/cln/:section',         element: <SysMunicipalityClnSectionPage /> },
               { path: '/sys/municipios/:id/recursos',                     element: <SysMunicipalityResourcesPage /> },
               { path: '/sys/municipios/:id/recursos/setores',             element: <SysMunicipalitySectorsPage /> },
               { path: '/sys/municipios/:id/recursos/paineis',             element: <SysMunicipalityPainelsPage /> },
@@ -215,6 +215,7 @@ export const router = createBrowserRouter([
               { path: '/sys/unidades/:id/modulos',                        element: <SysFacilityModulesPage /> },
               { path: '/sys/unidades/:id/modulos/:module',                element: <SysFacilityModuleSectionsPage /> },
               { path: '/sys/unidades/:id/modulos/rec/:section',           element: <SysFacilityRecSectionPage /> },
+              { path: '/sys/unidades/:id/modulos/cln/:section',           element: <SysFacilityClnSectionPage /> },
               { path: '/sys/unidades/:id/recursos',                       element: <SysFacilityResourcesPage /> },
               { path: '/sys/unidades/:id/recursos/setores',               element: <SysFacilitySectorsPage /> },
               { path: '/sys/unidades/:id/recursos/paineis',               element: <SysFacilityPainelsPage /> },
@@ -264,17 +265,13 @@ export const router = createBrowserRouter([
               { path: '/shared/perfis/novo', element: <RoleFormPage /> },
               { path: '/shared/perfis/:id',  element: <RoleDetailPage /> },
 
-              // CLN
+              // CLN — Clínico (fila pós-recepção: triagem + atendimento)
               {
                 element: <RequireModule moduleId="cln" />,
                 children: [
-                  { path: '/cln',                element: <GAHomePage /> },
-                  { path: '/cln/pacientes',      element: <PatientListPage /> },
-                  { path: '/cln/pacientes/:id',  element: <PatientDetailPage /> },
-                  { path: '/cln/agendamentos',   element: <AppointmentListPage /> },
-                  { path: '/cln/consultas',      element: <ConsultationListPage /> },
-                  { path: '/cln/fila',           element: <QueuePage /> },
-                  { path: '/cln/producao',       element: <ProductionPage /> },
+                  { path: '/cln',             element: <ClnHomePage /> },
+                  { path: '/cln/triagem',     element: <ClnQueuePage kind="triagem" /> },
+                  { path: '/cln/atendimento', element: <ClnQueuePage kind="atendimento" /> },
                 ],
               },
 

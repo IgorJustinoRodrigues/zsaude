@@ -124,6 +124,8 @@ _SYSTEM_BASE_ROLES: list[tuple[str, str, str, list[str]]] = [
             "dgn.exam.view", "dgn.exam.request",
             # Recepção — acesso ao módulo (totem, painel, balcão).
             "rec.module.access",
+            # Clínico — fila pós-recepção (triagem + atendimento).
+            "cln.module.access",
             # Operações — visão básica do próprio trabalho (sessões e
             # relatórios). Mais granularidade vem com coordinator/auditor.
             "ops.session.view",

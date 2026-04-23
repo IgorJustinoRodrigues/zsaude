@@ -75,6 +75,10 @@ class Municipality(Base, TimestampedMixin):
     # município desativou.
     rec_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
 
+    # Configuração do módulo Clínico. ``None`` = defaults (módulo desabilitado).
+    # Campos: enabled, triagem_enabled, triagem_sector_name, atendimento_sector_name.
+    cln_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
+
     # Credenciais da integração CadSUS/DATASUS (por município — cada
     # secretaria recebe do DATASUS um usuário no formato
     # CADSUS.SMS.{MUNICIPIO}.{UF}). Sem configurar, cai no fallback da
@@ -143,6 +147,10 @@ class Facility(Base, TimestampedMixin):
     # totem se o município tem totem — nunca ligar o que o município
     # desativou).
     rec_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
+
+    # Personalização do módulo Clínico nesta unidade. Mesma semântica de
+    # ``rec_config``: ``None`` herda do município; dict parcial mescla.
+    cln_config: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
 
     # Setores próprios? ``false`` = herda os setores do município;
     # ``true`` = esta unidade tem sua lista própria de setores

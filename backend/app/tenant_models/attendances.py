@@ -25,6 +25,7 @@ class Attendance(TenantBase):
         CheckConstraint(
             "status IN ('reception_waiting', 'reception_called', "
             "'reception_attending', 'sector_waiting', 'triagem_waiting', "
+            "'cln_called', 'cln_attending', 'finished', "
             "'cancelled', 'evasion')",
             name="ck_attendances_status",
         ),
@@ -107,6 +108,8 @@ class Attendance(TenantBase):
         "reception_attending",
         "sector_waiting",
         "triagem_waiting",
+        "cln_called",
+        "cln_attending",
     )
 
     @property

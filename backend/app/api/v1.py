@@ -34,6 +34,10 @@ from app.modules.rec.router import (
     admin_router as rec_admin_router,
     router as rec_router,
 )
+from app.modules.cln.router import (
+    admin_router as cln_admin_router,
+    router as cln_router,
+)
 from app.modules.tts.router import (
     admin_router as tts_admin_router,
     router as tts_router,
@@ -99,6 +103,8 @@ api_v1.include_router(notifications_router)
 api_v1.include_router(notifications_admin_router)
 api_v1.include_router(rec_router)
 api_v1.include_router(rec_admin_router)
+api_v1.include_router(cln_router)
+api_v1.include_router(cln_admin_router)
 api_v1.include_router(tts_router)
 api_v1.include_router(tts_admin_router)
 api_v1.include_router(devices_public_router)

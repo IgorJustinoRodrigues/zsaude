@@ -53,6 +53,11 @@ const MODULE_NAV: Partial<Record<SystemId, NavEntry[]>> = {
     { kind: 'section', label: 'Administração' },
     { kind: 'item', icon: <Plug size={16} />, label: 'Dispositivos', path: '/rec/dispositivos' },
   ],
+  cln: [
+    { kind: 'section', label: 'Filas' },
+    { kind: 'item', icon: <Stethoscope size={16} />, label: 'Triagem', path: '/cln/triagem' },
+    { kind: 'item', icon: <Users size={16} />, label: 'Atendimento', path: '/cln/atendimento' },
+  ],
   ops: [
     { kind: 'section', label: 'Cadastros' },
     {
