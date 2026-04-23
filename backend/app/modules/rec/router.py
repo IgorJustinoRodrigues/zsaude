@@ -18,7 +18,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.audit import get_audit_context
-from app.core.deps import DB, CurrentContextDep, CurrentUserDep, MasterDep, Valkey
+from app.core.deps import (
+    DB, CurrentContextDep, CurrentUserDep, MasterDep, TenantDB, Valkey,
+)
 from app.core.schema_base import CamelModel
 from app.modules.devices.hub import publish_facility_event
 from app.modules.rec.schemas import (
@@ -159,15 +161,20 @@ class CallInput(CamelModel):
     counter: str | None = None
     patient_name: str | None = None
     priority: bool = False
+    # Opcional — quando fornecido, registra evento ``recalled`` na timeline
+    # do atendimento (rechamada sem mudar status).
+    attendance_id: UUID | None = None
 
 
 @router.post("/calls", status_code=204)
 async def publish_call(
-    payload: CallInput, valkey: Valkey, ctx: CurrentContextDep,
+    payload: CallInput, db: DB, tenant_db: TenantDB,
+    valkey: Valkey, ctx: CurrentContextDep, user: CurrentUserDep,
 ) -> None:
     """Chamada disparada pelo console do balcão. Publica o evento
     ``painel:call`` no canal da unidade — todo painel conectado recebe
-    via WS."""
+    via WS. Se ``attendance_id`` vier no payload, registra evento
+    ``recalled`` na timeline."""
     await publish_facility_event(
         valkey, ctx.facility_id,
         "painel:call",
@@ -179,6 +186,15 @@ async def publish_call(
             "at": datetime_now_iso(),
         },
     )
+    if payload.attendance_id is not None:
+        from app.modules.attendances.service import AttendanceService
+        svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
+        await svc._log_event(  # noqa: SLF001
+            payload.attendance_id, "recalled",
+            user_id=user.id,
+            user_name=user.name,
+            details={"ticketNumber": payload.ticket, "counter": payload.counter},
+        )
 
 
 @router.post("/silence", status_code=204)

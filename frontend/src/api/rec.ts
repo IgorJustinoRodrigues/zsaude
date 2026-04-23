@@ -34,6 +34,8 @@ export interface CallInput {
   counter?: string | null
   patientName?: string | null
   priority?: boolean
+  /** Opcional — quando fornecido, registra ``recalled`` na timeline. */
+  attendanceId?: string
 }
 
 // ─── Totem (device auth via X-Device-Token) ──────────────────────────────
@@ -202,9 +204,29 @@ export const recApi = {
     api.get<PatientVisitSummary>(
       `/api/v1/rec/patients/${patientId}/visit-summary`, { withContext: true },
     ),
+
+  ticketEvents: (ticketId: string) =>
+    api.get<AttendanceEventOut[]>(
+      `/api/v1/rec/tickets/${ticketId}/events`, { withContext: true },
+    ),
 }
 
 export interface PatientVisitSummary {
   totalVisits: number
   lastVisitAt: string | null
+}
+
+export type AttendanceEventType =
+  | 'arrived' | 'called' | 'recalled' | 'started' | 'forwarded'
+  | 'cancelled' | 'handover_assumed' | 'photo_uploaded'
+  | 'data_updated' | 'note_added'
+
+export interface AttendanceEventOut {
+  id: string
+  attendanceId: string
+  eventType: string
+  userId: string | null
+  userName: string
+  details: Record<string, unknown> | null
+  createdAt: string
 }

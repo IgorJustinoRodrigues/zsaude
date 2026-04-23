@@ -28,7 +28,7 @@ from app.modules.devices.models import Device
 from app.modules.hsp import face_service
 from app.modules.tenants.models import Facility, Municipality
 from app.modules.totens.models import Totem, TotemCounter
-from app.tenant_models.attendances import Attendance
+from app.tenant_models.attendances import Attendance, AttendanceEvent
 from app.tenant_models.patients import Patient, PatientPhoto
 
 
@@ -353,6 +353,17 @@ class AttendanceService:
         self.tenant_db.add(att)
         await self.tenant_db.flush()
 
+        # Evento 'arrived' — chegada do paciente via totem.
+        await self._log_event(
+            att.id, "arrived", user_name="Totem",
+            details={
+                "ticketNumber": att.ticket_number,
+                "docType": doc_type,
+                "priority": att.priority,
+                "source": "totem",
+            },
+        )
+
         # ── Monta info de handover pra retornar/expor ──────────────
         handover_info: HandoverInfo | None = None
         if handover_old:
@@ -378,6 +389,7 @@ class AttendanceService:
         patient_id: UUID,
         priority: bool,
         user_id: UUID,
+        user_name: str = "",
     ) -> tuple[Attendance, HandoverInfo | None]:
         """Cria atendimento direto do balcão — sem totem físico.
         Reusa a numeração de algum totem da unidade (primeiro não arquivado).
@@ -479,6 +491,22 @@ class AttendanceService:
         self.tenant_db.add(att)
         await self.tenant_db.flush()
 
+        # Evento 'arrived' — chegada registrada manualmente no balcão.
+        await self._log_event(
+            att.id, "arrived", user_id=user_id, user_name=user_name,
+            details={
+                "ticketNumber": att.ticket_number,
+                "docType": doc_type,
+                "priority": att.priority,
+                "source": "manual",
+            },
+        )
+        if initial_status == "reception_attending":
+            # Quando atendente já começou o atendimento direto do balcão.
+            await self._log_event(
+                att.id, "started", user_id=user_id, user_name=user_name,
+            )
+
         handover_info: HandoverInfo | None = None
         if handover_old:
             old_facility = await self.app_db.get(Facility, handover_old.facility_id)
@@ -495,7 +523,9 @@ class AttendanceService:
 
     # ── Transições (console da recepção) ───────────────────────────────
 
-    async def call(self, attendance_id: UUID, user_id: UUID) -> Attendance:
+    async def call(
+        self, attendance_id: UUID, user_id: UUID, user_name: str = "",
+    ) -> Attendance:
         att = await self._get_or_404(attendance_id)
         if att.status not in ("reception_waiting", "reception_called"):
             raise HTTPException(status_code=409, detail=f"Status inválido: {att.status}")
@@ -503,10 +533,19 @@ class AttendanceService:
             # Pode chamar mesmo com handover pendente — a confirmação de
             # presença acontece no "atender".
             pass
+        # Se já tava 'called', isso é rechamada — vira 'recalled' no log,
+        # sem alterar called_at (queremos preservar o 1º call_at).
+        is_recall = att.status == "reception_called"
         att.status = "reception_called"
-        att.called_at = datetime.now(UTC)
-        att.called_by_user_id = user_id
+        if not is_recall:
+            att.called_at = datetime.now(UTC)
+            att.called_by_user_id = user_id
         await self.tenant_db.flush()
+        await self._log_event(
+            att.id, "recalled" if is_recall else "called",
+            user_id=user_id, user_name=user_name,
+            details={"ticketNumber": att.ticket_number, "counter": "Recepção"},
+        )
 
         # Publica no canal do painel (compatível com o que já existe)
         if self.valkey is not None:
@@ -523,7 +562,9 @@ class AttendanceService:
         await self._publish_status(att)
         return att
 
-    async def start(self, attendance_id: UUID, user_id: UUID) -> Attendance:
+    async def start(
+        self, attendance_id: UUID, user_id: UUID, user_name: str = "",
+    ) -> Attendance:
         att = await self._get_or_404(attendance_id)
         if att.status not in ("reception_called", "reception_waiting"):
             raise HTTPException(status_code=409, detail=f"Status inválido: {att.status}")
@@ -541,11 +582,15 @@ class AttendanceService:
         att.started_at = datetime.now(UTC)
         att.started_by_user_id = user_id
         await self.tenant_db.flush()
+        await self._log_event(
+            att.id, "started", user_id=user_id, user_name=user_name,
+        )
         await self._publish_status(att)
         return att
 
     async def forward(
         self, attendance_id: UUID, user_id: UUID, payload: ForwardInput,
+        user_name: str = "",
     ) -> Attendance:
         att = await self._get_or_404(attendance_id)
         if att.status != "reception_attending":
@@ -558,10 +603,17 @@ class AttendanceService:
         att.forwarded_by_user_id = user_id
         att.sector_name = payload.sector_name.strip()
         await self.tenant_db.flush()
+        await self._log_event(
+            att.id, "forwarded", user_id=user_id, user_name=user_name,
+            details={"sectorName": att.sector_name},
+        )
         await self._publish_status(att)
         return att
 
-    async def cancel(self, attendance_id: UUID, user_id: UUID, reason: str) -> Attendance:
+    async def cancel(
+        self, attendance_id: UUID, user_id: UUID, reason: str,
+        user_name: str = "",
+    ) -> Attendance:
         att = await self._get_or_404(attendance_id)
         if not att.is_active:
             raise HTTPException(status_code=409, detail=f"Atendimento já fechado: {att.status}")
@@ -570,10 +622,16 @@ class AttendanceService:
         att.cancelled_by_user_id = user_id
         att.cancellation_reason = reason.strip() or "Cancelado"
         await self.tenant_db.flush()
+        await self._log_event(
+            att.id, "cancelled", user_id=user_id, user_name=user_name,
+            details={"reason": att.cancellation_reason},
+        )
         await self._publish_status(att)
         return att
 
-    async def assume_handover(self, attendance_id: UUID, user_id: UUID) -> Attendance:
+    async def assume_handover(
+        self, attendance_id: UUID, user_id: UUID, user_name: str = "",
+    ) -> Attendance:
         """Confirma presença do paciente nesta unidade: fecha o
         atendimento antigo (em outra unidade) como ``evasion`` e libera
         este pra seguir."""
@@ -583,10 +641,13 @@ class AttendanceService:
                 status_code=400,
                 detail="Este atendimento não tem handover pendente.",
             )
+        from_facility_name: str | None = None
         old = await self.tenant_db.get(Attendance, att.needs_handover_from_attendance_id)
         if old is not None and old.is_active:
             old_facility = await self.app_db.get(Facility, att.facility_id)
             new_facility_name = old_facility.short_name if old_facility else "outra unidade"
+            src_facility = await self.app_db.get(Facility, old.facility_id)
+            from_facility_name = src_facility.short_name if src_facility else None
             old.status = "evasion"
             old.cancelled_at = datetime.now(UTC)
             old.cancelled_by_user_id = user_id
@@ -601,8 +662,25 @@ class AttendanceService:
                 )
         att.needs_handover_from_attendance_id = None
         await self.tenant_db.flush()
+        await self._log_event(
+            att.id, "handover_assumed", user_id=user_id, user_name=user_name,
+            details={"fromFacility": from_facility_name} if from_facility_name else None,
+        )
         await self._publish_status(att)
         return att
+
+    # ── Timeline de eventos ───────────────────────────────────────────
+
+    async def list_events(self, attendance_id: UUID) -> list[AttendanceEvent]:
+        """Lista eventos do atendimento em ordem cronológica (mais
+        antigo primeiro)."""
+        await self._get_or_404(attendance_id)  # 404 se não existe
+        rows = await self.tenant_db.scalars(
+            select(AttendanceEvent)
+            .where(AttendanceEvent.attendance_id == attendance_id)
+            .order_by(AttendanceEvent.created_at, AttendanceEvent.id)
+        )
+        return list(rows.all())
 
     # ── Listagem pra recepção ─────────────────────────────────────────
 
@@ -862,6 +940,38 @@ class AttendanceService:
         row.current_number += 1
         await self.app_db.flush()
         return row.current_number
+
+    async def _log_event(
+        self,
+        attendance_id: UUID,
+        event_type: str,
+        *,
+        user_id: UUID | None = None,
+        user_name: str = "",
+        details: dict | None = None,
+    ) -> None:
+        """Registra um evento na linha do tempo do atendimento.
+
+        Nunca levanta — falha silenciosa pra não bloquear a ação principal
+        (ex.: se o log falhar, o encaminhamento ainda acontece).
+        """
+        try:
+            ev = AttendanceEvent(
+                attendance_id=attendance_id,
+                event_type=event_type,
+                user_id=user_id,
+                user_name=(user_name or "").strip()[:200],
+                details=details,
+            )
+            self.tenant_db.add(ev)
+            await self.tenant_db.flush()
+        except Exception as e:  # noqa: BLE001
+            # Log estrutural existe no audit/log — timeline é operacional.
+            import logging
+            logging.getLogger(__name__).warning(
+                "attendance_event_log_failed",
+                extra={"attendance_id": str(attendance_id), "event_type": event_type, "error": str(e)},
+            )
 
     async def _publish_status(self, att: Attendance) -> None:
         """Publica evento real-time na unidade do atendimento.

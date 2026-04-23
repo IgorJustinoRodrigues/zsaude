@@ -29,6 +29,7 @@ from app.modules.audit.helpers import describe_change
 from app.modules.audit.writer import write_audit
 from app.modules.hsp.schemas import DocumentInput, PatientCreate, PatientUpdate
 from app.services.storage import get_storage
+from app.tenant_models.attendances import Attendance, AttendanceEvent
 from app.tenant_models.patients import (
     Patient,
     PatientAddress,
@@ -432,6 +433,19 @@ class PatientService:
                     reason=reason,
                 )
 
+            # Timeline do atendimento: se o paciente tem atendimento ativo
+            # nesta unidade agora, marca ``data_updated`` com a lista de
+            # campos mudados pra rastreabilidade.
+            from app.modules.audit.helpers import humanize_field
+            await self._log_to_active_attendance(
+                patient.id, "data_updated",
+                details={
+                    "fields": [humanize_field(f) for f in changes.keys()],
+                    "count": len(changes),
+                    **({"reason": reason} if reason else {}),
+                },
+            )
+
         # Documentos: reconciliação se documents foi passado
         doc_changes = 0
         if documents_payload is not None:
@@ -645,6 +659,12 @@ class PatientService:
                 extra=audit_extra,
             ),
             details=audit_details,
+        )
+
+        # Timeline do atendimento: foto enviada durante atendimento ativo.
+        await self._log_to_active_attendance(
+            patient.id, "photo_uploaded",
+            details={"faceStatus": face_status},
         )
         return photo
 
@@ -953,6 +973,44 @@ class PatientService:
             .limit(page_size)
         )).all())
         return rows, total
+
+    # ── Helper: liga evento ao atendimento ativo (timeline) ────────
+    async def _log_to_active_attendance(
+        self, patient_id: UUID, event_type: str, details: dict | None = None,
+    ) -> None:
+        """Se o paciente tem atendimento ativo na unidade do work-context
+        atual, adiciona o evento na timeline. Usado pra sinalizar edição
+        de dados / upload de foto durante o atendimento. Silencioso em
+        erro — não bloqueia o fluxo principal."""
+        try:
+            facility_id = getattr(self.ctx, "facility_id", None)
+            if facility_id is None:
+                return
+            att = await self.db.scalar(
+                select(Attendance)
+                .where(Attendance.patient_id == patient_id)
+                .where(Attendance.facility_id == facility_id)
+                .where(Attendance.status.in_(Attendance.ACTIVE_STATUSES))
+                .order_by(Attendance.arrived_at.desc())
+                .limit(1)
+            )
+            if att is None:
+                return
+            ev = AttendanceEvent(
+                attendance_id=att.id,
+                event_type=event_type,
+                user_id=self.ctx.user_id,
+                user_name=(self.user_name or "").strip()[:200],
+                details=details,
+            )
+            self.db.add(ev)
+            await self.db.flush()
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                "attendance_event_from_patient_update_failed",
+                extra={"patient_id": str(patient_id), "event_type": event_type},
+            )
 
     # ── Helper histórico ───────────────────────────────────────────
     async def _record_history(

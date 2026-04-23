@@ -162,3 +162,20 @@ class FaceMatchOutput(CamelModel):
     face_detected: bool
     detection_score: float | None = None
     candidates: list[FaceCandidate] = []
+
+
+AttendanceEventType = Literal[
+    "arrived", "called", "recalled", "started", "forwarded",
+    "cancelled", "handover_assumed", "photo_uploaded", "data_updated",
+    "note_added",
+]
+
+
+class AttendanceEventOut(CamelModel):
+    id: UUID
+    attendance_id: UUID
+    event_type: str
+    user_id: UUID | None = None
+    user_name: str
+    details: dict | None = None
+    created_at: datetime

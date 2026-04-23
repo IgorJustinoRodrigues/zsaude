@@ -23,6 +23,7 @@ from app.core.deps import (
     Valkey,
 )
 from app.modules.attendances.schemas import (
+    AttendanceEventOut,
     ActiveTicketInfo,
     AttendanceListItem,
     AttendanceRead,
@@ -133,6 +134,7 @@ async def emit_manual_ticket(
         patient_id=payload.patient_id,
         priority=payload.priority,
         user_id=user.id,
+        user_name=user.name,
     )
     return EmitTicketOutput(
         id=att.id,
@@ -174,6 +176,24 @@ async def list_tickets(
             order_reasons=reasons,
         ))
     return out
+
+
+@router.get(
+    "/tickets/{att_id}/events",
+    response_model=list[AttendanceEventOut],
+)
+async def list_ticket_events(
+    att_id: UUID,
+    db: DB, tenant_db: TenantDB, ctx: CurrentContextDep,
+    _user: CurrentUserDep,
+) -> list[AttendanceEventOut]:
+    """Timeline do atendimento — toda ação granular (chegada, chamadas,
+    rechamadas, encaminhamentos, cancelamento, etc.)."""
+    svc = AttendanceService(app_db=db, tenant_db=tenant_db)
+    att = await svc._get_or_404(att_id)  # noqa: SLF001
+    _assert_same_facility(att, ctx.facility_id)
+    rows = await svc.list_events(att_id)
+    return [AttendanceEventOut.model_validate(r, from_attributes=True) for r in rows]
 
 
 class _PatientVisitSummary(CamelModel):
@@ -224,7 +244,7 @@ async def call_ticket(
     svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
     att = await svc._get_or_404(att_id)  # noqa: SLF001
     _assert_same_facility(att, ctx.facility_id)
-    att = await svc.call(att_id, user.id)
+    att = await svc.call(att_id, user.id, user_name=user.name)
     return AttendanceRead.model_validate(att)
 
 
@@ -236,7 +256,7 @@ async def start_ticket(
     svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
     att = await svc._get_or_404(att_id)  # noqa: SLF001
     _assert_same_facility(att, ctx.facility_id)
-    att = await svc.start(att_id, user.id)
+    att = await svc.start(att_id, user.id, user_name=user.name)
     return AttendanceRead.model_validate(att)
 
 
@@ -248,7 +268,7 @@ async def forward_ticket(
     svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
     att = await svc._get_or_404(att_id)  # noqa: SLF001
     _assert_same_facility(att, ctx.facility_id)
-    att = await svc.forward(att_id, user.id, payload)
+    att = await svc.forward(att_id, user.id, payload, user_name=user.name)
     return AttendanceRead.model_validate(att)
 
 
@@ -260,7 +280,7 @@ async def cancel_ticket(
     svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
     att = await svc._get_or_404(att_id)  # noqa: SLF001
     _assert_same_facility(att, ctx.facility_id)
-    att = await svc.cancel(att_id, user.id, payload.reason)
+    att = await svc.cancel(att_id, user.id, payload.reason, user_name=user.name)
     return AttendanceRead.model_validate(att)
 
 
@@ -272,7 +292,7 @@ async def assume_handover(
     svc = AttendanceService(app_db=db, tenant_db=tenant_db, valkey=valkey)
     att = await svc._get_or_404(att_id)  # noqa: SLF001
     _assert_same_facility(att, ctx.facility_id)
-    att = await svc.assume_handover(att_id, user.id)
+    att = await svc.assume_handover(att_id, user.id, user_name=user.name)
     return AttendanceRead.model_validate(att)
 
 

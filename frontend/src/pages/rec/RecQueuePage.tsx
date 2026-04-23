@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, Clock, Info, PhoneCall, Plus, Settings2,
-  ShieldAlert, Star, UserCheck, VolumeX, X,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock, History, Info, PhoneCall, Plus,
+  Settings2, ShieldAlert, Star, UserCheck, VolumeX, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { HttpError } from '../../api/client'
@@ -18,6 +18,7 @@ import { recConfigApi } from '../../api/recConfig'
 import { sectorsApi, type Sector } from '../../api/sectors'
 import { useAuthStore } from '../../store/authStore'
 import { PatientPhotoImg } from '../hsp/components/PatientPhotoImg'
+import { AttendanceTimeline } from './components/AttendanceTimeline'
 import { toast } from '../../store/toastStore'
 import { cn } from '../../lib/utils'
 
@@ -79,6 +80,7 @@ export function RecQueuePage() {
   const silenceDisabledSec = Math.max(0, Math.ceil((silenceCooldownUntil - now) / 1000))
   const [attendModal, setAttendModal] = useState<AttendanceItem | null>(null)
   const [forwardModal, setForwardModal] = useState<AttendanceItem | null>(null)
+  const [timelineModal, setTimelineModal] = useState<AttendanceItem | null>(null)
   const counterName = counterLabel(counter)
 
   const reload = useCallback(async () => {
@@ -275,6 +277,7 @@ export function RecQueuePage() {
                   if (t.patientId) navigate(`/rec/atendimento/${t.patientId}`)
                   else setAttendModal(t)
                 }}
+                onOpenTimeline={t => setTimelineModal(t)}
               />
               <div className="mt-8" />
             </>
@@ -288,7 +291,38 @@ export function RecQueuePage() {
             onCall={doCall}
             onStart={doStart}
             onAssumeHandover={doAssumeHandover}
-            onOpenAttend={t => setAttendModal(t)}
+            onOpenAttend={t => {
+              // "Atender" em Aguardando: navega IMEDIATAMENTE pra tela
+              // de atendimento e transiciona o status em background. A
+              // tela aceita qualquer estado ativo (waiting/called/attending)
+              // e tem ações próprias se o start não rolou.
+              if (t.patientId) {
+                navigate(`/rec/atendimento/${t.patientId}`)
+                recApi.startTicket(t.id).catch(err => {
+                  if (err instanceof HttpError && err.code === 'handover_required') {
+                    toast.error('Handover pendente', err.message)
+                  }
+                })
+                return
+              }
+              // Anônimo/manual (sem patientId): só transiciona o status
+              // pra o ticket aparecer em "Em atendimento".
+              recApi.startTicket(t.id)
+                .then(() => {
+                  toast.success('Em atendimento', t.ticketNumber)
+                  void reload()
+                })
+                .catch(err => {
+                  if (err instanceof HttpError) {
+                    if (err.code === 'handover_required') {
+                      toast.error('Handover pendente', err.message)
+                    } else {
+                      toast.error('Atender', err.message)
+                    }
+                  }
+                })
+            }}
+            onOpenTimeline={t => setTimelineModal(t)}
           />
 
           {rest.length > 0 && (
@@ -299,6 +333,7 @@ export function RecQueuePage() {
                 items={rest}
                 emptyMsg=""
                 variant="rest"
+                onOpenTimeline={t => setTimelineModal(t)}
               />
             </>
           )}
@@ -345,6 +380,57 @@ export function RecQueuePage() {
           }}
         />
       )}
+      {timelineModal && (
+        <TimelineModal
+          ticket={timelineModal}
+          onClose={() => setTimelineModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Modal: linha do tempo ─────────────────────────────────────────────────
+
+function TimelineModal({
+  ticket, onClose,
+}: {
+  ticket: AttendanceItem
+  onClose: () => void
+}) {
+  return (
+    <div onClick={onClose} className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-card rounded-xl shadow-2xl border border-border w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+      >
+        <header className="px-5 py-4 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-sm font-semibold">Linha do tempo</h3>
+              <span
+                className="text-xs font-bold tabular-nums"
+                style={{ color: ticket.priority ? '#dc2626' : '#0d9488' }}
+              >
+                {ticket.ticketNumber}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+              {ticket.patientName || 'Sem nome'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded text-muted-foreground hover:bg-muted"
+            aria-label="Fechar"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="p-5 overflow-y-auto flex-1">
+          <AttendanceTimeline ticketId={ticket.id} />
+        </div>
+      </div>
     </div>
   )
 }
@@ -364,11 +450,12 @@ type QueueSectionProps = {
   onForward?: (t: AttendanceItem) => void
   onAssumeHandover?: (t: AttendanceItem) => void
   onOpenAttend?: (t: AttendanceItem) => void
+  onOpenTimeline?: (t: AttendanceItem) => void
 }
 
 function QueueSection({
   title, items, emptyMsg, variant = 'waiting', headerBadge, callCooldowns,
-  onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
+  onCall, onStart, onForward, onAssumeHandover, onOpenAttend, onOpenTimeline,
 }: QueueSectionProps) {
   return (
     <div>
@@ -401,6 +488,7 @@ function QueueSection({
               onForward={onForward}
               onAssumeHandover={onAssumeHandover}
               onOpenAttend={onOpenAttend}
+              onOpenTimeline={onOpenTimeline}
             />
           ))}
         </ul>
@@ -413,7 +501,7 @@ function QueueSection({
 
 function QueueRow({
   ticket, variant, callCooldownUntil = 0,
-  onCall, onStart, onForward, onAssumeHandover, onOpenAttend,
+  onCall, onStart, onForward, onAssumeHandover, onOpenAttend, onOpenTimeline,
 }: {
   ticket: AttendanceItem
   variant: 'waiting' | 'inService' | 'rest'
@@ -423,6 +511,7 @@ function QueueRow({
   onForward?: (t: AttendanceItem) => void
   onAssumeHandover?: (t: AttendanceItem) => void
   onOpenAttend?: (t: AttendanceItem) => void
+  onOpenTimeline?: (t: AttendanceItem) => void
 }) {
   const needsHandover = !!ticket.needsHandoverFromAttendanceId
   const wasCalled = ticket.status === 'reception_called'
@@ -490,6 +579,16 @@ function QueueRow({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {onOpenTimeline && (
+          <button
+            onClick={() => onOpenTimeline(ticket)}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-muted transition-colors"
+            title="Linha do tempo do atendimento"
+            aria-label="Ver linha do tempo"
+          >
+            <History size={14} />
+          </button>
+        )}
         {variant === 'waiting' && needsHandover && (
           <button
             onClick={() => onAssumeHandover?.(ticket)}

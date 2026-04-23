@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Save, Camera, Trash2, Loader2, AlertCircle, ScanFace } from 'lucide-react'
+import { AlertTriangle, Save, Camera, Trash2, Loader2, AlertCircle, ScanFace } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PhotoCropModal } from '../../components/ui/PhotoCropModal'
 import { FaceRecognitionModal } from './components/FaceRecognitionModal'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import { ComboBox, type ComboBoxOption } from '../../components/ui/ComboBox'
-import { AddressMap } from './components/AddressMap'
 import { DocumentList } from './components/DocumentList'
 import { DuplicateBanner } from './components/DuplicateBanner'
 import { PatientPhotoImg } from './components/PatientPhotoImg'
@@ -16,7 +15,7 @@ import { HttpError } from '../../api/client'
 import {
   hspApi, PATIENT_BASE_FIELDS, toSubmitPayload, type PatientCreate,
   type PatientDocumentInput, type PatientFormData, type PatientRead,
-  type PatientUpdate, type PlanoSaudeTipo, type Sex,
+  type PatientUpdate, type Sex,
 } from '../../api/hsp'
 import { referenceApi, type RefKind } from '../../api/reference'
 import { ibgeApi, type IbgeEstado, type IbgeMunicipio } from '../../api/ibge'
@@ -37,8 +36,8 @@ type Errors = Partial<Record<FieldKey, string | null>>
 // ─── Tabs ──────────────────────────────────────────────────────────────────
 
 const TABS = [
-  'Identificação', 'Sociodemográfico', 'Endereço',
-  'Filiação', 'Clínico', 'Convênio', 'Foto', 'Observações',
+  'Identificação', 'Sociodemográfico', 'Endereço', 'Contato',
+  'Filiação', 'Foto', 'Observações',
 ] as const
 type Tab = typeof TABS[number]
 
@@ -54,20 +53,14 @@ const FIELDS_BY_TAB: Record<Tab, FieldKey[]> = {
   'Endereço': [
     'cep', 'logradouroId', 'endereco', 'numero', 'complemento', 'bairro',
     'uf', 'municipioIbge', 'pais', 'areaMicroarea',
+  ],
+  'Contato': [
     'phone', 'cellphone', 'phoneRecado', 'email', 'idiomaPreferencial',
   ],
   'Filiação': [
     'motherName', 'motherUnknown', 'fatherName', 'fatherUnknown',
     'responsavelNome', 'responsavelCpf', 'responsavelParentescoId',
     'contatoEmergenciaNome', 'contatoEmergenciaTelefone', 'contatoEmergenciaParentescoId',
-  ],
-  'Clínico': [
-    'tipoSanguineoId', 'temAlergia', 'alergias', 'doencasCronicas',
-    'deficiencias', 'gestante', 'dum', 'fumante', 'etilista',
-    'observacoesClinicas',
-  ],
-  'Convênio': [
-    'planoTipo', 'convenioNome', 'convenioNumeroCarteirinha', 'convenioValidade',
   ],
   'Foto': [],
   'Observações': ['observacoes', 'consentimentoLgpd'],
@@ -144,10 +137,14 @@ interface HspPatientFormPageProps {
    *  modo embedado o pai pode passar direto. */
   patientId?: string
   onSaved?: (patientId: string) => void
+  /** Conteúdo extra injetado após a seção da aba correspondente.
+   *  Permite o pai adicionar cards contextuais (ex.: "Outros endereços"
+   *  só quando ``Endereço`` está ativo). */
+  slotAfterTab?: Partial<Record<Tab, React.ReactNode>>
 }
 
 export function HspPatientFormPage({
-  embedded = false, patientId: patientIdProp, onSaved,
+  embedded = false, patientId: patientIdProp, onSaved, slotAfterTab,
 }: HspPatientFormPageProps = {}) {
   const params = useParams()
   const id = patientIdProp ?? params.id
@@ -223,6 +220,32 @@ export function HspPatientFormPage({
     }
     return out
   }, [errors])
+
+  // Marca abas com campos importantes vazios. Diferente de erros (que
+  // vem de validação após submit), isso sinaliza CADASTRO INCOMPLETO —
+  // recepção deve confirmar/preencher. Flags ``motherUnknown`` /
+  // ``fatherUnknown`` pulam a checagem correspondente.
+  const incompleteByTab = useMemo<Record<Tab, boolean>>(() => {
+    const empty = (v: unknown) => v === null || v === undefined || v === '' ||
+      (Array.isArray(v) && v.length === 0)
+    return {
+      'Identificação': empty(form.name) || (empty(form.cpf) && empty(form.cns))
+        || empty(form.birthDate) || empty(form.sex),
+      'Sociodemográfico': empty(form.racaId) || empty(form.estadoCivilId)
+        || empty(form.escolaridadeId) || empty(form.nacionalidadeId)
+        || (empty(form.ocupacaoLivre) && empty(form.cboId))
+        || form.rendaFamiliar === null || form.rendaFamiliar === undefined,
+      'Endereço': empty(form.cep) || empty(form.endereco) || empty(form.numero)
+        || empty(form.bairro) || empty(form.uf) || empty(form.municipioIbge),
+      'Contato': (empty(form.cellphone) && empty(form.phone)) || empty(form.email),
+      'Filiação': (empty(form.motherName) && !form.motherUnknown)
+        || (empty(form.fatherName) && !form.fatherUnknown)
+        || empty(form.contatoEmergenciaNome)
+        || empty(form.contatoEmergenciaTelefone),
+      'Foto': false,           // foto não bloqueia cadastro
+      'Observações': false,    // totalmente opcional
+    }
+  }, [form])
 
   const totalErrors = useMemo(
     () => Object.values(errors).filter(Boolean).length,
@@ -325,8 +348,14 @@ export function HspPatientFormPage({
         const changed = diffFields(form, initialFormRef.current)
         const docsChanged = !documentsEqual(documents, initialDocumentsRef.current)
         if (changed.length === 0 && !docsChanged) {
-          toast.info('Nada a salvar.')
           setSaving(false)
+          if (embedded) {
+            // Em modo embed, "salvar e avançar" deve avançar mesmo sem
+            // mudanças (usuário só quer ir pra próxima etapa).
+            onSaved?.(id!)
+          } else {
+            toast.info('Nada a salvar.')
+          }
           return
         }
         const patch: PatientUpdate = {}
@@ -427,7 +456,7 @@ export function HspPatientFormPage({
   }
 
   return (
-    <div>
+    <div className={embedded ? 'space-y-5' : undefined}>
       {!embedded && (
         <PageHeader
         title={inRecFlow
@@ -459,28 +488,87 @@ export function HspPatientFormPage({
       />
       )}
 
-      {/* Tabs */}
-      <div className="border-b border-border mb-6 overflow-x-auto sticky top-0 bg-background z-10">
-        <div className="flex gap-0 min-w-max">
-          {TABS.map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn(
-                'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors flex items-center gap-2',
-                tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t}
-              {submitTried && errorsByTab[t] > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
-                  {errorsByTab[t]}
-                </span>
-              )}
-            </button>
-          ))}
+      {/* Nav de seções — underline tradicional no standalone, pills no
+          embedado pra integrar melhor com o card do step.
+          Badges: erro de validação (vermelho, após submit) tem prioridade
+          sobre aviso de incompleto (triângulo âmbar). */}
+      {embedded ? (
+        <div className="rounded-xl border border-border bg-card p-1.5 overflow-x-auto">
+          <div className="flex gap-1 min-w-max">
+            {TABS.map(t => {
+              const active = tab === t
+              const hasErr = submitTried && errorsByTab[t] > 0
+              const incomplete = !hasErr && incompleteByTab[t]
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    'px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2',
+                    active
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                  )}
+                >
+                  {t}
+                  {hasErr && (
+                    <span className={cn(
+                      'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold',
+                      active ? 'bg-white/20 text-white'
+                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300',
+                    )}>
+                      {errorsByTab[t]}
+                    </span>
+                  )}
+                  {incomplete && (
+                    <AlertTriangle
+                      size={14}
+                      className={cn(
+                        'shrink-0',
+                        active ? 'text-amber-200' : 'text-amber-500',
+                      )}
+                      aria-label="Dados incompletos"
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="border-b border-border mb-6 overflow-x-auto sticky top-0 z-10 bg-background">
+          <div className="flex gap-0 min-w-max">
+            {TABS.map(t => {
+              const hasErr = submitTried && errorsByTab[t] > 0
+              const incomplete = !hasErr && incompleteByTab[t]
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors flex items-center gap-2',
+                    tab === t ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t}
+                  {hasErr && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
+                      {errorsByTab[t]}
+                    </span>
+                  )}
+                  {incomplete && (
+                    <AlertTriangle
+                      size={14}
+                      className="text-amber-500 shrink-0"
+                      aria-label="Dados incompletos"
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ─────────── Identificação ─────────── */}
       {tab === 'Identificação' && (
@@ -751,26 +839,17 @@ export function HspPatientFormPage({
               </div>
             </div>
 
-            {/* Mapa do endereço — geocoda via OSM Nominatim */}
-            <div className="mt-5">
-              <AddressMap
-                endereco={form.endereco}
-                numero={form.numero}
-                bairro={form.bairro}
-                cidade={municipiosResidencia.find(m => String(m.id) === form.municipioIbge)?.nome ?? ''}
-                uf={form.uf}
-                cep={form.cep}
-                pais={form.pais}
-                initialLat={form.latitude}
-                initialLon={form.longitude}
-                onLocationFound={(lat, lon) => {
-                  setForm(p => ({ ...p, latitude: lat, longitude: lon }))
-                }}
-              />
-            </div>
           </Section>
+        </div>
+      )}
 
-          <Section title="Contato">
+      {/* ─────────── Contato ─────────── */}
+      {tab === 'Contato' && (
+        <div className="space-y-5">
+          <Section
+            title="Contato"
+            subtitle="Mantenha celular e e-mail sempre atualizados — são os canais de aviso ao paciente."
+          >
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
               <div className="md:col-span-4">
                 <FormField label="Celular" error={showError('cellphone')}>
@@ -790,7 +869,7 @@ export function HspPatientFormPage({
                     mask={phoneMask} invalid={!!showError('phoneRecado')} placeholder="(00) 00000-0000" />
                 </FormField>
               </div>
-              <div className="md:col-span-12">
+              <div className="md:col-span-8">
                 <FormField label="E-mail" error={showError('email')}
                   valid={!!form.email && !errors.email}>
                   <input type="email" value={form.email}
@@ -798,6 +877,15 @@ export function HspPatientFormPage({
                     onBlur={() => setTouched(t => new Set(t).add('email'))}
                     className={baseInput(showError('email'))}
                     placeholder="exemplo@email.com"
+                  />
+                </FormField>
+              </div>
+              <div className="md:col-span-4">
+                <FormField label="Idioma preferencial">
+                  <input value={form.idiomaPreferencial}
+                    onChange={e => setField('idiomaPreferencial', e.target.value)}
+                    className={baseInput(null)}
+                    placeholder="pt-BR"
                   />
                 </FormField>
               </div>
@@ -897,123 +985,6 @@ export function HspPatientFormPage({
         </div>
       )}
 
-      {/* ─────────── Clínico ─────────── */}
-      {tab === 'Clínico' && (
-        <div className="space-y-5">
-          <Section title="Resumo clínico">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <FormField label="Tipo sanguíneo">
-                <ComboBox value={form.tipoSanguineoId} options={refOptions('tipos-sanguineos')}
-                  onChange={v => setField('tipoSanguineoId', v)} />
-              </FormField>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <CheckboxRow label="Paciente alérgico" checked={form.temAlergia}
-                onChange={v => setField('temAlergia', v)} />
-              <CheckboxRow label="Gestante" checked={form.gestante}
-                onChange={v => setField('gestante', v)} />
-              <div />
-              <TriCheckbox label="Fumante" value={form.fumante}
-                onChange={v => setField('fumante', v)} />
-              <TriCheckbox label="Etilista" value={form.etilista}
-                onChange={v => setField('etilista', v)} />
-            </div>
-
-            {showError('gestante') && (
-              <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                <AlertCircle size={11} /> {showError('gestante')}
-              </p>
-            )}
-
-            {form.temAlergia && (
-              <FormField label="Descrição das alergias" className="mt-4">
-                <textarea rows={3} value={form.alergias}
-                  onChange={e => setField('alergias', e.target.value)}
-                  className={baseInput(null)} />
-              </FormField>
-            )}
-
-            {form.gestante && (
-              <FormField label="Data da última menstruação (DUM)" className="mt-4">
-                <input type="date" value={form.dum ?? ''}
-                  onChange={e => setField('dum', e.target.value || null)}
-                  className={baseInput(null)} />
-              </FormField>
-            )}
-          </Section>
-
-          <Section title="Doenças crônicas e deficiências">
-            <FormField label="Doenças crônicas">
-              <textarea rows={3} value={form.doencasCronicas}
-                onChange={e => setField('doencasCronicas', e.target.value)}
-                className={baseInput(null)} />
-            </FormField>
-            <div className="mt-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Deficiências</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {(refs['deficiencias'] ?? []).map(r => {
-                  const checked = form.deficiencias.includes(r.id)
-                  return (
-                    <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input type="checkbox" checked={checked}
-                        onChange={e => {
-                          const next = e.target.checked
-                            ? [...form.deficiencias, r.id]
-                            : form.deficiencias.filter(x => x !== r.id)
-                          setField('deficiencias', next)
-                        }} />
-                      {r.descricao}
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Observações clínicas">
-            <textarea rows={4} value={form.observacoesClinicas}
-              onChange={e => setField('observacoesClinicas', e.target.value)}
-              className={baseInput(null)} />
-          </Section>
-        </div>
-      )}
-
-      {/* ─────────── Convênio ─────────── */}
-      {tab === 'Convênio' && (
-        <Section title="Convênio">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FormField label="Tipo">
-              <select value={form.planoTipo}
-                onChange={e => setField('planoTipo', e.target.value as PlanoSaudeTipo)}
-                className={baseInput(null)}>
-                <option value="SUS">SUS</option>
-                <option value="PARTICULAR">Particular</option>
-                <option value="CONVENIO">Convênio</option>
-              </select>
-            </FormField>
-            {form.planoTipo === 'CONVENIO' && (
-              <>
-                <FormField label="Nome do convênio" required>
-                  <input value={form.convenioNome}
-                    onChange={e => setField('convenioNome', e.target.value)}
-                    className={baseInput(null)} />
-                </FormField>
-                <FormField label="Nº carteirinha">
-                  <input value={form.convenioNumeroCarteirinha}
-                    onChange={e => setField('convenioNumeroCarteirinha', e.target.value)}
-                    className={baseInput(null)} />
-                </FormField>
-                <FormField label="Validade">
-                  <input type="date" value={form.convenioValidade ?? ''}
-                    onChange={e => setField('convenioValidade', e.target.value || null)}
-                    className={baseInput(null)} />
-                </FormField>
-              </>
-            )}
-          </div>
-        </Section>
-      )}
 
       {/* ─────────── Foto ─────────── */}
       {tab === 'Foto' && (
@@ -1097,6 +1068,10 @@ export function HspPatientFormPage({
           </div>
         </Section>
       )}
+
+      {/* Slot contextual — conteúdo injetado pelo pai só quando a aba
+          correspondente está ativa (ex.: "Outros endereços" em Endereço). */}
+      {slotAfterTab?.[tab] ?? null}
 
       {/* Botão de salvar no final do form — essencial em modo embedado
           (sem PageHeader) e útil também no modo standalone pra quem rolou

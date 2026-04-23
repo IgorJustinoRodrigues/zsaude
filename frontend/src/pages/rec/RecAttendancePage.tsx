@@ -16,13 +16,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertTriangle, ArrowLeft, ArrowRight, Cake, Calendar, Camera, Check,
-  CheckCircle2, Clock, Edit3, Hash, Home, Loader2, MapPin, PhoneCall, Phone,
-  Plus, ShieldAlert, Star, Trash2, User, X,
+  CheckCircle2, Clock, Edit3, Hash, Loader2, MapPin, PhoneCall, Plus,
+  ShieldAlert, Star, Trash2, User, X,
 } from 'lucide-react'
 import { PageHeader } from '../../components/shared/PageHeader'
 import { PatientPhotoImg } from '../hsp/components/PatientPhotoImg'
 import { FaceRecognitionModal } from '../hsp/components/FaceRecognitionModal'
 import { HspPatientFormPage } from '../hsp/HspPatientFormPage'
+import { AttendanceTimeline } from './components/AttendanceTimeline'
 import { FormField } from '../../components/ui/FormField'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import {
@@ -40,7 +41,7 @@ import { HttpError } from '../../api/client'
 import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../store/toastStore'
 import { confirmDialog } from '../../store/dialogStore'
-import { cepMask, phoneMask } from '../../lib/masks'
+import { cepMask } from '../../lib/masks'
 import { birthdayHint, formatCPF, formatDate, calcAge, initials, cn } from '../../lib/utils'
 
 type Step = 1 | 2 | 3
@@ -77,6 +78,9 @@ export function RecAttendancePage() {
 
   // Resumo de histórico na unidade (total de visitas + última).
   const [visitSummary, setVisitSummary] = useState<PatientVisitSummary | null>(null)
+  // Token de refresh da timeline — bump após chamadas/encaminhamento.
+  const [timelineTick, setTimelineTick] = useState(0)
+  const refreshTimeline = useCallback(() => setTimelineTick(t => t + 1), [])
 
   const [selectedSector, setSelectedSector] = useState<string | null>(null)
   const [forwarding, setForwarding] = useState(false)
@@ -138,54 +142,6 @@ export function RecAttendancePage() {
       ? suggestedSector
       : visibleSectors[0]?.name ?? null)
 
-  // ── CEP autofill ────────────────────────────────────────────────
-  const handleCepLookup = useCallback(async (newCep: string) => {
-    setCep(newCep)
-    const digits = newCep.replace(/\D/g, '')
-    if (digits.length !== 8) return
-    setCepLoading(true)
-    try {
-      const addr = await fetchCep(digits)
-      if (!addr) return
-      if (addr.logradouro) setEndereco(addr.logradouro)
-      if (addr.bairro) setBairro(addr.bairro)
-      if (addr.complemento) setComplemento(addr.complemento)
-      if (addr.uf) setUf(addr.uf)
-      if (addr.ibge) setMunicipioIbge(addr.ibge)
-      if (addr.localidade) setMunicipioDisplay(addr.localidade)
-    } finally {
-      setCepLoading(false)
-    }
-  }, [])
-
-  // ── Ações ──────────────────────────────────────────────────────
-  const saveDataIfDirty = useCallback(async (): Promise<boolean> => {
-    if (!patient) return true
-    const patch: Record<string, string> = {}
-    if (phone !== (patient.phone ?? '')) patch.phone = phone
-    if (cellphone !== (patient.cellphone ?? '')) patch.cellphone = cellphone
-    if (cep !== (patient.cep ?? '')) patch.cep = cep
-    if (endereco !== (patient.endereco ?? '')) patch.endereco = endereco
-    if (numero !== (patient.numero ?? '')) patch.numero = numero
-    if (complemento !== (patient.complemento ?? '')) patch.complemento = complemento
-    if (bairro !== (patient.bairro ?? '')) patch.bairro = bairro
-    if (uf !== (patient.uf ?? '')) patch.uf = uf
-    if (municipioIbge !== (patient.municipioIbge ?? '')) patch.municipioIbge = municipioIbge
-    if (Object.keys(patch).length === 0) return true
-    setSavingData(true)
-    try {
-      const updated = await hspApi.update(patient.id, patch)
-      setPatient(updated)
-      toast.success('Dados atualizados')
-      return true
-    } catch (err) {
-      if (err instanceof HttpError) toast.error('Salvar dados', err.message)
-      return false
-    } finally {
-      setSavingData(false)
-    }
-  }, [patient, phone, cellphone, cep, endereco, numero, complemento, bairro, uf, municipioIbge])
-
   // ── Endereços extras ──────────────────────────────────────────
   const saveExtraAddress = useCallback(async (payload: PatientAddressInput) => {
     if (!patientId) return
@@ -234,6 +190,7 @@ export function RecAttendancePage() {
       const blob = dataUrlToBlob(dataUrl)
       const updated = await hspApi.uploadPhoto(patient.id, blob)
       setPatient(updated)
+      refreshTimeline()
       toast.success('Foto adicionada ao cadastro')
     } catch (err) {
       if (err instanceof HttpError) toast.error('Upload', err.message)
@@ -242,14 +199,10 @@ export function RecAttendancePage() {
       setUploadingPhoto(false)
       setUploadModalOpen(false)
     }
-  }, [patient])
+  }, [patient, refreshTimeline])
 
   async function handleForward() {
     if (!ticket || !effectiveSector) return
-    // Salva qualquer edição pendente antes de encaminhar — evita perder
-    // dados se atendente voltou pra etapa 3 sem clicar "continuar".
-    const ok = await saveDataIfDirty()
-    if (!ok) return
     setForwarding(true)
     try {
       await recApi.forwardTicket(ticket.id, effectiveSector)
@@ -276,8 +229,10 @@ export function RecAttendancePage() {
         ticket: ticket.ticketNumber,
         patientName: ticket.patientName,
         priority: ticket.priority,
+        attendanceId: ticket.id,
       })
       toast.success('Chamado no painel', ticket.ticketNumber)
+      refreshTimeline()
     } catch (err) {
       if (err instanceof HttpError) toast.error('Chamar', err.message)
     } finally {
@@ -301,23 +256,13 @@ export function RecAttendancePage() {
   }
 
   async function handleBack() {
-    const dirty = patient && (
-      phone !== (patient.phone ?? '') ||
-      cellphone !== (patient.cellphone ?? '') ||
-      cep !== (patient.cep ?? '') ||
-      endereco !== (patient.endereco ?? '') ||
-      numero !== (patient.numero ?? '') ||
-      complemento !== (patient.complemento ?? '') ||
-      bairro !== (patient.bairro ?? '') ||
-      uf !== (patient.uf ?? '') ||
-      municipioIbge !== (patient.municipioIbge ?? '')
-    )
-    if (dirty) {
+    // Dirty check agora vive dentro do HspPatientFormPage (embedado) —
+    // aqui só avaliamos se há ticket ativo pra pular o confirm.
+    if (ticket) {
       const ok = await confirmDialog({
-        title: 'Sair sem salvar?',
-        message: 'Você alterou dados do paciente que ainda não foram salvos.',
-        confirmLabel: 'Sair assim mesmo',
-        variant: 'danger',
+        title: 'Voltar à fila?',
+        message: 'O atendimento continua ativo. Você pode retomá-lo a qualquer momento.',
+        confirmLabel: 'Voltar à fila',
       })
       if (!ok) return
     }
@@ -391,6 +336,7 @@ export function RecAttendancePage() {
           calling={calling}
           uploadingPhoto={uploadingPhoto}
           visitSummary={visitSummary}
+          timelineTick={timelineTick}
           onRecall={handleRecall}
           onRequestPhotoUpload={() => setUploadModalOpen(true)}
           onEditFull={() => navigate(`/rec/atendimento/${patient.id}/ficha`)}
@@ -407,8 +353,7 @@ export function RecAttendancePage() {
           onAddAddress={() => setAddrEditor('new')}
           onEditAddress={a => setAddrEditor(a)}
           onDeleteAddress={deleteExtraAddress}
-          onPrev={() => setStep(1)}
-          onAdvance={() => setStep(3)}
+          onAdvance={() => { refreshTimeline(); setStep(3) }}
         />
       )}
 
@@ -511,7 +456,7 @@ function Stepper({
 // ─── Etapa 1: Identidade ─────────────────────────────────────────────────
 
 function StepIdentity({
-  patient, ticket, calling, uploadingPhoto, visitSummary,
+  patient, ticket, calling, uploadingPhoto, visitSummary, timelineTick,
   onRecall, onRequestPhotoUpload, onEditFull, onFillData, onNext, onBack,
 }: {
   patient: PatientRead
@@ -519,6 +464,7 @@ function StepIdentity({
   calling: boolean
   uploadingPhoto: boolean
   visitSummary: PatientVisitSummary | null
+  timelineTick: number
   onRecall: () => void
   onRequestPhotoUpload: () => void
   onEditFull: () => void
@@ -750,6 +696,18 @@ function StepIdentity({
         </div>
       )}
 
+      {/* Timeline — histórico granular do atendimento (chegada, chamadas,
+          rechamadas, encaminhamentos, cancelamento). */}
+      {ticket && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={14} className="text-muted-foreground" />
+            <h3 className="text-sm font-semibold">Linha do tempo</h3>
+          </div>
+          <AttendanceTimeline ticketId={ticket.id} refreshToken={timelineTick} />
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
         <button
           onClick={onEditFull}
@@ -780,82 +738,72 @@ function StepIdentity({
 
 function StepRegistrationData({
   patientId, extraAddresses, onAddAddress, onEditAddress, onDeleteAddress,
-  onPrev, onAdvance,
+  onAdvance,
 }: {
   patientId: string
   extraAddresses: PatientAddressOut[]
   onAddAddress: () => void
   onEditAddress: (a: PatientAddressOut) => void
   onDeleteAddress: (a: PatientAddressOut) => void
-  onPrev: () => void
   onAdvance: () => void
 }) {
-  return (
-    <section className="space-y-4">
-      {/* Ficha cadastral completa — mesma impl do HspPatientFormPage,
-          embedada (sem o próprio PageHeader). Ao salvar, avança etapa. */}
-      <div className="bg-card border border-border rounded-xl p-5 sm:p-6">
-        <HspPatientFormPage
-          embedded
-          patientId={patientId}
-          onSaved={() => onAdvance()}
-        />
-      </div>
-
-      {/* Endereços extras (trabalho, casa da mãe, etc.) — continua aqui
-          pois são dados separados do cadastro principal. */}
-      <div className="bg-card border border-border rounded-xl p-5 sm:p-6">
-        <div className="flex items-center justify-between gap-3 mb-1">
+  // "Outros endereços" aparece só quando a aba ``Endereço`` está ativa
+  // (via slot) — evita poluição visual nas outras abas.
+  const extraAddressesCard = (
+    <div className="bg-card rounded-xl border border-border p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <MapPin size={14} /> Outros endereços
           </h3>
-          <button
-            type="button"
-            onClick={onAddAddress}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-semibold"
-          >
-            <Plus size={13} /> Adicionar endereço
-          </button>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Trabalho, casa da mãe, sítio — endereços secundários com
+            descrição livre.
+          </p>
         </div>
-        <p className="text-[11px] text-muted-foreground mb-3">
-          Trabalho, casa da mãe, sítio — qualquer endereço secundário com uma
-          descrição livre pra identificar.
-        </p>
-        {extraAddresses.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            Nenhum endereço extra cadastrado.
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {extraAddresses.map(a => (
-              <ExtraAddressRow
-                key={a.id}
-                address={a}
-                onEdit={() => onEditAddress(a)}
-                onDelete={() => onDeleteAddress(a)}
-              />
-            ))}
-          </ul>
-        )}
+        <button
+          type="button"
+          onClick={onAddAddress}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border hover:bg-muted text-xs font-semibold shrink-0"
+        >
+          <Plus size={13} /> Adicionar
+        </button>
       </div>
+      {extraAddresses.length > 0 && (
+        <ul className="space-y-2 mt-4">
+          {extraAddresses.map(a => (
+            <ExtraAddressRow
+              key={a.id}
+              address={a}
+              onEdit={() => onEditAddress(a)}
+              onDelete={() => onDeleteAddress(a)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-        <button
-          onClick={onPrev}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-border hover:bg-muted text-sm font-medium"
-        >
-          <ArrowLeft size={14} /> Voltar
-        </button>
-        <div className="flex-1" />
-        <button
-          onClick={onAdvance}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold"
-          title="Pula pra próxima etapa sem salvar a ficha — use o botão Salvar dentro da ficha se houver mudanças."
-        >
-          Avançar sem salvar <ArrowRight size={14} />
-        </button>
-      </div>
-    </section>
+  return (
+    <div className="space-y-5">
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">Dados cadastrais</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Revise, confirme e atualize os dados do paciente. Clique em
+            <strong className="text-foreground"> Salvar e avançar </strong>
+            quando terminar.
+          </p>
+        </div>
+      </header>
+
+      <HspPatientFormPage
+        embedded
+        patientId={patientId}
+        onSaved={() => onAdvance()}
+        slotAfterTab={{ 'Endereço': extraAddressesCard }}
+      />
+    </div>
   )
 }
 

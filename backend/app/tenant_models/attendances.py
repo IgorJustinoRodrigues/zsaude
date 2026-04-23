@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.types import UUIDType, new_uuid7
+from app.db.types import JSONType, UUIDType, new_uuid7
 from app.tenant_models import TenantBase
 
 
@@ -112,3 +112,36 @@ class Attendance(TenantBase):
     @property
     def is_active(self) -> bool:
         return self.status in self.ACTIVE_STATUSES
+
+
+class AttendanceEvent(TenantBase):
+    """Linha do tempo granular do atendimento.
+
+    Complementa os timestamps únicos em ``Attendance`` (arrived_at,
+    called_at, …) — aqui entra TODA ocorrência: rechamadas, múltiplos
+    encaminhamentos, cancelamento com motivo, handover assumido, upload
+    de foto durante o fluxo, etc. Ordenada por ``created_at``.
+
+    ``event_type`` valida no código (evita travar evoluções em enum DB):
+    ``arrived``, ``called``, ``recalled``, ``started``, ``forwarded``,
+    ``cancelled``, ``handover_assumed``, ``photo_uploaded``,
+    ``data_updated``, ``note_added``.
+    """
+
+    __tablename__ = "attendance_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(), primary_key=True, default=new_uuid7)
+    attendance_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType(),
+        ForeignKey("attendances.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUIDType(), nullable=True)
+    user_name: Mapped[str] = mapped_column(String(200), nullable=False, server_default=" ")
+    details: Mapped[dict | None] = mapped_column(JSONType(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
